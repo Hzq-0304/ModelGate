@@ -10,8 +10,10 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "cli": "tsx src/cli.ts",
-    "dev:desktop": "npm --prefix desktop run tauri dev",
-    "build:desktop": "npm --prefix desktop run tauri build",
+    "dev:desktop": "npm --prefix desktop run tauri -- dev",
+    "build:desktop": "npm --prefix desktop run tauri -- build",
+    "build:desktop:nsis": "npm --prefix desktop run tauri -- build --bundles nsis",
+    "build:desktop:debug": "npm --prefix desktop run tauri -- build --debug",
     "dev:desktop-ui": "npm --prefix desktop run dev",
     "build:desktop-ui": "npm --prefix desktop run build",
     "build": "tsc",

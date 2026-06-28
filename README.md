@@ -181,13 +181,30 @@ Build the desktop UI only:
 npm run build:desktop-ui
 ```
 
-Build the Tauri desktop app:
+Build the Windows desktop app:
 
 ```bash
 npm run build:desktop
 ```
 
-On Windows, Tauri packaging may need WiX tooling. If the build reaches Rust compilation and then fails while downloading or verifying WiX, install WiX or retry with working network access.
+On Windows, ModelGate defaults to the NSIS installer target. It does not build MSI by default, so normal desktop builds should not depend on WiX.
+
+You can also run the explicit NSIS build command:
+
+```bash
+npm run build:desktop:nsis
+```
+
+Common output locations:
+
+```text
+desktop/src-tauri/target/release/
+desktop/src-tauri/target/release/bundle/nsis/
+```
+
+If you only need to run the app directly, use the release executable from `desktop/src-tauri/target/release/`. The NSIS installer is written under `desktop/src-tauri/target/release/bundle/nsis/`.
+
+If you manually enable MSI packaging, install WiX or ensure Tauri can download and verify the WiX tooling.
 
 Desktop app features:
 
@@ -204,6 +221,22 @@ Current desktop limitations:
 - the desktop app does not auto-start the Node.js server
 - start ModelGate server manually before opening the desktop app
 - provider API keys are not shown or managed in the desktop UI
+
+## Troubleshooting
+
+### WiX timeout / MSI bundle failed
+
+ModelGate does not build MSI by default. The default Windows desktop target is NSIS.
+
+If you still see WiX-related errors, check that `desktop/src-tauri/tauri.conf.json` does not set `bundle.targets` to `"all"` or `"msi"`. If you do need MSI output, configure WiX locally or retry with network access that can download the WiX tooling.
+
+### NSIS download timeout
+
+The default Windows installer target is NSIS. If the release executable is built but bundling fails while downloading NSIS or `nsis_tauri_utils.dll`, the local network or security software interrupted Tauri's tool download. Retry with stable GitHub access, or install/cache the NSIS tooling required by Tauri.
+
+### WebView2
+
+Tauri desktop apps on Windows depend on Microsoft Edge WebView2 Runtime. Most Windows 10/11 systems already include it or can install it automatically. If the desktop app fails to run because WebView2 is missing, install Microsoft Edge WebView2 Runtime and try again.
 
 ## Verify
 
