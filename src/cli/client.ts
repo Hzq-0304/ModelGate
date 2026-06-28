@@ -21,6 +21,32 @@ type SwitchResult = {
   active: string;
 };
 
+export type RequestLogEntry = {
+  id: string;
+  started_at: string;
+  finished_at?: string;
+  duration_ms?: number;
+  requested_model?: string;
+  resolved_alias?: string;
+  provider?: string;
+  upstream_model?: string;
+  stream: boolean;
+  status_code?: number;
+  ok: boolean;
+  error_type?: string;
+  error_message?: string;
+};
+
+export type RequestStats = {
+  total: number;
+  success: number;
+  failed: number;
+  stream: number;
+  non_stream: number;
+  avg_duration_ms: number;
+  by_provider: Record<string, number>;
+};
+
 type ErrorResponse = {
   error?: {
     message?: string;
@@ -74,4 +100,21 @@ export async function reloadConfig() {
   });
 
   return parseResponse<SwitchResult>(response);
+}
+
+export async function getLogs(limit = 50) {
+  const response = await fetch(`${getBaseUrl()}/admin/logs?limit=${encodeURIComponent(String(limit))}`);
+  return parseResponse<{ logs: RequestLogEntry[] }>(response);
+}
+
+export async function clearLogs() {
+  const response = await fetch(`${getBaseUrl()}/admin/logs`, {
+    method: "DELETE"
+  });
+  return parseResponse<{ ok: boolean }>(response);
+}
+
+export async function getStats() {
+  const response = await fetch(`${getBaseUrl()}/admin/stats`);
+  return parseResponse<RequestStats>(response);
 }

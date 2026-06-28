@@ -1,5 +1,6 @@
 import { loadConfig } from "../config/loadConfig.js";
 import type { ModelGateConfig } from "../config/schema.js";
+import { createRequestLogStore } from "./requestLog.js";
 
 export type EntrypointStatus = {
   use: string;
@@ -9,6 +10,7 @@ export type EntrypointStatus = {
 export class RuntimeState {
   #config: ModelGateConfig;
   #activeAlias: string;
+  readonly requestLogs = createRequestLogStore(200);
   readonly configPath?: string;
 
   constructor(config: ModelGateConfig, configPath = process.env.MODELGATE_CONFIG) {

@@ -371,6 +371,11 @@ dd {
   gap: 18px;
 }
 
+.logs-page {
+  display: grid;
+  gap: 18px;
+}
+
 .config-card {
   display: grid;
   gap: 14px;
@@ -479,6 +484,63 @@ button.danger {
   color: #ffb6b6;
 }
 
+.stats-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.provider-stats {
+  display: grid;
+  gap: 10px;
+}
+
+.provider-stats div {
+  align-items: center;
+  background: #202832;
+  border: 1px solid rgba(143, 161, 184, 0.12);
+  border-radius: 7px;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.request-log-table {
+  display: grid;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.request-log-row {
+  align-items: center;
+  background: #202832;
+  border: 1px solid rgba(143, 161, 184, 0.12);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 155px 72px 90px 130px 130px 100px 150px 85px minmax(160px, 1fr);
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+.request-log-row.failed {
+  border-color: rgba(255, 100, 100, 0.38);
+}
+
+.request-log-head {
+  background: transparent;
+  border-color: transparent;
+  color: #9aa8ba;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 28px;
+  text-transform: uppercase;
+}
+
+.pill.bad {
+  background: rgba(255, 100, 100, 0.13);
+  border-color: rgba(255, 100, 100, 0.38);
+  color: #ffb6b6;
+}
+
 @media (max-width: 860px) {
   .shell {
     padding: 18px;
@@ -497,6 +559,10 @@ button.danger {
   .alias-form,
   .entrypoint-form {
     grid-template-columns: 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .topbar {

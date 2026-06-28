@@ -3,12 +3,17 @@ import {
   type AliasesResponse,
   type EditableConfig,
   type ProviderConfig,
+  type RequestLogEntry,
+  type RequestStats,
   type ServerProcessStatus,
   type StatusResponse,
+  clearRequestLogs,
   getAliases,
   getAdminConfig,
   getBaseUrl,
   getHealth,
+  getRequestLogs,
+  getRequestStats,
   getServerProcessStatus,
   getStatus,
   reloadConfig,
@@ -21,7 +26,7 @@ import {
 } from "./api";
 
 type ConnectionState = "checking" | "connected" | "disconnected";
-type ActiveTab = "dashboard" | "configuration";
+type ActiveTab = "dashboard" | "configuration" | "logs";
 
 const serverUrl = getBaseUrl();
 
@@ -38,6 +43,9 @@ export function App() {
   const [configPath, setConfigPath] = useState("");
   const [editableConfig, setEditableConfig] = useState<EditableConfig | null>(null);
   const [configMessage, setConfigMessage] = useState("Configuration not loaded");
+  const [requestLogs, setRequestLogs] = useState<RequestLogEntry[]>([]);
+  const [requestStats, setRequestStats] = useState<RequestStats | null>(null);
+  const [logsMessage, setLogsMessage] = useState("Logs not loaded");
   const [providerForm, setProviderForm] = useState({
     editingName: "",
     name: "",
@@ -77,6 +85,16 @@ export function App() {
     setConfigMessage("Configuration loaded");
   }
 
+  async function loadLogs() {
+    const [logsResult, statsResult] = await Promise.all([
+      getRequestLogs(50),
+      getRequestStats()
+    ]);
+    setRequestLogs(logsResult.logs);
+    setRequestStats(statsResult);
+    setLogsMessage("Logs refreshed");
+  }
+
   const refresh = useCallback(async () => {
     setBusyAction("refresh");
 
@@ -105,6 +123,19 @@ export function App() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (activeTab !== "logs") {
+      return;
+    }
+
+    void loadLogs().catch((error) => setLogsMessage(`Failed to load logs: ${getErrorMessage(error)}`));
+    const timer = window.setInterval(() => {
+      void loadLogs().catch((error) => setLogsMessage(`Failed to load logs: ${getErrorMessage(error)}`));
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [activeTab]);
 
   async function handleSwitch(aliasName: string) {
     setBusyAction(`switch:${aliasName}`);
@@ -431,6 +462,41 @@ export function App() {
     }
   }
 
+  async function handleRefreshLogs() {
+    setBusyAction("logs:refresh");
+    try {
+      await loadLogs();
+    } catch (error) {
+      setLogsMessage(`Failed to load logs: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleClearLogs() {
+    if (!window.confirm("Clear all in-memory request logs?")) {
+      return;
+    }
+
+    setBusyAction("logs:clear");
+    try {
+      await clearRequestLogs();
+      await loadLogs();
+      setLogsMessage("Logs cleared");
+    } catch (error) {
+      setLogsMessage(`Failed to clear logs: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function formatLogTime(value: string) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? value
+      : date.toLocaleString();
+  }
+
   const entrypoints = status ? Object.entries(status.entrypoints) : [];
   const aliasesList = aliases?.aliases ?? [];
   const disconnected = connection === "disconnected";
@@ -458,6 +524,7 @@ export function App() {
   const providerNames = providerEntries.map(([name]) => name);
   const aliasNames = aliasEntries.map(([name]) => name);
   const configBusy = busyAction?.startsWith("config:") ?? false;
+  const logsBusy = busyAction?.startsWith("logs:") ?? false;
 
   return (
     <main className="shell">
@@ -487,6 +554,15 @@ export function App() {
           }}
         >
           Configuration
+        </button>
+        <button
+          className={activeTab === "logs" ? "tab active" : "tab"}
+          onClick={() => {
+            setActiveTab("logs");
+            void loadLogs().catch((error) => setLogsMessage(`Failed to load logs: ${getErrorMessage(error)}`));
+          }}
+        >
+          Logs
         </button>
       </nav>
 
@@ -663,7 +739,7 @@ export function App() {
         <pre>{codexConfig}</pre>
       </section>
         </>
-      ) : (
+      ) : activeTab === "configuration" ? (
         <section className="config-page">
           <section className="card config-card">
             <div className="card-heading">
@@ -813,6 +889,114 @@ export function App() {
             <button className="secondary" onClick={() => void handleResetConfig()} disabled={busyAction !== null}>
               {busyAction === "config:reset" ? "Resetting..." : "Reset"}
             </button>
+          </section>
+        </section>
+      ) : (
+        <section className="logs-page">
+          {disconnected && (
+            <section className="notice error">
+              <strong>ModelGate server is not connected.</strong>
+              <span>Start or reconnect the server to view request logs.</span>
+            </section>
+          )}
+
+          <section className="grid">
+            <article className="card stats-card">
+              <div className="card-heading">
+                <span>Request Stats</span>
+                <strong>{requestStats?.total ?? 0}</strong>
+              </div>
+              <dl className="stats-grid">
+                <div>
+                  <dt>Total Requests</dt>
+                  <dd>{requestStats?.total ?? 0}</dd>
+                </div>
+                <div>
+                  <dt>Success</dt>
+                  <dd>{requestStats?.success ?? 0}</dd>
+                </div>
+                <div>
+                  <dt>Failed</dt>
+                  <dd>{requestStats?.failed ?? 0}</dd>
+                </div>
+                <div>
+                  <dt>Average Duration</dt>
+                  <dd>{requestStats?.avg_duration_ms ?? 0}ms</dd>
+                </div>
+                <div>
+                  <dt>Stream</dt>
+                  <dd>{requestStats?.stream ?? 0}</dd>
+                </div>
+                <div>
+                  <dt>Non-stream</dt>
+                  <dd>{requestStats?.non_stream ?? 0}</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article className="card stats-card">
+              <div className="card-heading">
+                <span>By Provider</span>
+                <strong>{Object.keys(requestStats?.by_provider ?? {}).length}</strong>
+              </div>
+              <div className="provider-stats">
+                {Object.entries(requestStats?.by_provider ?? {}).length > 0 ? (
+                  Object.entries(requestStats?.by_provider ?? {}).map(([provider, count]) => (
+                    <div key={provider}>
+                      <span>{provider}</span>
+                      <strong>{count}</strong>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">No provider stats yet.</p>
+                )}
+              </div>
+            </article>
+          </section>
+
+          <section className="actions">
+            <button onClick={() => void handleRefreshLogs()} disabled={busyAction !== null || disconnected}>
+              {busyAction === "logs:refresh" ? "Refreshing..." : "Refresh"}
+            </button>
+            <button className="secondary danger" onClick={() => void handleClearLogs()} disabled={busyAction !== null || disconnected}>
+              {busyAction === "logs:clear" ? "Clearing..." : "Clear Logs"}
+            </button>
+            <span className={logsMessage.startsWith("Failed") ? "action-message bad" : "action-message"}>
+              {logsMessage}
+            </span>
+          </section>
+
+          <section className="card table-card">
+            <div className="card-heading">
+              <span>Recent Requests</span>
+              <strong>{requestLogs.length}</strong>
+            </div>
+            <div className="request-log-table">
+              <div className="request-log-row request-log-head">
+                <span>Time</span>
+                <span>Status</span>
+                <span>Stream</span>
+                <span>Requested Model</span>
+                <span>Alias</span>
+                <span>Provider</span>
+                <span>Upstream Model</span>
+                <span>Duration</span>
+                <span>Error</span>
+              </div>
+              {requestLogs.map((entry) => (
+                <div className={entry.ok ? "request-log-row ok" : "request-log-row failed"} key={entry.id}>
+                  <span>{formatLogTime(entry.started_at)}</span>
+                  <span><span className={entry.ok ? "pill" : "pill bad"}>{entry.ok ? "OK" : entry.status_code ?? "ERR"}</span></span>
+                  <span>{entry.stream ? "stream" : "non-stream"}</span>
+                  <span>{entry.requested_model ?? "-"}</span>
+                  <span>{entry.resolved_alias ?? "-"}</span>
+                  <span>{entry.provider ?? "-"}</span>
+                  <span>{entry.upstream_model ?? "-"}</span>
+                  <span>{entry.duration_ms ?? 0}ms</span>
+                  <span>{entry.error_message ?? ""}</span>
+                </div>
+              ))}
+            </div>
           </section>
         </section>
       )}

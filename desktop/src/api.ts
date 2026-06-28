@@ -79,6 +79,32 @@ export type ConfigValidationResponse = {
   active?: string;
 };
 
+export type RequestLogEntry = {
+  id: string;
+  started_at: string;
+  finished_at?: string;
+  duration_ms?: number;
+  requested_model?: string;
+  resolved_alias?: string;
+  provider?: string;
+  upstream_model?: string;
+  stream: boolean;
+  status_code?: number;
+  ok: boolean;
+  error_type?: string;
+  error_message?: string;
+};
+
+export type RequestStats = {
+  total: number;
+  success: number;
+  failed: number;
+  stream: number;
+  non_stream: number;
+  avg_duration_ms: number;
+  by_provider: Record<string, number>;
+};
+
 type ErrorResponse = {
   error?: {
     message?: string;
@@ -183,6 +209,23 @@ export async function saveAdminConfig(config: EditableConfig) {
   });
 
   return parseJson<ConfigValidationResponse>(response);
+}
+
+export async function getRequestLogs(limit = 50) {
+  const response = await fetch(`${baseUrl}/admin/logs?limit=${encodeURIComponent(String(limit))}`);
+  return parseJson<{ logs: RequestLogEntry[] }>(response);
+}
+
+export async function clearRequestLogs() {
+  const response = await fetch(`${baseUrl}/admin/logs`, {
+    method: "DELETE"
+  });
+  return parseJson<{ ok: boolean }>(response);
+}
+
+export async function getRequestStats() {
+  const response = await fetch(`${baseUrl}/admin/stats`);
+  return parseJson<RequestStats>(response);
 }
 
 export async function getServerProcessStatus() {

@@ -17,6 +17,10 @@ type ConfigBody = {
   config?: unknown;
 };
 
+type LogsQuery = {
+  limit?: string;
+};
+
 function isLocalAddress(address?: string) {
   if (!address) {
     return false;
@@ -106,6 +110,22 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
       active: runtime.activeAlias
     };
   });
+
+  server.get<{ Querystring: LogsQuery }>("/admin/logs", async (request) => {
+    const limit = request.query.limit ? Number.parseInt(request.query.limit, 10) : 50;
+    return {
+      logs: runtime.requestLogs.listRequestLogs(Number.isFinite(limit) ? limit : 50)
+    };
+  });
+
+  server.delete("/admin/logs", async () => {
+    runtime.requestLogs.clearRequestLogs();
+    return {
+      ok: true
+    };
+  });
+
+  server.get("/admin/stats", async () => runtime.requestLogs.getRequestStats());
 
   server.post<{ Body: SwitchBody }>("/admin/switch", async (request, reply) => {
     const active = request.body?.active;

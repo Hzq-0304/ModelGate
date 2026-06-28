@@ -126,6 +126,10 @@ npm run cli -- status
 npm run cli -- aliases
 npm run cli -- switch mock-main
 npm run cli -- reload
+npm run cli -- logs
+npm run cli -- logs -- --limit 20
+npm run cli -- logs -- --clear
+npm run cli -- stats
 ```
 
 The CLI connects to `http://127.0.0.1:11435` by default. Override it with:
@@ -259,6 +263,7 @@ Desktop app features:
 - reload config
 - manage providers, aliases, entrypoints, and active alias
 - validate config and save YAML with automatic reload
+- view request logs and request stats
 - copy Codex configuration
 
 Current desktop limitations:
@@ -335,6 +340,50 @@ aliases:
 ```
 
 The configuration admin API is intended for local use only. Do not expose ModelGate to public networks or untrusted LANs.
+
+### Request Logs
+
+ModelGate keeps a lightweight in-memory request log for `/v1/chat/completions`. It stores the latest 200 entries and clears them on restart.
+
+Logs include routing and timing metadata:
+
+- requested model
+- resolved alias
+- provider
+- upstream model
+- stream / non-stream
+- status code
+- duration
+- short error summary
+- prompt character count
+- response character count for non-stream responses when available
+
+Logs are sanitized by default:
+
+- no `Authorization` header
+- no provider API key
+- no full prompt content
+- upstream error summaries are truncated
+
+Admin API:
+
+```bash
+curl http://127.0.0.1:11435/admin/logs
+curl http://127.0.0.1:11435/admin/logs?limit=20
+curl -X DELETE http://127.0.0.1:11435/admin/logs
+curl http://127.0.0.1:11435/admin/stats
+```
+
+CLI:
+
+```bash
+modelgate logs
+modelgate logs --limit 20
+modelgate logs --clear
+modelgate stats
+```
+
+The desktop app includes a **Logs** tab with request stats, provider counts, recent requests, refresh, and clear actions. The tab refreshes every 3 seconds while active.
 
 ## Troubleshooting
 

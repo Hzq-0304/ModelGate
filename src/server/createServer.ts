@@ -17,7 +17,7 @@ export async function createServer(runtime: RuntimeState) {
     if (origin && isLocalOrigin) {
       reply.header("access-control-allow-origin", origin);
       reply.header("vary", "origin");
-      reply.header("access-control-allow-methods", "GET,POST,OPTIONS");
+      reply.header("access-control-allow-methods", "GET,POST,DELETE,OPTIONS");
       reply.header("access-control-allow-headers", "content-type,authorization");
     }
 
