@@ -47,6 +47,19 @@ export type RequestStats = {
   by_provider: Record<string, number>;
 };
 
+export type ProviderPreset = {
+  id: string;
+  display_name: string;
+  provider_name: string;
+  type: "openai-compatible";
+  base_url: string;
+  default_model: string;
+  suggested_alias: string;
+  suggested_env_name: string;
+  notes?: string;
+  models?: string[];
+};
+
 type ErrorResponse = {
   error?: {
     message?: string;
@@ -117,4 +130,9 @@ export async function clearLogs() {
 export async function getStats() {
   const response = await fetch(`${getBaseUrl()}/admin/stats`);
   return parseResponse<RequestStats>(response);
+}
+
+export async function getProviderPresets() {
+  const response = await fetch(`${getBaseUrl()}/admin/provider-presets`);
+  return parseResponse<{ presets: ProviderPreset[] }>(response);
 }

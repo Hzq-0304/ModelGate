@@ -3,6 +3,7 @@ import {
   clearLogs,
   getAliases,
   getLogs,
+  getProviderPresets,
   getStats,
   getStatus,
   reloadConfig,
@@ -10,7 +11,7 @@ import {
 } from "./cli/client.js";
 
 function printUsage() {
-  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats>");
+  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|presets>");
 }
 
 function formatTime(value: string) {
@@ -118,6 +119,19 @@ async function run() {
       for (const [provider, count] of providers) {
         console.log(`  ${provider}: ${count}`);
       }
+    }
+    return;
+  }
+
+  if (command === "presets") {
+    const result = await getProviderPresets();
+    console.log("Provider             Base URL                                            Default Model");
+    for (const preset of result.presets) {
+      console.log(
+        `${preset.provider_name.padEnd(20)} ` +
+        `${preset.base_url.padEnd(51)} ` +
+        `${preset.default_model}`
+      );
     }
     return;
   }

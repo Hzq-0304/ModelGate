@@ -6,6 +6,7 @@ import {
   validateConfigObject,
   writeConfigObject
 } from "../config/configManager.js";
+import { providerPresets } from "../config/providerPresets.js";
 import { createOpenAICompatibleError } from "../providers/openaiCompatible.js";
 import type { RuntimeState } from "../runtime/state.js";
 
@@ -63,6 +64,10 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
       provider: alias.provider,
       model: alias.model
     }))
+  }));
+
+  server.get("/admin/provider-presets", async () => ({
+    presets: providerPresets
   }));
 
   server.get("/admin/config", async (_request, reply) => {

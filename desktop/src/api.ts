@@ -106,6 +106,19 @@ export type RequestStats = {
   by_provider: Record<string, number>;
 };
 
+export type ProviderPreset = {
+  id: string;
+  display_name: string;
+  provider_name: string;
+  type: "openai-compatible";
+  base_url: string;
+  default_model: string;
+  suggested_alias: string;
+  suggested_env_name: string;
+  notes?: string;
+  models?: string[];
+};
+
 export type CcSwitchDatabaseDetection = {
   found: boolean;
   path?: string;
@@ -259,6 +272,11 @@ export async function clearRequestLogs() {
 export async function getRequestStats() {
   const response = await fetch(`${baseUrl}/admin/stats`);
   return parseJson<RequestStats>(response);
+}
+
+export async function getProviderPresets() {
+  const response = await fetch(`${baseUrl}/admin/provider-presets`);
+  return parseJson<{ presets: ProviderPreset[] }>(response);
 }
 
 export async function detectCcSwitchDatabase() {

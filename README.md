@@ -130,6 +130,7 @@ npm run cli -- logs
 npm run cli -- logs -- --limit 20
 npm run cli -- logs -- --clear
 npm run cli -- stats
+npm run cli -- presets
 ```
 
 The CLI connects to `http://127.0.0.1:11435` by default. Override it with:
@@ -155,6 +156,7 @@ Admin endpoints are intended for local requests only:
 ```bash
 curl http://127.0.0.1:11435/admin/status
 curl http://127.0.0.1:11435/admin/aliases
+curl http://127.0.0.1:11435/admin/provider-presets
 curl -X POST http://127.0.0.1:11435/admin/switch \
   -H "Content-Type: application/json" \
   -d '{"active":"mock-main"}'
@@ -281,6 +283,7 @@ The desktop app can:
 
 - view the current config file path
 - view providers, aliases, and entrypoints
+- add common OpenAI-compatible providers from built-in presets
 - add, edit, or delete OpenAI-compatible providers
 - add, edit, or delete aliases
 - add, edit, or delete entrypoints
@@ -340,6 +343,63 @@ aliases:
 ```
 
 The configuration admin API is intended for local use only. Do not expose ModelGate to public networks or untrusted LANs.
+
+### Provider Presets
+
+The Configuration tab includes **Add from Preset** for common OpenAI-compatible providers. The first preset library includes OpenAI, DeepSeek, Qwen / DashScope compatible mode, GLM / Zhipu AI, OpenRouter, SiliconFlow, Moonshot / Kimi, Mistral, Groq, and Together AI.
+
+Preset entries include provider name, base URL, suggested alias, suggested environment variable name, and a default upstream model. They do not include API keys and never ask for plaintext API keys. When saved, ModelGate writes an environment variable reference such as:
+
+```yaml
+providers:
+  deepseek:
+    type: openai-compatible
+    base_url: https://api.deepseek.com/v1
+    api_key: ${DEEPSEEK_API_KEY}
+
+aliases:
+  deepseek-main:
+    provider: deepseek
+    model: deepseek-chat
+```
+
+Use the preset flow:
+
+1. Open **Configuration**
+2. Click **Add from Preset**
+3. Search and select a provider
+4. Review or edit provider name, alias name, base URL, env var name, and upstream model
+5. Optionally check **Set as active after adding**
+6. Click **Add Provider**
+
+ModelGate validates the merged config, saves YAML, reloads the server, and refreshes the dashboard/configuration data. Existing provider and alias names are not overwritten by default; conflicting names are automatically changed to names like `deepseek-2` and `deepseek-main-2`.
+
+Set the referenced environment variable before using the provider:
+
+```powershell
+$env:DEEPSEEK_API_KEY="your-api-key"
+npm run dev
+```
+
+Preset default models are starter templates and may change over time. Verify the model name with your provider before production use.
+
+Admin API:
+
+```bash
+curl http://127.0.0.1:11435/admin/provider-presets
+```
+
+CLI:
+
+```bash
+modelgate presets
+```
+
+Roadmap:
+
+```text
+modelgate add-provider deepseek
+```
 
 ### Import From CC Switch
 
@@ -440,6 +500,7 @@ modelgate logs
 modelgate logs --limit 20
 modelgate logs --clear
 modelgate stats
+modelgate presets
 ```
 
 The desktop app includes a **Logs** tab with request stats, provider counts, recent requests, refresh, and clear actions. The tab refreshes every 3 seconds while active.
@@ -504,3 +565,4 @@ curl http://127.0.0.1:11435/v1/chat/completions \
 - `openai-compatible` provider forwarding
 - runtime active alias switching
 - config reload through the local admin API
+- provider presets through the local admin API, CLI, and desktop Configuration tab

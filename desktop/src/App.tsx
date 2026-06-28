@@ -3,6 +3,7 @@ import {
   type AliasesResponse,
   type CcSwitchImportCandidate,
   type EditableConfig,
+  type ProviderPreset,
   type ProviderConfig,
   type RequestLogEntry,
   type RequestStats,
@@ -14,6 +15,7 @@ import {
   getAdminConfig,
   getBaseUrl,
   getHealth,
+  getProviderPresets,
   getRequestLogs,
   getRequestStats,
   getServerProcessStatus,
@@ -41,6 +43,16 @@ type ImportDraft = CcSwitchImportCandidate & {
   aliasName: string;
 };
 
+type PresetDraft = {
+  presetId: string;
+  providerName: string;
+  aliasName: string;
+  baseUrl: string;
+  envName: string;
+  modelValue: string;
+  setActive: boolean;
+};
+
 const serverUrl = getBaseUrl();
 
 function getErrorMessage(error: unknown) {
@@ -62,6 +74,12 @@ export function App() {
   const [overwriteProviders, setOverwriteProviders] = useState(false);
   const [overwriteAliases, setOverwriteAliases] = useState(false);
   const [setImportedActive, setSetImportedActive] = useState(false);
+  const [showPresetPanel, setShowPresetPanel] = useState(false);
+  const [providerPresets, setProviderPresets] = useState<ProviderPreset[]>([]);
+  const [presetSearch, setPresetSearch] = useState("");
+  const [selectedPresetId, setSelectedPresetId] = useState("");
+  const [presetDraft, setPresetDraft] = useState<PresetDraft | null>(null);
+  const [presetMessage, setPresetMessage] = useState("Preset library not loaded");
   const [requestLogs, setRequestLogs] = useState<RequestLogEntry[]>([]);
   const [requestStats, setRequestStats] = useState<RequestStats | null>(null);
   const [logsMessage, setLogsMessage] = useState("Logs not loaded");
@@ -125,6 +143,33 @@ export function App() {
     return candidate;
   }
 
+  function makeNumberedName(baseName: string, existing: Set<string>) {
+    const normalized = baseName.trim();
+    if (!existing.has(normalized)) {
+      return normalized;
+    }
+
+    let index = 2;
+    let candidate = `${normalized}-${index}`;
+    while (existing.has(candidate)) {
+      index += 1;
+      candidate = `${normalized}-${index}`;
+    }
+    return candidate;
+  }
+
+  function presetToDraft(preset: ProviderPreset, config: EditableConfig): PresetDraft {
+    return {
+      presetId: preset.id,
+      providerName: makeNumberedName(preset.provider_name, new Set(Object.keys(config.providers))),
+      aliasName: makeNumberedName(preset.suggested_alias, new Set(Object.keys(config.aliases))),
+      baseUrl: preset.base_url,
+      envName: preset.suggested_env_name,
+      modelValue: preset.default_model,
+      setActive: false
+    };
+  }
+
   function updateImportDraft(id: string, patch: Partial<ImportDraft>) {
     setImportDrafts((drafts) => drafts.map((draft) => draft.id === id ? { ...draft, ...patch } : draft));
   }
@@ -134,6 +179,102 @@ export function App() {
     setConfigPath(result.path);
     setEditableConfig(result.config);
     setConfigMessage("Configuration loaded");
+  }
+
+  async function loadProviderPresets() {
+    const result = await getProviderPresets();
+    setProviderPresets(result.presets);
+    setPresetMessage(`Loaded ${result.presets.length} provider preset(s)`);
+    return result.presets;
+  }
+
+  async function handleTogglePresetPanel() {
+    const nextVisible = !showPresetPanel;
+    setShowPresetPanel(nextVisible);
+
+    if (!nextVisible || providerPresets.length > 0) {
+      return;
+    }
+
+    setBusyAction("preset:load");
+    try {
+      await loadProviderPresets();
+    } catch (error) {
+      setPresetMessage(`Failed to load presets: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function selectPreset(preset: ProviderPreset) {
+    if (!editableConfig) {
+      setPresetMessage("Load ModelGate configuration before adding a preset.");
+      return;
+    }
+
+    setSelectedPresetId(preset.id);
+    setPresetDraft(presetToDraft(preset, editableConfig));
+    setPresetMessage(`${preset.display_name} selected. Review fields before adding.`);
+  }
+
+  function updatePresetDraft(patch: Partial<PresetDraft>) {
+    setPresetDraft((current) => current ? { ...current, ...patch } : current);
+  }
+
+  async function handleAddPresetProvider() {
+    if (!editableConfig || !presetDraft) {
+      setPresetMessage("Select a preset before adding.");
+      return;
+    }
+
+    if (!presetDraft.providerName.trim() || !presetDraft.aliasName.trim() || !presetDraft.baseUrl.trim() || !presetDraft.envName.trim() || !presetDraft.modelValue.trim()) {
+      setPresetMessage("Provider name, alias name, base URL, env var name, and upstream model are required.");
+      return;
+    }
+
+    setBusyAction("preset:add");
+    try {
+      const providerName = makeNumberedName(presetDraft.providerName, new Set(Object.keys(editableConfig.providers)));
+      const aliasName = makeNumberedName(presetDraft.aliasName, new Set(Object.keys(editableConfig.aliases)));
+      const nextConfig: EditableConfig = {
+        ...editableConfig,
+        active: presetDraft.setActive ? aliasName : editableConfig.active,
+        providers: {
+          ...editableConfig.providers,
+          [providerName]: {
+            type: "openai-compatible",
+            base_url: presetDraft.baseUrl.trim(),
+            api_key: `\${${presetDraft.envName.trim()}}`
+          }
+        },
+        aliases: {
+          ...editableConfig.aliases,
+          [aliasName]: {
+            provider: providerName,
+            model: presetDraft.modelValue.trim()
+          }
+        }
+      };
+
+      const validation = await validateAdminConfig(nextConfig);
+      if (!validation.ok) {
+        throw new Error((validation.errors ?? ["Validation failed"]).join(" "));
+      }
+
+      await saveAdminConfig(nextConfig);
+      setEditableConfig(nextConfig);
+      setPresetDraft({
+        ...presetDraft,
+        providerName,
+        aliasName
+      });
+      setPresetMessage(`Added ${providerName} and ${aliasName}. Set ${presetDraft.envName.trim()} before using this provider.`);
+      await refresh();
+    } catch (error) {
+      setPresetMessage(`Add preset failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   async function handleDetectCcSwitch() {
@@ -699,6 +840,22 @@ export function App() {
   const aliasNames = aliasEntries.map(([name]) => name);
   const configBusy = busyAction?.startsWith("config:") ?? false;
   const logsBusy = busyAction?.startsWith("logs:") ?? false;
+  const presetBusy = busyAction?.startsWith("preset:") ?? false;
+  const selectedPreset = providerPresets.find((preset) => preset.id === selectedPresetId) ?? null;
+  const normalizedPresetSearch = presetSearch.trim().toLowerCase();
+  const filteredPresets = providerPresets.filter((preset) => {
+    if (!normalizedPresetSearch) {
+      return true;
+    }
+
+    return [
+      preset.display_name,
+      preset.provider_name,
+      preset.base_url,
+      preset.default_model,
+      preset.suggested_alias
+    ].some((value) => value.toLowerCase().includes(normalizedPresetSearch));
+  });
 
   return (
     <main className="shell">
@@ -937,6 +1094,101 @@ export function App() {
                 {configMessage}
               </span>
             </div>
+          </section>
+
+          <section className="card config-card preset-card">
+            <div className="card-heading">
+              <span>Provider Presets</span>
+              <button className="secondary" onClick={() => void handleTogglePresetPanel()} disabled={busyAction !== null}>
+                {showPresetPanel ? "Hide Presets" : "Add from Preset"}
+              </button>
+            </div>
+            <p className="muted">
+              Built-in OpenAI-compatible templates save provider endpoints and <code>{"${ENV_NAME}"}</code> references only. Set the environment variable before using the provider.
+            </p>
+            {showPresetPanel && (
+              <>
+                <div className="preset-toolbar">
+                  <input
+                    placeholder="Search presets"
+                    value={presetSearch}
+                    onChange={(event) => setPresetSearch(event.target.value)}
+                  />
+                  <button className="secondary" onClick={() => void loadProviderPresets().catch((error) => setPresetMessage(`Failed to load presets: ${getErrorMessage(error)}`))} disabled={busyAction !== null}>
+                    {busyAction === "preset:load" ? "Loading..." : "Refresh Presets"}
+                  </button>
+                  <span className={presetMessage.startsWith("Failed") || presetMessage.startsWith("Add preset failed") ? "action-message bad" : "action-message"}>
+                    {presetMessage}
+                  </span>
+                </div>
+                <div className="preset-table">
+                  <div className="preset-row preset-head">
+                    <span>Provider</span>
+                    <span>Base URL</span>
+                    <span>Default Model</span>
+                  </div>
+                  {filteredPresets.map((preset) => (
+                    <button
+                      className={selectedPresetId === preset.id ? "preset-row preset-option active" : "preset-row preset-option"}
+                      key={preset.id}
+                      onClick={() => selectPreset(preset)}
+                      type="button"
+                    >
+                      <span>{preset.display_name}</span>
+                      <span>{preset.base_url}</span>
+                      <span>{preset.default_model}</span>
+                    </button>
+                  ))}
+                </div>
+                {presetDraft && selectedPreset && (
+                  <div className="preset-preview">
+                    <div className="preset-preview-heading">
+                      <strong>{selectedPreset.display_name}</strong>
+                      <span>{selectedPreset.notes ?? "Review and edit before adding."}</span>
+                    </div>
+                    <div className="preset-form">
+                      <label>
+                        Provider Name
+                        <input value={presetDraft.providerName} onChange={(event) => updatePresetDraft({ providerName: event.target.value })} />
+                      </label>
+                      <label>
+                        Alias Name
+                        <input value={presetDraft.aliasName} onChange={(event) => updatePresetDraft({ aliasName: event.target.value })} />
+                      </label>
+                      <label>
+                        Base URL
+                        <input value={presetDraft.baseUrl} onChange={(event) => updatePresetDraft({ baseUrl: event.target.value })} />
+                      </label>
+                      <label>
+                        Environment Variable Name
+                        <input value={presetDraft.envName} onChange={(event) => updatePresetDraft({ envName: event.target.value })} />
+                      </label>
+                      <label>
+                        Upstream Model
+                        {selectedPreset.models && selectedPreset.models.length > 1 ? (
+                          <select value={presetDraft.modelValue} onChange={(event) => updatePresetDraft({ modelValue: event.target.value })}>
+                            {selectedPreset.models.map((model) => (
+                              <option key={model} value={model}>{model}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input value={presetDraft.modelValue} onChange={(event) => updatePresetDraft({ modelValue: event.target.value })} />
+                        )}
+                      </label>
+                    </div>
+                    <div className="preset-actions">
+                      <label>
+                        <input type="checkbox" checked={presetDraft.setActive} onChange={(event) => updatePresetDraft({ setActive: event.target.checked })} />
+                        Set as active after adding
+                      </label>
+                      <button onClick={() => void handleAddPresetProvider()} disabled={!editableConfig || busyAction !== null}>
+                        {presetBusy ? "Adding..." : "Add Provider"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </section>
 
           <section className="card config-card import-card">
