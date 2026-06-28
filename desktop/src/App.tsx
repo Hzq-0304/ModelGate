@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type AliasesResponse,
+  type CcSwitchImportCandidate,
   type EditableConfig,
   type ProviderConfig,
   type RequestLogEntry,
@@ -8,6 +9,7 @@ import {
   type ServerProcessStatus,
   type StatusResponse,
   clearRequestLogs,
+  detectCcSwitchDatabase,
   getAliases,
   getAdminConfig,
   getBaseUrl,
@@ -19,6 +21,8 @@ import {
   reloadConfig,
   restartServerProcess,
   saveAdminConfig,
+  scanCcSwitchDatabase,
+  selectAndScanCcSwitchDatabase,
   startServerProcess,
   stopServerProcess,
   switchAlias,
@@ -27,6 +31,15 @@ import {
 
 type ConnectionState = "checking" | "connected" | "disconnected";
 type ActiveTab = "dashboard" | "configuration" | "logs";
+
+type ImportDraft = CcSwitchImportCandidate & {
+  selected: boolean;
+  providerName: string;
+  baseUrl: string;
+  envName: string;
+  modelValue: string;
+  aliasName: string;
+};
 
 const serverUrl = getBaseUrl();
 
@@ -43,6 +56,12 @@ export function App() {
   const [configPath, setConfigPath] = useState("");
   const [editableConfig, setEditableConfig] = useState<EditableConfig | null>(null);
   const [configMessage, setConfigMessage] = useState("Configuration not loaded");
+  const [ccSwitchPath, setCcSwitchPath] = useState("");
+  const [ccSwitchMessage, setCcSwitchMessage] = useState("CC Switch import not scanned");
+  const [importDrafts, setImportDrafts] = useState<ImportDraft[]>([]);
+  const [overwriteProviders, setOverwriteProviders] = useState(false);
+  const [overwriteAliases, setOverwriteAliases] = useState(false);
+  const [setImportedActive, setSetImportedActive] = useState(false);
   const [requestLogs, setRequestLogs] = useState<RequestLogEntry[]>([]);
   const [requestStats, setRequestStats] = useState<RequestStats | null>(null);
   const [logsMessage, setLogsMessage] = useState("Logs not loaded");
@@ -78,11 +97,92 @@ export function App() {
 
   const codexConfig = `Base URL: ${serverUrl}/v1\nAPI Key: modelgate-local\nModel: codex-main`;
 
+  function candidateToDraft(candidate: CcSwitchImportCandidate): ImportDraft {
+    return {
+      ...candidate,
+      selected: candidate.complete,
+      providerName: candidate.suggested_modelgate_provider,
+      baseUrl: candidate.base_url ?? "",
+      envName: candidate.suggested_env_name,
+      modelValue: candidate.model ?? candidate.models[0] ?? "",
+      aliasName: candidate.suggested_modelgate_alias
+    };
+  }
+
+  function makeUniqueName(baseName: string, existing: Set<string>) {
+    if (!existing.has(baseName)) {
+      existing.add(baseName);
+      return baseName;
+    }
+
+    let candidate = `${baseName}-imported`;
+    let index = 2;
+    while (existing.has(candidate)) {
+      candidate = `${baseName}-imported-${index}`;
+      index += 1;
+    }
+    existing.add(candidate);
+    return candidate;
+  }
+
+  function updateImportDraft(id: string, patch: Partial<ImportDraft>) {
+    setImportDrafts((drafts) => drafts.map((draft) => draft.id === id ? { ...draft, ...patch } : draft));
+  }
+
   async function loadConfiguration() {
     const result = await getAdminConfig();
     setConfigPath(result.path);
     setEditableConfig(result.config);
     setConfigMessage("Configuration loaded");
+  }
+
+  async function handleDetectCcSwitch() {
+    setBusyAction("ccswitch:detect");
+    try {
+      const detection = await detectCcSwitchDatabase();
+      setCcSwitchPath(detection.path ?? "");
+      setCcSwitchMessage(detection.found
+        ? `Auto-detected: ${detection.path}`
+        : detection.message ?? "CC Switch database was not found automatically.");
+    } catch (error) {
+      setCcSwitchMessage(`Detection failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function applyCcSwitchScan(scan: Awaited<ReturnType<typeof scanCcSwitchDatabase>>) {
+    setCcSwitchPath(scan.path);
+    setImportDrafts(scan.candidates.map(candidateToDraft));
+    const warning = scan.warnings.length > 0 ? ` Warnings: ${scan.warnings.join(" ")}` : "";
+    setCcSwitchMessage(`Found ${scan.candidates.length} candidate(s).${warning}`);
+  }
+
+  async function handleScanAutoCcSwitch() {
+    setBusyAction("ccswitch:scan");
+    try {
+      await applyCcSwitchScan(await scanCcSwitchDatabase());
+    } catch (error) {
+      setCcSwitchMessage(`Scan failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleSelectCcSwitch() {
+    setBusyAction("ccswitch:select");
+    try {
+      const scan = await selectAndScanCcSwitchDatabase();
+      if (!scan) {
+        setCcSwitchMessage("No database selected.");
+        return;
+      }
+      await applyCcSwitchScan(scan);
+    } catch (error) {
+      setCcSwitchMessage(`Scan failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   async function loadLogs() {
@@ -451,6 +551,80 @@ export function App() {
     }
   }
 
+  async function handleImportCcSwitch() {
+    if (!editableConfig) {
+      setCcSwitchMessage("Load ModelGate configuration before importing.");
+      return;
+    }
+
+    const selected = importDrafts.filter((draft) => draft.selected);
+    if (selected.length === 0) {
+      setCcSwitchMessage("Select at least one candidate to import.");
+      return;
+    }
+
+    setBusyAction("ccswitch:import");
+    try {
+      const providers = { ...editableConfig.providers };
+      const aliases = { ...editableConfig.aliases };
+      const providerNames = new Set(Object.keys(providers));
+      const aliasNames = new Set(Object.keys(aliases));
+      let firstAlias: string | null = null;
+
+      for (const draft of selected) {
+        if (!draft.providerName || !draft.baseUrl || !draft.envName || !draft.modelValue || !draft.aliasName) {
+          throw new Error(`Candidate ${draft.name} is incomplete.`);
+        }
+
+        const providerName = overwriteProviders
+          ? draft.providerName
+          : makeUniqueName(draft.providerName, providerNames);
+        if (overwriteProviders) {
+          providerNames.add(providerName);
+        }
+
+        const aliasName = overwriteAliases
+          ? draft.aliasName
+          : makeUniqueName(draft.aliasName, aliasNames);
+        if (overwriteAliases) {
+          aliasNames.add(aliasName);
+        }
+
+        providers[providerName] = {
+          type: "openai-compatible",
+          base_url: draft.baseUrl,
+          api_key: `\${${draft.envName}}`
+        };
+        aliases[aliasName] = {
+          provider: providerName,
+          model: draft.modelValue
+        };
+        firstAlias ??= aliasName;
+      }
+
+      const nextConfig = {
+        ...editableConfig,
+        active: setImportedActive && firstAlias ? firstAlias : editableConfig.active,
+        providers,
+        aliases
+      };
+
+      const validation = await validateAdminConfig(nextConfig);
+      if (!validation.ok) {
+        throw new Error((validation.errors ?? ["Validation failed"]).join(" "));
+      }
+
+      await saveAdminConfig(nextConfig);
+      setEditableConfig(nextConfig);
+      setCcSwitchMessage(`Imported ${selected.length} candidate(s). Set the suggested environment variables before using them.`);
+      await refresh();
+    } catch (error) {
+      setCcSwitchMessage(`Import failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function handleResetConfig() {
     setBusyAction("config:reset");
     try {
@@ -763,6 +937,95 @@ export function App() {
                 {configMessage}
               </span>
             </div>
+          </section>
+
+          <section className="card config-card import-card">
+            <div className="card-heading">
+              <span>Import from CC Switch</span>
+              <strong>{importDrafts.length}</strong>
+            </div>
+            <p className="muted">
+              Read-only import from CC Switch. Plaintext API keys are never imported; ModelGate saves environment variable references only.
+            </p>
+            <div className="server-actions">
+              <button onClick={() => void handleDetectCcSwitch()} disabled={busyAction !== null}>
+                {busyAction === "ccswitch:detect" ? "Detecting..." : "Auto Detect"}
+              </button>
+              <button onClick={() => void handleScanAutoCcSwitch()} disabled={busyAction !== null || !ccSwitchPath}>
+                {busyAction === "ccswitch:scan" ? "Scanning..." : "Scan Auto-detected Database"}
+              </button>
+              <button className="secondary" onClick={() => void handleSelectCcSwitch()} disabled={busyAction !== null}>
+                {busyAction === "ccswitch:select" ? "Selecting..." : "Select cc-switch.db"}
+              </button>
+            </div>
+            <div className="import-source">
+              <span>{ccSwitchPath ? `Source: ${ccSwitchPath}` : "CC Switch database was not found automatically. Select cc-switch.db manually."}</span>
+              <span className={ccSwitchMessage.startsWith("Import failed") || ccSwitchMessage.startsWith("Scan failed") ? "action-message bad" : "action-message"}>
+                {ccSwitchMessage}
+              </span>
+            </div>
+
+            {importDrafts.length > 0 && (
+              <>
+                <div className="import-options">
+                  <label>
+                    <input type="checkbox" checked={overwriteProviders} onChange={(event) => setOverwriteProviders(event.target.checked)} />
+                    Overwrite existing providers with same name
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={overwriteAliases} onChange={(event) => setOverwriteAliases(event.target.checked)} />
+                    Overwrite existing aliases with same name
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={setImportedActive} onChange={(event) => setSetImportedActive(event.target.checked)} />
+                    Set first imported alias as active
+                  </label>
+                </div>
+                <div className="ccswitch-table">
+                  <div className="ccswitch-row ccswitch-head">
+                    <span>Import</span>
+                    <span>Provider</span>
+                    <span>Base URL</span>
+                    <span>Detected Key</span>
+                    <span>Env Name</span>
+                    <span>Model</span>
+                    <span>Alias</span>
+                    <span>Warnings</span>
+                  </div>
+                  {importDrafts.map((draft) => (
+                    <div className={draft.complete ? "ccswitch-row" : "ccswitch-row incomplete"} key={draft.id}>
+                      <span>
+                        <input
+                          type="checkbox"
+                          checked={draft.selected}
+                          onChange={(event) => updateImportDraft(draft.id, { selected: event.target.checked })}
+                        />
+                      </span>
+                      <input value={draft.providerName} onChange={(event) => updateImportDraft(draft.id, { providerName: event.target.value })} />
+                      <input value={draft.baseUrl} onChange={(event) => updateImportDraft(draft.id, { baseUrl: event.target.value })} />
+                      <span>{draft.api_key_detected ? draft.api_key_preview ?? "Detected" : "Not detected"}</span>
+                      <input value={draft.envName} onChange={(event) => updateImportDraft(draft.id, { envName: event.target.value })} />
+                      {draft.models.length > 1 ? (
+                        <select value={draft.modelValue} onChange={(event) => updateImportDraft(draft.id, { modelValue: event.target.value })}>
+                          {draft.models.map((model) => (
+                            <option key={model} value={model}>{model}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input value={draft.modelValue} onChange={(event) => updateImportDraft(draft.id, { modelValue: event.target.value })} />
+                      )}
+                      <input value={draft.aliasName} onChange={(event) => updateImportDraft(draft.id, { aliasName: event.target.value })} />
+                      <span>{draft.warnings.join(" ")}</span>
+                    </div>
+                  ))}
+                </div>
+                <section className="actions import-actions">
+                  <button onClick={() => void handleImportCcSwitch()} disabled={!editableConfig || busyAction !== null}>
+                    {busyAction === "ccswitch:import" ? "Importing..." : "Import Selected"}
+                  </button>
+                </section>
+              </>
+            )}
           </section>
 
           <section className="card config-card">

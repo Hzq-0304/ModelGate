@@ -3,5 +3,5 @@
   "identifier": "main-capability",
   "description": "Default permissions for the ModelGate desktop window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:default"]
 }

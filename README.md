@@ -341,6 +341,65 @@ aliases:
 
 The configuration admin API is intended for local use only. Do not expose ModelGate to public networks or untrusted LANs.
 
+### Import From CC Switch
+
+The Configuration tab includes **Import from CC Switch** for read-only provider import.
+
+ModelGate scans CC Switch data without modifying it:
+
+- does not modify the CC Switch SQLite database
+- does not modify CC Switch settings
+- does not modify Codex, Claude, Gemini, OpenCode, or other live configs
+- imports only provider, endpoint, and model-related data
+- does not import MCP servers, skills, prompts, or usage logs
+
+The desktop app first looks for:
+
+```text
+~/.cc-switch/cc-switch.db
+```
+
+On Windows this resolves to:
+
+```text
+C:\Users\<User>\.cc-switch\cc-switch.db
+```
+
+You can also choose a database manually with **Select cc-switch.db**. The scanner opens SQLite in read-only mode and uses a best-effort schema scan, so it can handle CC Switch schema changes more gracefully.
+
+API keys are never imported as plaintext. If a key or token is detected, ModelGate only shows a masked preview and suggests an environment variable name. The saved ModelGate YAML uses this form:
+
+```yaml
+providers:
+  deepseek:
+    type: openai-compatible
+    base_url: https://api.deepseek.com/v1
+    api_key: ${DEEPSEEK_API_KEY}
+```
+
+Set the environment variable before using the provider:
+
+```powershell
+$env:DEEPSEEK_API_KEY="your-api-key"
+npm run dev
+```
+
+Import flow:
+
+1. Auto-detect or select `cc-switch.db`
+2. Preview candidates
+3. Edit provider name, base URL, env name, model, or alias
+4. Choose merge strategy
+5. Click **Import Selected**
+6. ModelGate validates and saves its own YAML config, then reloads
+
+Future:
+
+- `ccswitch://` deep link import
+- SQL backup import
+- JSON import
+- multi-model alias generation
+
 ### Request Logs
 
 ModelGate keeps a lightweight in-memory request log for `/v1/chat/completions`. It stores the latest 200 entries and clears them on restart.

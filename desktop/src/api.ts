@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 
 const baseUrl = "http://127.0.0.1:11435";
 
@@ -103,6 +104,38 @@ export type RequestStats = {
   non_stream: number;
   avg_duration_ms: number;
   by_provider: Record<string, number>;
+};
+
+export type CcSwitchDatabaseDetection = {
+  found: boolean;
+  path?: string;
+  message?: string;
+};
+
+export type CcSwitchImportCandidate = {
+  id: string;
+  source_table?: string;
+  source_id?: string;
+  name: string;
+  provider_name: string;
+  provider_type: "openai-compatible" | "unknown";
+  base_url?: string;
+  api_key_env?: string;
+  api_key_detected: boolean;
+  api_key_preview?: string;
+  model?: string;
+  models: string[];
+  suggested_modelgate_provider: string;
+  suggested_modelgate_alias: string;
+  suggested_env_name: string;
+  complete: boolean;
+  warnings: string[];
+};
+
+export type CcSwitchScanResult = {
+  path: string;
+  candidates: CcSwitchImportCandidate[];
+  warnings: string[];
 };
 
 type ErrorResponse = {
@@ -226,6 +259,49 @@ export async function clearRequestLogs() {
 export async function getRequestStats() {
   const response = await fetch(`${baseUrl}/admin/stats`);
   return parseJson<RequestStats>(response);
+}
+
+export async function detectCcSwitchDatabase() {
+  if (!isTauriRuntime()) {
+    return {
+      found: false,
+      message: "CC Switch import is only available in the desktop app."
+    } satisfies CcSwitchDatabaseDetection;
+  }
+
+  return invoke<CcSwitchDatabaseDetection>("detect_ccswitch_database");
+}
+
+export async function scanCcSwitchDatabase() {
+  if (!isTauriRuntime()) {
+    throw new Error("CC Switch import is only available in the desktop app.");
+  }
+
+  return invoke<CcSwitchScanResult>("scan_ccswitch_database");
+}
+
+export async function selectAndScanCcSwitchDatabase() {
+  if (!isTauriRuntime()) {
+    throw new Error("CC Switch import is only available in the desktop app.");
+  }
+
+  const selected = await open({
+    multiple: false,
+    filters: [
+      {
+        name: "SQLite database",
+        extensions: ["db", "sqlite", "sqlite3"]
+      }
+    ]
+  });
+
+  if (!selected || Array.isArray(selected)) {
+    return null;
+  }
+
+  return invoke<CcSwitchScanResult>("scan_selected_ccswitch_database", {
+    path: selected
+  });
 }
 
 export async function getServerProcessStatus() {

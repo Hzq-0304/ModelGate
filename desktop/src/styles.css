@@ -381,6 +381,68 @@ dd {
   gap: 14px;
 }
 
+.import-card .muted {
+  line-height: 1.5;
+}
+
+.import-source,
+.import-options {
+  display: grid;
+  gap: 8px;
+}
+
+.import-options {
+  background: #202832;
+  border: 1px solid rgba(143, 161, 184, 0.12);
+  border-radius: 7px;
+  padding: 12px;
+}
+
+.import-options label {
+  align-items: center;
+  color: #c7d1df;
+  display: flex;
+  gap: 8px;
+}
+
+.ccswitch-table {
+  display: grid;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.ccswitch-row {
+  align-items: center;
+  background: #202832;
+  border: 1px solid rgba(143, 161, 184, 0.12);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 64px 145px 220px 120px 160px 150px 150px minmax(180px, 1fr);
+  min-height: 52px;
+  padding: 10px 12px;
+}
+
+.ccswitch-row.incomplete {
+  border-color: rgba(255, 204, 102, 0.34);
+}
+
+.ccswitch-head {
+  background: transparent;
+  border-color: transparent;
+  color: #9aa8ba;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 28px;
+  text-transform: uppercase;
+}
+
+.ccswitch-row input[type="checkbox"],
+.import-options input[type="checkbox"] {
+  min-height: auto;
+  width: auto;
+}
+
 .config-summary,
 .config-form {
   align-items: end;
