@@ -2,10 +2,10 @@ import { createServer } from "./server/createServer.js";
 import { loadConfig } from "./config/loadConfig.js";
 import { logger } from "./utils/logger.js";
 
-const config = await loadConfig();
-const server = await createServer(config);
-
 try {
+  const config = await loadConfig();
+  const server = await createServer(config);
+
   await server.listen({
     host: config.server.host,
     port: config.server.port

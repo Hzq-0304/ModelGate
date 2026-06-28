@@ -1,8 +1,19 @@
 import { z } from "zod";
 
-export const providerSchema = z.object({
-  type: z.string().min(1)
+export const mockProviderSchema = z.object({
+  type: z.literal("mock")
 });
+
+export const openAICompatibleProviderSchema = z.object({
+  type: z.literal("openai-compatible"),
+  base_url: z.string().url(),
+  api_key: z.string().min(1)
+});
+
+export const providerSchema = z.discriminatedUnion("type", [
+  mockProviderSchema,
+  openAICompatibleProviderSchema
+]);
 
 export const aliasSchema = z.object({
   provider: z.string().min(1),
@@ -29,3 +40,5 @@ export const modelGateConfigSchema = z.object({
 });
 
 export type ModelGateConfig = z.infer<typeof modelGateConfigSchema>;
+export type ProviderConfig = z.infer<typeof providerSchema>;
+export type AliasConfig = z.infer<typeof aliasSchema>;
