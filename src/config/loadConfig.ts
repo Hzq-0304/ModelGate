@@ -3,10 +3,14 @@ import { resolve } from "node:path";
 import YAML from "yaml";
 import { modelGateConfigSchema, type ModelGateConfig } from "./schema.js";
 
-const defaultConfigPath = "examples/modelgate.config.yaml";
+export const defaultConfigPath = "examples/modelgate.config.yaml";
 const envPattern = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
-function expandEnv(value: unknown, path = "config"): unknown {
+export function resolveConfigPath(configPath = process.env.MODELGATE_CONFIG) {
+  return resolve(process.cwd(), configPath ?? defaultConfigPath);
+}
+
+export function expandEnv(value: unknown, path = "config"): unknown {
   if (typeof value === "string") {
     return value.replace(envPattern, (_match, name: string) => {
       const envValue = process.env[name];
@@ -33,7 +37,7 @@ function expandEnv(value: unknown, path = "config"): unknown {
 }
 
 export async function loadConfig(configPath = process.env.MODELGATE_CONFIG): Promise<ModelGateConfig> {
-  const resolvedPath = resolve(process.cwd(), configPath ?? defaultConfigPath);
+  const resolvedPath = resolveConfigPath(configPath);
 
   if (!existsSync(resolvedPath)) {
     return modelGateConfigSchema.parse({});

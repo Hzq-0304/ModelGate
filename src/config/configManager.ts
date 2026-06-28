@@ -1,0 +1,167 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, relative } from "node:path";
+import YAML from "yaml";
+import {
+  defaultConfigPath,
+  resolveConfigPath
+} from "./loadConfig.js";
+import { modelGateConfigSchema, type ModelGateConfig } from "./schema.js";
+
+const envOnlyPattern = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+
+export type ConfigValidationResult = {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+};
+
+export function getConfigFilePath(configPath?: string) {
+  return resolveConfigPath(configPath);
+}
+
+export function getDisplayConfigPath(configPath?: string) {
+  const resolved = getConfigFilePath(configPath);
+  const display = relative(process.cwd(), resolved);
+  return display && !display.startsWith("..") ? display : resolved;
+}
+
+export function readConfigObject(configPath?: string) {
+  const resolved = getConfigFilePath(configPath);
+
+  if (!existsSync(resolved)) {
+    return modelGateConfigSchema.parse({});
+  }
+
+  const raw = readFileSync(resolved, "utf8");
+  return YAML.parse(raw) ?? {};
+}
+
+function maskApiKey(value: unknown) {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  return envOnlyPattern.test(value) ? value : "***";
+}
+
+function envResolved(value: unknown) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const match = value.match(envOnlyPattern);
+  return match ? process.env[match[1]] !== undefined : value.length > 0;
+}
+
+function rawProviderApiKey(rawConfig: unknown, name: string, fallback: string) {
+  if (!rawConfig || typeof rawConfig !== "object" || !("providers" in rawConfig)) {
+    return fallback;
+  }
+
+  const providers = (rawConfig as { providers?: Record<string, unknown> }).providers;
+  const provider = providers?.[name];
+
+  if (!provider || typeof provider !== "object" || !("api_key" in provider)) {
+    return fallback;
+  }
+
+  return (provider as { api_key?: unknown }).api_key ?? fallback;
+}
+
+export function sanitizeConfigForAdmin(rawConfig: unknown) {
+  const config = modelGateConfigSchema.parse(rawConfig);
+
+  return {
+    ...config,
+    providers: Object.fromEntries(
+      Object.entries(config.providers).map(([name, provider]) => {
+        if (provider.type !== "openai-compatible") {
+          return [name, provider];
+        }
+
+        const apiKey = rawProviderApiKey(rawConfig, name, provider.api_key);
+
+        return [
+          name,
+          {
+            ...provider,
+            api_key: maskApiKey(apiKey),
+            api_key_resolved: envResolved(apiKey)
+          }
+        ];
+      })
+    )
+  };
+}
+
+export function validateConfigObject(rawConfig: unknown): ConfigValidationResult {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  const result = modelGateConfigSchema.safeParse(rawConfig);
+
+  if (!result.success) {
+    errors.push(...result.error.issues.map((issue) => {
+      const path = issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+      return `${path}${issue.message}`;
+    }));
+  }
+
+  if (rawConfig && typeof rawConfig === "object" && "providers" in rawConfig) {
+    const providers = (rawConfig as { providers?: Record<string, unknown> }).providers ?? {};
+
+    for (const [name, provider] of Object.entries(providers)) {
+      if (!provider || typeof provider !== "object") {
+        continue;
+      }
+
+      const typedProvider = provider as { type?: string; api_key?: unknown };
+      if (typedProvider.type !== "openai-compatible") {
+        continue;
+      }
+
+      if (typeof typedProvider.api_key !== "string") {
+        continue;
+      }
+
+      const match = typedProvider.api_key.match(envOnlyPattern);
+      if (!match) {
+        errors.push(`Provider "${name}" api_key must be stored as an environment variable expression like \${ENV_NAME}.`);
+        continue;
+      }
+
+      if (process.env[match[1]] === undefined) {
+        warnings.push(`Environment variable ${match[1]} is not set.`);
+      }
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings
+  };
+}
+
+export function writeConfigObject(rawConfig: unknown, configPath?: string) {
+  const validation = validateConfigObject(rawConfig);
+  if (!validation.ok) {
+    return validation;
+  }
+
+  const parsed = modelGateConfigSchema.parse(rawConfig);
+  const resolved = getConfigFilePath(configPath);
+
+  mkdirSync(dirname(resolved), { recursive: true });
+  writeFileSync(
+    resolved,
+    YAML.stringify(parsed, {
+      indent: 2,
+      lineWidth: 0
+    }),
+    "utf8"
+  );
+
+  return validation;
+}
+
+export { defaultConfigPath };

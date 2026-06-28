@@ -156,6 +156,23 @@ p {
   padding: 14px;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab {
+  background: #202832;
+  border-color: #405268;
+  color: #b9c4d3;
+}
+
+.tab.active {
+  background: #5c87ff;
+  border-color: #5c87ff;
+  color: #ffffff;
+}
+
 .action-message {
   color: #b9c4d3;
   font-size: 14px;
@@ -349,6 +366,119 @@ dd {
   user-select: text;
 }
 
+.config-page {
+  display: grid;
+  gap: 18px;
+}
+
+.config-card {
+  display: grid;
+  gap: 14px;
+}
+
+.config-summary,
+.config-form {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+}
+
+.config-summary {
+  grid-template-columns: 260px 1fr;
+}
+
+.config-summary label {
+  color: #9aa8ba;
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  text-transform: uppercase;
+}
+
+.config-form {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.alias-form {
+  grid-template-columns: 1fr 1fr 1.2fr auto;
+}
+
+.entrypoint-form {
+  grid-template-columns: 1fr 1fr auto;
+}
+
+input,
+select {
+  background: #0d1117;
+  border: 1px solid #405268;
+  border-radius: 7px;
+  color: #e9eef7;
+  font: inherit;
+  min-height: 40px;
+  padding: 9px 11px;
+}
+
+input:disabled,
+select:disabled {
+  opacity: 0.55;
+}
+
+.config-table {
+  display: grid;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.config-row {
+  align-items: center;
+  background: #202832;
+  border: 1px solid rgba(143, 161, 184, 0.12);
+  border-radius: 7px;
+  display: grid;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+.providers-table .config-row {
+  grid-template-columns: 0.75fr 1fr 1.6fr 1.2fr 150px;
+}
+
+.aliases-config-table .config-row {
+  grid-template-columns: 1fr 1fr 1.2fr 230px;
+}
+
+.entrypoints-table .config-row {
+  grid-template-columns: 1fr 1fr 150px;
+}
+
+.config-row.active {
+  border-color: rgba(66, 211, 146, 0.55);
+  box-shadow: inset 3px 0 0 #42d392;
+}
+
+.config-head {
+  background: transparent;
+  border-color: transparent;
+  color: #9aa8ba;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 28px;
+  text-transform: uppercase;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button.danger {
+  border-color: #674650;
+  color: #ffb6b6;
+}
+
 @media (max-width: 860px) {
   .shell {
     padding: 18px;
@@ -360,6 +490,13 @@ dd {
 
   .server-details {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .config-summary,
+  .config-form,
+  .alias-form,
+  .entrypoint-form {
+    grid-template-columns: 1fr;
   }
 
   .topbar {

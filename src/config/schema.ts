@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const namePattern = /^[A-Za-z0-9_-]+$/;
+
 export const mockProviderSchema = z.object({
   type: z.literal("mock")
 });
@@ -43,6 +45,44 @@ export const modelGateConfigSchema = z.object({
     }
   })
 }).superRefine((config, context) => {
+  for (const name of Object.keys(config.providers)) {
+    if (!namePattern.test(name)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["providers", name],
+        message: `Provider name "${name}" may only contain letters, numbers, "-" and "_"`
+      });
+    }
+  }
+
+  for (const [name, alias] of Object.entries(config.aliases)) {
+    if (!namePattern.test(name)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["aliases", name],
+        message: `Alias name "${name}" may only contain letters, numbers, "-" and "_"`
+      });
+    }
+
+    if (!config.providers[alias.provider]) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["aliases", name, "provider"],
+        message: `Alias "${name}" uses missing provider "${alias.provider}"`
+      });
+    }
+  }
+
+  for (const name of Object.keys(config.entrypoints)) {
+    if (!namePattern.test(name)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["entrypoints", name],
+        message: `Entrypoint name "${name}" may only contain letters, numbers, "-" and "_"`
+      });
+    }
+  }
+
   if (!config.aliases[config.active]) {
     context.addIssue({
       code: z.ZodIssueCode.custom,

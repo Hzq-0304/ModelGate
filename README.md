@@ -18,6 +18,19 @@ npm run dev
 
 The local service listens on `127.0.0.1:11435` by default.
 
+ModelGate reads config from `examples/modelgate.config.yaml` by default. Override it with `MODELGATE_CONFIG`:
+
+```bash
+MODEL_GATE_CONFIG=./modelgate.config.yaml npm run dev
+```
+
+PowerShell:
+
+```powershell
+$env:MODELGATE_CONFIG="E:\Hzq Program\ModelGate\examples\modelgate.config.yaml"
+npm run dev
+```
+
 ## Build
 
 ```bash
@@ -101,6 +114,8 @@ $env:DEEPSEEK_API_KEY = "your-api-key"
 ```
 
 If a config references `${ENV_NAME}` and that environment variable is missing, ModelGate fails fast with a clear error.
+
+Keep provider API keys in environment variables instead of YAML. The desktop app and admin API are designed to show `${ENV_NAME}` or `***`, never the real API key.
 
 ## CLI
 
@@ -242,6 +257,8 @@ Desktop app features:
 - view alias list
 - switch active alias
 - reload config
+- manage providers, aliases, entrypoints, and active alias
+- validate config and save YAML with automatic reload
 - copy Codex configuration
 
 Current desktop limitations:
@@ -250,6 +267,74 @@ Current desktop limitations:
 - the first version does not bundle Node.js into the desktop app
 - managed server startup is intended for local repository development
 - provider API keys are not shown or managed in the desktop UI
+
+### Desktop Configuration Management
+
+Open the **Configuration** tab to edit the config file used by the running server.
+
+The desktop app can:
+
+- view the current config file path
+- view providers, aliases, and entrypoints
+- add, edit, or delete OpenAI-compatible providers
+- add, edit, or delete aliases
+- add, edit, or delete entrypoints
+- set the active alias
+- validate config before saving
+- save YAML and call `/admin/reload`
+
+Provider API keys are entered as environment variable names. For example, enter `DEEPSEEK_API_KEY`; ModelGate writes this to YAML as:
+
+```yaml
+providers:
+  deepseek:
+    type: openai-compatible
+    base_url: https://api.deepseek.com/v1
+    api_key: ${DEEPSEEK_API_KEY}
+```
+
+PowerShell example:
+
+```powershell
+$env:DEEPSEEK_API_KEY="your-api-key"
+$env:QWEN_API_KEY="your-api-key"
+npm run dev
+```
+
+Add a DeepSeek provider:
+
+```yaml
+providers:
+  deepseek:
+    type: openai-compatible
+    base_url: https://api.deepseek.com/v1
+    api_key: ${DEEPSEEK_API_KEY}
+```
+
+Add a Qwen provider:
+
+```yaml
+providers:
+  qwen:
+    type: openai-compatible
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: ${QWEN_API_KEY}
+```
+
+Add aliases for those providers:
+
+```yaml
+aliases:
+  deepseek-main:
+    provider: deepseek
+    model: deepseek-chat
+
+  qwen-main:
+    provider: qwen
+    model: qwen-plus
+```
+
+The configuration admin API is intended for local use only. Do not expose ModelGate to public networks or untrusted LANs.
 
 ## Troubleshooting
 

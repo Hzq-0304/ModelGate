@@ -1,9 +1,20 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import {
+  getDisplayConfigPath,
+  readConfigObject,
+  sanitizeConfigForAdmin,
+  validateConfigObject,
+  writeConfigObject
+} from "../config/configManager.js";
 import { createOpenAICompatibleError } from "../providers/openaiCompatible.js";
 import type { RuntimeState } from "../runtime/state.js";
 
 type SwitchBody = {
   active?: string;
+};
+
+type ConfigBody = {
+  config?: unknown;
 };
 
 function isLocalAddress(address?: string) {
@@ -49,6 +60,52 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
       model: alias.model
     }))
   }));
+
+  server.get("/admin/config", async (_request, reply) => {
+    try {
+      const rawConfig = readConfigObject(runtime.configPath);
+      return {
+        path: getDisplayConfigPath(runtime.configPath),
+        config: sanitizeConfigForAdmin(rawConfig)
+      };
+    } catch (error) {
+      return reply
+        .status(400)
+        .send(createOpenAICompatibleError(`Failed to read config: ${getErrorMessage(error)}`));
+    }
+  });
+
+  server.post<{ Body: ConfigBody }>("/admin/config/validate", async (request) => {
+    const config = request.body?.config ?? request.body;
+    return validateConfigObject(config);
+  });
+
+  server.post<{ Body: ConfigBody }>("/admin/config", async (request, reply) => {
+    const config = request.body?.config ?? request.body;
+    const validation = writeConfigObject(config, runtime.configPath);
+
+    if (!validation.ok) {
+      return reply.status(400).send(validation);
+    }
+
+    try {
+      await runtime.reload();
+    } catch (error) {
+      return reply
+        .status(400)
+        .send({
+          ok: false,
+          errors: [`Config saved but reload failed: ${getErrorMessage(error)}`],
+          warnings: validation.warnings
+        });
+    }
+
+    return {
+      ok: true,
+      warnings: validation.warnings,
+      active: runtime.activeAlias
+    };
+  });
 
   server.post<{ Body: SwitchBody }>("/admin/switch", async (request, reply) => {
     const active = request.body?.active;

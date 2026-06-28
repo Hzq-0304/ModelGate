@@ -40,6 +40,45 @@ export type ServerProcessStatus = {
   message?: string;
 };
 
+export type ProviderConfig =
+  | {
+    type: "mock";
+  }
+  | {
+    type: "openai-compatible";
+    base_url: string;
+    api_key: string;
+    api_key_resolved?: boolean;
+  };
+
+export type EditableConfig = {
+  server: {
+    host: string;
+    port: number;
+  };
+  active: string;
+  entrypoints: Record<string, {
+    use: string;
+  }>;
+  aliases: Record<string, {
+    provider: string;
+    model: string;
+  }>;
+  providers: Record<string, ProviderConfig>;
+};
+
+export type AdminConfigResponse = {
+  path: string;
+  config: EditableConfig;
+};
+
+export type ConfigValidationResponse = {
+  ok: boolean;
+  errors?: string[];
+  warnings: string[];
+  active?: string;
+};
+
 type ErrorResponse = {
   error?: {
     message?: string;
@@ -115,6 +154,35 @@ export async function reloadConfig() {
   });
 
   return parseJson<SwitchResponse>(response);
+}
+
+export async function getAdminConfig() {
+  const response = await fetch(`${baseUrl}/admin/config`);
+  return parseJson<AdminConfigResponse>(response);
+}
+
+export async function validateAdminConfig(config: EditableConfig) {
+  const response = await fetch(`${baseUrl}/admin/config/validate`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ config })
+  });
+
+  return parseJson<ConfigValidationResponse>(response);
+}
+
+export async function saveAdminConfig(config: EditableConfig) {
+  const response = await fetch(`${baseUrl}/admin/config`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ config })
+  });
+
+  return parseJson<ConfigValidationResponse>(response);
 }
 
 export async function getServerProcessStatus() {
