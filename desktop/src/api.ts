@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+
 const baseUrl = "http://127.0.0.1:11435";
 
 export type HealthResponse = {
@@ -28,6 +30,16 @@ type SwitchResponse = {
   active: string;
 };
 
+export type ServerProcessStatus = {
+  endpoint: string;
+  reachable: boolean;
+  managed: boolean;
+  running: boolean;
+  pid?: number;
+  mode: "external" | "managed" | "stopped" | "unknown";
+  message?: string;
+};
+
 type ErrorResponse = {
   error?: {
     message?: string;
@@ -49,6 +61,21 @@ async function parseJson<T>(response: Response): Promise<T> {
 
 export function getBaseUrl() {
   return baseUrl;
+}
+
+function isTauriRuntime() {
+  return "__TAURI_INTERNALS__" in window;
+}
+
+function unavailableServerProcessStatus(): ServerProcessStatus {
+  return {
+    endpoint: baseUrl,
+    reachable: false,
+    managed: false,
+    running: false,
+    mode: "unknown",
+    message: "Server process control is only available in the desktop app."
+  };
 }
 
 export async function getHealth() {
@@ -88,4 +115,36 @@ export async function reloadConfig() {
   });
 
   return parseJson<SwitchResponse>(response);
+}
+
+export async function getServerProcessStatus() {
+  if (!isTauriRuntime()) {
+    return unavailableServerProcessStatus();
+  }
+
+  return invoke<ServerProcessStatus>("get_server_process_status");
+}
+
+export async function startServerProcess() {
+  if (!isTauriRuntime()) {
+    throw new Error("Server process control is only available in the desktop app.");
+  }
+
+  return invoke<ServerProcessStatus>("start_server_process");
+}
+
+export async function stopServerProcess() {
+  if (!isTauriRuntime()) {
+    throw new Error("Server process control is only available in the desktop app.");
+  }
+
+  return invoke<ServerProcessStatus>("stop_server_process");
+}
+
+export async function restartServerProcess() {
+  if (!isTauriRuntime()) {
+    throw new Error("Server process control is only available in the desktop app.");
+  }
+
+  return invoke<ServerProcessStatus>("restart_server_process");
 }

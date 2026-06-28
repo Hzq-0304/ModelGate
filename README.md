@@ -148,15 +148,21 @@ curl -X POST http://127.0.0.1:11435/admin/reload
 
 ModelGate also includes a local desktop management interface built with Tauri v2, React, TypeScript, Vite, and plain CSS. The desktop app is a management panel only; it does not call upstream model providers and does not manage provider API keys.
 
-The first version does not bundle or auto-start the Node.js ModelGate server. Use two terminals during development.
+The desktop app can manage a local ModelGate server process when it is running from a local repository environment. It still does not bundle a Node.js runtime into the desktop app.
 
-Terminal 1, start the ModelGate server:
+Development option 1, start the server yourself:
 
 ```bash
 npm run dev
 ```
 
-Terminal 2, start the desktop app:
+Then start the desktop app:
+
+```bash
+npm run dev:desktop
+```
+
+Development option 2, start only the desktop app and use **Start Server** in the Server Control panel:
 
 ```bash
 npm run dev:desktop
@@ -174,6 +180,27 @@ If the server is not running, the app shows:
 ModelGate server is not running.
 Start it with: npm run dev
 ```
+
+The Server Control panel can start the server for local development. It prefers:
+
+```text
+Start Server -> node dist/index.js
+```
+
+If `dist/index.js` does not exist, it falls back to:
+
+```text
+Start Server -> npm run dev
+```
+
+If the desktop app cannot find the repository root, set `MODEL_GATE_ROOT` before starting it:
+
+```powershell
+$env:MODEL_GATE_ROOT="E:\Hzq Program\ModelGate"
+npm run dev:desktop
+```
+
+If the server was started outside the desktop app, the panel shows it as `External`. ModelGate Desktop will not stop external processes; stop them from the terminal or your process manager.
 
 Build the desktop UI only:
 
@@ -209,6 +236,7 @@ If you manually enable MSI packaging, install WiX or ensure Tauri can download a
 Desktop app features:
 
 - view connection status
+- start, stop, and restart a managed local server process
 - view active alias
 - view entrypoint resolution
 - view alias list
@@ -218,8 +246,9 @@ Desktop app features:
 
 Current desktop limitations:
 
-- the desktop app does not auto-start the Node.js server
-- start ModelGate server manually before opening the desktop app
+- server process management depends on local Node.js and npm
+- the first version does not bundle Node.js into the desktop app
+- managed server startup is intended for local repository development
 - provider API keys are not shown or managed in the desktop UI
 
 ## Troubleshooting
@@ -237,6 +266,10 @@ The default Windows installer target is NSIS. If the release executable is built
 ### WebView2
 
 Tauri desktop apps on Windows depend on Microsoft Edge WebView2 Runtime. Most Windows 10/11 systems already include it or can install it automatically. If the desktop app fails to run because WebView2 is missing, install Microsoft Edge WebView2 Runtime and try again.
+
+### Server Control cannot find the repository
+
+Server Control searches for a directory containing `package.json` and `src/index.ts`. If it cannot find ModelGate, set `MODEL_GATE_ROOT` to the repository root before launching the desktop app.
 
 ## Verify
 

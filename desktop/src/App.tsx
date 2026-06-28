@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type AliasesResponse,
+  type ServerProcessStatus,
   type StatusResponse,
   getAliases,
   getBaseUrl,
   getHealth,
+  getServerProcessStatus,
   getStatus,
   reloadConfig,
+  restartServerProcess,
+  startServerProcess,
+  stopServerProcess,
   switchAlias
 } from "./api";
 
@@ -22,6 +27,7 @@ export function App() {
   const [connection, setConnection] = useState<ConnectionState>("checking");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [aliases, setAliases] = useState<AliasesResponse | null>(null);
+  const [serverProcess, setServerProcess] = useState<ServerProcessStatus | null>(null);
   const [message, setMessage] = useState("Ready");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [copyOk, setCopyOk] = useState(false);
@@ -40,6 +46,8 @@ export function App() {
     setBusyAction("refresh");
 
     try {
+      const nextProcessStatus = await getServerProcessStatus();
+      setServerProcess(nextProcessStatus);
       await getHealth();
       const [nextStatus, nextAliases] = await Promise.all([getStatus(), getAliases()]);
       setStatus(nextStatus);
@@ -50,6 +58,8 @@ export function App() {
       setConnection("disconnected");
       setStatus(null);
       setAliases(null);
+      const nextProcessStatus = await getServerProcessStatus().catch(() => null);
+      setServerProcess(nextProcessStatus);
       setMessage(`ModelGate server is not running. Start it with: npm run dev. ${getErrorMessage(error)}`);
     } finally {
       setBusyAction(null);
@@ -94,6 +104,57 @@ export function App() {
     }
   }
 
+  async function refreshAfterServerAction(successMessage: string) {
+    await refresh();
+    setMessage(successMessage);
+  }
+
+  async function handleStartServer() {
+    setBusyAction("server:start");
+
+    try {
+      const result = await startServerProcess();
+      setServerProcess(result);
+      await refreshAfterServerAction("Server started");
+    } catch (error) {
+      setMessage(`Failed to start server: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleStopServer() {
+    setBusyAction("server:stop");
+
+    try {
+      const result = await stopServerProcess();
+      setServerProcess(result);
+      setConnection("disconnected");
+      setStatus(null);
+      setAliases(null);
+      setMessage("Server stopped");
+      await refresh();
+    } catch (error) {
+      setMessage(`Failed to stop server: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleRestartServer() {
+    setBusyAction("server:restart");
+
+    try {
+      const result = await restartServerProcess();
+      setServerProcess(result);
+      await refreshAfterServerAction("Server restarted");
+    } catch (error) {
+      setMessage(`Failed to restart server: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function handleCopy() {
     try {
       if (navigator.clipboard) {
@@ -121,6 +182,24 @@ export function App() {
   const entrypoints = status ? Object.entries(status.entrypoints) : [];
   const aliasesList = aliases?.aliases ?? [];
   const disconnected = connection === "disconnected";
+  const serverMode = serverProcess?.mode ?? "unknown";
+  const serverStatusText = serverProcess?.running
+    ? "Running"
+    : serverMode === "stopped"
+      ? "Stopped"
+      : "Unknown";
+  const launchModeText = serverMode === "managed"
+    ? "Managed by desktop"
+    : serverMode === "external"
+      ? "External"
+      : serverMode === "stopped"
+        ? "Not running"
+        : "Unknown";
+  const serverBusy = busyAction?.startsWith("server:") ?? false;
+  const isExternalServer = serverMode === "external";
+  const isManagedServer = serverMode === "managed";
+  const hasManagedChild = serverProcess?.managed ?? false;
+  const isStoppedServer = serverMode === "stopped";
 
   return (
     <main className="shell">
@@ -153,6 +232,64 @@ export function App() {
         <span className={message.startsWith("Failed") || disconnected ? "action-message bad" : "action-message"}>
           {message}
         </span>
+      </section>
+
+      <section className="card server-card">
+        <div className="card-heading">
+          <span>Server Control</span>
+          <strong>{serverStatusText}</strong>
+        </div>
+        <dl className="server-details">
+          <div>
+            <dt>Status</dt>
+            <dd>{serverStatusText}</dd>
+          </div>
+          <div>
+            <dt>Launch Mode</dt>
+            <dd>{launchModeText}</dd>
+          </div>
+          <div>
+            <dt>Endpoint</dt>
+            <dd>{serverProcess?.endpoint ?? serverUrl}</dd>
+          </div>
+          <div>
+            <dt>PID</dt>
+            <dd>{serverProcess?.pid ?? "None"}</dd>
+          </div>
+        </dl>
+        {isExternalServer && (
+          <p className="server-hint">
+            Server is running externally. Stop it from the terminal or process manager.
+          </p>
+        )}
+        {serverProcess?.message && serverMode === "unknown" && (
+          <p className="server-hint">{serverProcess.message}</p>
+        )}
+        <div className="server-actions">
+          <button
+            onClick={() => void handleStartServer()}
+            disabled={busyAction !== null || !isStoppedServer}
+          >
+            {busyAction === "server:start" ? "Starting..." : "Start Server"}
+          </button>
+          <button
+            className="secondary"
+            onClick={() => void handleStopServer()}
+            disabled={busyAction !== null || !hasManagedChild}
+          >
+            {busyAction === "server:stop" ? "Stopping..." : "Stop Server"}
+          </button>
+          <button
+            className="secondary"
+            onClick={() => void handleRestartServer()}
+            disabled={busyAction !== null || !hasManagedChild}
+          >
+            {busyAction === "server:restart" ? "Restarting..." : "Restart Server"}
+          </button>
+          <button className="secondary" onClick={() => void refresh()} disabled={busyAction !== null || serverBusy}>
+            Refresh
+          </button>
+        </div>
       </section>
 
       <section className="grid">
