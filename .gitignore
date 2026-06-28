@@ -1,5 +1,7 @@
 node_modules/
 dist/
+desktop/dist/
+desktop/src-tauri/target/
 .env
 .env.*
 .modelgate/

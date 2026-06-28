@@ -10,6 +10,10 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "cli": "tsx src/cli.ts",
+    "dev:desktop": "npm --prefix desktop run tauri dev",
+    "build:desktop": "npm --prefix desktop run tauri build",
+    "dev:desktop-ui": "npm --prefix desktop run dev",
+    "build:desktop-ui": "npm --prefix desktop run build",
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"

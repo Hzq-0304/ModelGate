@@ -144,6 +144,67 @@ curl -X POST http://127.0.0.1:11435/admin/reload
 
 `/admin/reload` reloads the config file. It preserves the current active alias if that alias still exists in the new config; otherwise it falls back to the new config's `active`.
 
+## Desktop App
+
+ModelGate also includes a local desktop management interface built with Tauri v2, React, TypeScript, Vite, and plain CSS. The desktop app is a management panel only; it does not call upstream model providers and does not manage provider API keys.
+
+The first version does not bundle or auto-start the Node.js ModelGate server. Use two terminals during development.
+
+Terminal 1, start the ModelGate server:
+
+```bash
+npm run dev
+```
+
+Terminal 2, start the desktop app:
+
+```bash
+npm run dev:desktop
+```
+
+The desktop app connects to:
+
+```text
+http://127.0.0.1:11435
+```
+
+If the server is not running, the app shows:
+
+```text
+ModelGate server is not running.
+Start it with: npm run dev
+```
+
+Build the desktop UI only:
+
+```bash
+npm run build:desktop-ui
+```
+
+Build the Tauri desktop app:
+
+```bash
+npm run build:desktop
+```
+
+On Windows, Tauri packaging may need WiX tooling. If the build reaches Rust compilation and then fails while downloading or verifying WiX, install WiX or retry with working network access.
+
+Desktop app features:
+
+- view connection status
+- view active alias
+- view entrypoint resolution
+- view alias list
+- switch active alias
+- reload config
+- copy Codex configuration
+
+Current desktop limitations:
+
+- the desktop app does not auto-start the Node.js server
+- start ModelGate server manually before opening the desktop app
+- provider API keys are not shown or managed in the desktop UI
+
 ## Verify
 
 Non-stream request:
