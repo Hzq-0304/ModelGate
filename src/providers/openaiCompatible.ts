@@ -16,14 +16,23 @@ type Delta = {
 
 export function createModelList(config: ModelGateConfig) {
   const now = Math.floor(Date.now() / 1000);
+  const models = new Map<string, { id: string; owned_by: string }>();
+
+  for (const [id, alias] of Object.entries(config.aliases)) {
+    models.set(id, { id, owned_by: alias.provider });
+  }
+
+  for (const id of Object.keys(config.entrypoints)) {
+    models.set(id, { id, owned_by: "modelgate" });
+  }
 
   return {
     object: "list",
-    data: Object.entries(config.aliases).map(([id, alias]) => ({
-      id,
+    data: [...models.values()].map((model) => ({
+      id: model.id,
       object: "model",
       created: now,
-      owned_by: alias.provider
+      owned_by: model.owned_by
     }))
   };
 }

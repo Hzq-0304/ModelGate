@@ -1,10 +1,12 @@
 import { createServer } from "./server/createServer.js";
 import { loadConfig } from "./config/loadConfig.js";
+import { RuntimeState } from "./runtime/state.js";
 import { logger } from "./utils/logger.js";
 
 try {
   const config = await loadConfig();
-  const server = await createServer(config);
+  const runtime = new RuntimeState(config);
+  const server = await createServer(runtime);
 
   await server.listen({
     host: config.server.host,

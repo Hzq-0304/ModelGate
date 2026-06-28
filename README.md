@@ -1,6 +1,8 @@
 # ModelGate
 
-ModelGate is a local OpenAI-compatible gateway for routing large-model requests and switching providers. Codex can talk to ModelGate as a local OpenAI-compatible endpoint, while ModelGate routes requests to mock or upstream OpenAI-compatible providers.
+ModelGate is a local OpenAI-compatible gateway for routing large-model requests and hot-switching upstream providers. Codex can keep using one local model name, while ModelGate decides which real provider and model receive new requests.
+
+ModelGate is intended for local use by default. Do not expose it directly to public networks or untrusted LANs.
 
 ## Install
 
@@ -20,11 +22,6 @@ The local service listens on `127.0.0.1:11435` by default.
 
 ```bash
 npm run build
-```
-
-Run the compiled server:
-
-```bash
 npm start
 ```
 
@@ -38,22 +35,40 @@ API Key: modelgate-local
 Model: codex-main
 ```
 
-Codex still only needs the local endpoint. Provider API keys and upstream URLs stay in ModelGate config.
+Codex continues to send `model: codex-main`. ModelGate treats `codex-main` as a public entrypoint and resolves it to the current runtime active alias.
+
+## Entrypoints And Aliases
+
+`entrypoints` are public model names for clients. `aliases` are internal routes to a provider and upstream model.
+
+```yaml
+active: mock-main
+
+entrypoints:
+  codex-main:
+    use: active
+  codex-fast:
+    use: qwen-main
+
+aliases:
+  mock-main:
+    provider: mock
+    model: mock-codex-model
+
+  qwen-main:
+    provider: qwen
+    model: qwen-plus
+```
+
+When `entrypoints.codex-main.use` is `active`, switching the active alias changes where later `codex-main` requests go. Streams already in progress keep using the route they resolved when the request started.
 
 ## Providers
 
 The default config uses the `mock` provider, so ModelGate can run without external API keys.
 
-To use an OpenAI-compatible provider, configure an alias and provider in `examples/modelgate.config.yaml` or another file passed through `MODELGATE_CONFIG`:
+OpenAI-compatible providers can be configured like this:
 
 ```yaml
-active: codex-main
-
-aliases:
-  codex-main:
-    provider: deepseek
-    model: deepseek-chat
-
 providers:
   deepseek:
     type: openai-compatible
@@ -86,6 +101,48 @@ $env:DEEPSEEK_API_KEY = "your-api-key"
 ```
 
 If a config references `${ENV_NAME}` and that environment variable is missing, ModelGate fails fast with a clear error.
+
+## CLI
+
+After building, the package exposes a `modelgate` command. During development, use:
+
+```bash
+npm run cli -- status
+npm run cli -- aliases
+npm run cli -- switch mock-main
+npm run cli -- reload
+```
+
+The CLI connects to `http://127.0.0.1:11435` by default. Override it with:
+
+```bash
+MODEL_GATE_URL=http://127.0.0.1:11435 modelgate status
+```
+
+Example output:
+
+```text
+ModelGate is running
+Active alias: mock-main
+
+Entrypoints:
+  codex-main -> active -> mock-main
+```
+
+## Admin API
+
+Admin endpoints are intended for local requests only:
+
+```bash
+curl http://127.0.0.1:11435/admin/status
+curl http://127.0.0.1:11435/admin/aliases
+curl -X POST http://127.0.0.1:11435/admin/switch \
+  -H "Content-Type: application/json" \
+  -d '{"active":"mock-main"}'
+curl -X POST http://127.0.0.1:11435/admin/reload
+```
+
+`/admin/reload` reloads the config file. It preserves the current active alias if that alias still exists in the new config; otherwise it falls back to the new config's `active`.
 
 ## Verify
 
@@ -125,3 +182,5 @@ curl http://127.0.0.1:11435/v1/chat/completions \
 - stream and non-stream chat completions
 - `mock` provider
 - `openai-compatible` provider forwarding
+- runtime active alias switching
+- config reload through the local admin API

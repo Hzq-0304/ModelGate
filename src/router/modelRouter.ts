@@ -1,5 +1,4 @@
 import type { FastifyInstance } from "fastify";
-import type { ModelGateConfig } from "../config/schema.js";
 import {
   createOpenAICompatibleError,
   createMockChatCompletion,
@@ -10,6 +9,7 @@ import {
   sendOpenAICompatibleStream
 } from "../providers/openaiCompatible.js";
 import type { ChatCompletionRequestBody, ResolvedModelRoute } from "../providers/types.js";
+import type { RuntimeState } from "../runtime/state.js";
 
 type ResolveModelRouteResult =
   | { route: ResolvedModelRoute }
@@ -19,13 +19,21 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function resolveModelRoute(config: ModelGateConfig, requestedModel?: string): ResolveModelRouteResult {
-  const aliasName = requestedModel && config.aliases[requestedModel] ? requestedModel : config.active;
+function resolveModelRoute(runtime: RuntimeState, requestedModel?: string): ResolveModelRouteResult {
+  const config = runtime.config;
+  const entrypoint = requestedModel ? config.entrypoints[requestedModel] : undefined;
+  const aliasName = entrypoint
+    ? entrypoint.use === "active"
+      ? runtime.activeAlias
+      : entrypoint.use
+    : requestedModel && config.aliases[requestedModel]
+      ? requestedModel
+      : runtime.activeAlias;
   const alias = config.aliases[aliasName];
 
   if (!alias) {
     return {
-      error: `Unable to resolve model alias "${requestedModel ?? config.active}"; active alias "${config.active}" is not configured`
+      error: `Unable to resolve model "${requestedModel ?? runtime.activeAlias}"; active alias "${runtime.activeAlias}" is not configured`
     };
   }
 
@@ -48,12 +56,12 @@ function resolveModelRoute(config: ModelGateConfig, requestedModel?: string): Re
   };
 }
 
-export async function registerModelRouter(server: FastifyInstance, config: ModelGateConfig) {
-  server.get("/v1/models", async () => createModelList(config));
+export async function registerModelRouter(server: FastifyInstance, runtime: RuntimeState) {
+  server.get("/v1/models", async () => createModelList(runtime.config));
 
   server.post<{ Body: ChatCompletionRequestBody }>("/v1/chat/completions", async (request, reply) => {
     const body = request.body ?? {};
-    const resolved = resolveModelRoute(config, body.model);
+    const resolved = resolveModelRoute(runtime, body.model);
 
     if ("error" in resolved) {
       return reply

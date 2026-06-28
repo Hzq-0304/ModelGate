@@ -20,12 +20,17 @@ export const aliasSchema = z.object({
   model: z.string().min(1)
 });
 
+export const entrypointSchema = z.object({
+  use: z.string().min(1)
+});
+
 export const modelGateConfigSchema = z.object({
   server: z.object({
     host: z.string().default("127.0.0.1"),
     port: z.coerce.number().int().positive().default(11435)
   }).default({}),
   active: z.string().min(1).default("codex-main"),
+  entrypoints: z.record(entrypointSchema).default({}),
   aliases: z.record(aliasSchema).default({
     "codex-main": {
       provider: "mock",
@@ -37,8 +42,27 @@ export const modelGateConfigSchema = z.object({
       type: "mock"
     }
   })
+}).superRefine((config, context) => {
+  if (!config.aliases[config.active]) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["active"],
+      message: `Active alias "${config.active}" is not configured in aliases`
+    });
+  }
+
+  for (const [name, entrypoint] of Object.entries(config.entrypoints)) {
+    if (entrypoint.use !== "active" && !config.aliases[entrypoint.use]) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["entrypoints", name, "use"],
+        message: `Entrypoint "${name}" uses missing alias "${entrypoint.use}"`
+      });
+    }
+  }
 });
 
 export type ModelGateConfig = z.infer<typeof modelGateConfigSchema>;
 export type ProviderConfig = z.infer<typeof providerSchema>;
 export type AliasConfig = z.infer<typeof aliasSchema>;
+export type EntrypointConfig = z.infer<typeof entrypointSchema>;
