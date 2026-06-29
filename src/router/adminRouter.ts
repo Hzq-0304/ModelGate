@@ -11,6 +11,7 @@ import { createCcSwitchProviderLink, isCcSwitchApp } from "../integrations/ccswi
 import { createOpenAICompatibleError } from "../providers/openaiCompatible.js";
 import { addDiagnosticLog, testActiveAlias, testAlias, testProvider } from "../runtime/diagnostics.js";
 import type { RuntimeState } from "../runtime/state.js";
+import type { UsageKindFilter, UsageRange, UsageTimelineBucket } from "../runtime/usageStore.js";
 
 type SwitchBody = {
   active?: string;
@@ -22,6 +23,24 @@ type ConfigBody = {
 
 type LogsQuery = {
   limit?: string;
+};
+
+type UsageSummaryQuery = {
+  range?: string;
+  kind?: string;
+};
+
+type UsageTimelineQuery = {
+  range?: string;
+  bucket?: string;
+};
+
+type UsageRecordsQuery = {
+  limit?: string;
+  range?: string;
+  kind?: string;
+  provider?: string;
+  model?: string;
 };
 
 type CcSwitchLinkQuery = {
@@ -60,6 +79,22 @@ function isLocalRequest(request: FastifyRequest) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function usageRange(value: string | undefined, fallback: UsageRange): UsageRange {
+  return value === "today" || value === "24h" || value === "7d" || value === "all" ? value : fallback;
+}
+
+function usageKind(value: string | undefined): UsageKindFilter {
+  return value === "normal" || value === "diagnostic" || value === "all" ? value : "all";
+}
+
+function timelineRange(value: string | undefined): Exclude<UsageRange, "all"> {
+  return value === "24h" || value === "7d" || value === "today" ? value : "today";
+}
+
+function timelineBucket(value: string | undefined): UsageTimelineBucket {
+  return value === "day" || value === "hour" ? value : "hour";
 }
 
 export async function registerAdminRouter(server: FastifyInstance, runtime: RuntimeState) {
@@ -201,6 +236,38 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
   });
 
   server.get("/admin/stats", async () => runtime.requestLogs.getRequestStats());
+
+  server.get<{ Querystring: UsageSummaryQuery }>("/admin/usage/summary", async (request) => {
+    const range = usageRange(request.query.range, "today");
+    const kind = usageKind(request.query.kind);
+    return runtime.usageStore.getUsageSummary(range, kind);
+  });
+
+  server.get<{ Querystring: UsageTimelineQuery }>("/admin/usage/timeline", async (request) => {
+    const range = timelineRange(request.query.range);
+    const bucket = timelineBucket(request.query.bucket);
+    return runtime.usageStore.getUsageTimeline(range, bucket);
+  });
+
+  server.get<{ Querystring: UsageRecordsQuery }>("/admin/usage/records", async (request) => {
+    const limit = Number.parseInt(request.query.limit ?? "50", 10);
+    return {
+      records: runtime.usageStore.listUsageRecords({
+        range: usageRange(request.query.range, "all"),
+        kind: usageKind(request.query.kind),
+        provider: request.query.provider,
+        model: request.query.model,
+        limit: Number.isFinite(limit) ? limit : 50
+      })
+    };
+  });
+
+  server.delete("/admin/usage/records", async () => {
+    runtime.usageStore.clearUsageRecords();
+    return {
+      ok: true
+    };
+  });
 
   server.post<{ Body: SwitchBody }>("/admin/switch", async (request, reply) => {
     const active = request.body?.active;

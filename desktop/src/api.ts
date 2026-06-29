@@ -71,6 +71,11 @@ export type EditableConfig = {
     model: string;
   }>;
   providers: Record<string, ProviderConfig>;
+  pricing?: Record<string, {
+    input_per_million: number;
+    output_per_million: number;
+    cached_input_per_million?: number;
+  }>;
 };
 
 export type AdminConfigResponse = {
@@ -112,6 +117,74 @@ export type RequestStats = {
   non_stream: number;
   avg_duration_ms: number;
   by_provider: Record<string, number>;
+};
+
+export type UsageRange = "today" | "24h" | "7d" | "all";
+
+export type UsageRecord = {
+  id: string;
+  timestamp: string;
+  api_type: "chat_completions" | "responses";
+  path: "/v1/chat/completions" | "/v1/responses";
+  kind: "normal" | "diagnostic";
+  requested_model?: string;
+  resolved_alias?: string;
+  provider?: string;
+  upstream_model?: string;
+  fallback_mode?: "direct_responses" | "responses_to_chat";
+  stream: boolean;
+  ok: boolean;
+  status_code?: number;
+  duration_ms?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_tokens?: number;
+  reasoning_tokens?: number;
+  total_tokens?: number;
+  estimated_cost_usd?: number;
+  cost_available: boolean;
+};
+
+export type UsageSummary = {
+  range: UsageRange;
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  reasoning_tokens: number;
+  requests: number;
+  success: number;
+  failed: number;
+  estimated_cost_usd?: number;
+  cost_available: boolean;
+  by_provider: Record<string, {
+    requests: number;
+    total_tokens: number;
+    estimated_cost_usd?: number;
+    cost_available: boolean;
+  }>;
+  by_model: Record<string, {
+    requests: number;
+    total_tokens: number;
+    estimated_cost_usd?: number;
+    cost_available: boolean;
+  }>;
+};
+
+export type UsageTimeline = {
+  range: Exclude<UsageRange, "all">;
+  bucket: "hour" | "day";
+  points: Array<{
+    time: string;
+    input_tokens: number;
+    output_tokens: number;
+    cached_tokens: number;
+    reasoning_tokens: number;
+    total_tokens: number;
+    estimated_cost_usd?: number;
+    cost_available: boolean;
+    requests: number;
+  }>;
 };
 
 export type ProviderPreset = {
@@ -316,6 +389,40 @@ export async function clearRequestLogs() {
 export async function getRequestStats() {
   const response = await fetch(`${baseUrl}/admin/stats`);
   return parseJson<RequestStats>(response);
+}
+
+export async function getUsageSummary(range: UsageRange = "today") {
+  const response = await fetch(`${baseUrl}/admin/usage/summary?range=${encodeURIComponent(range)}`);
+  return parseJson<UsageSummary>(response);
+}
+
+export async function getUsageTimeline(range: Exclude<UsageRange, "all"> = "today", bucket: "hour" | "day" = "hour") {
+  const params = new URLSearchParams({
+    range,
+    bucket
+  });
+  const response = await fetch(`${baseUrl}/admin/usage/timeline?${params.toString()}`);
+  return parseJson<UsageTimeline>(response);
+}
+
+export async function getUsageRecords(params: {
+  range?: UsageRange;
+  limit?: number;
+  provider?: string;
+  model?: string;
+} = {}) {
+  const search = new URLSearchParams({
+    range: params.range ?? "all",
+    limit: String(params.limit ?? 10)
+  });
+  if (params.provider) {
+    search.set("provider", params.provider);
+  }
+  if (params.model) {
+    search.set("model", params.model);
+  }
+  const response = await fetch(`${baseUrl}/admin/usage/records?${search.toString()}`);
+  return parseJson<{ records: UsageRecord[] }>(response);
 }
 
 export async function getProviderPresets() {

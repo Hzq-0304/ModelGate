@@ -184,6 +184,9 @@ npm run cli -- logs
 npm run cli -- logs -- --limit 20
 npm run cli -- logs -- --clear
 npm run cli -- stats
+npm run cli -- usage
+npm run cli -- usage -- --range 24h
+npm run cli -- usage -- --records --limit 20
 npm run cli -- presets
 npm run cli -- ccswitch-link -- --app codex
 npm run cli -- test active
@@ -228,9 +231,59 @@ curl -X POST http://127.0.0.1:11435/admin/switch \
   -H "Content-Type: application/json" \
   -d '{"active":"mock-main"}'
 curl -X POST http://127.0.0.1:11435/admin/reload
+curl http://127.0.0.1:11435/admin/usage/summary?range=today
+curl http://127.0.0.1:11435/admin/usage/timeline?range=24h
+curl http://127.0.0.1:11435/admin/usage/records?limit=20
 ```
 
 `/admin/reload` reloads the config file. It preserves the current active alias if that alias still exists in the new config; otherwise it falls back to the new config's `active`.
+
+## Usage Overview
+
+ModelGate records lightweight local usage metadata for `/v1/chat/completions` and `/v1/responses`. The desktop **Switcher** page shows an independent **Usage Overview** section below Account Switcher with:
+
+- total, input, output, and cached tokens
+- request count
+- estimated cost when pricing is configured
+- Today / 24h / 7d trends
+- recent usage records
+
+Usage records are stored locally as JSONL:
+
+```text
+.modelgate/usage.jsonl
+```
+
+Usage records do not store prompt content, response content, Authorization headers, or provider API keys. Token counts come from upstream `usage` fields when available. Stream requests may show `N/A` for token fields if the upstream stream does not include a final usage chunk; ModelGate does not estimate tokens from character counts.
+
+Estimated cost is optional. Add `pricing` entries by `provider/model` or `provider/*`; exact model pricing wins over wildcard pricing.
+
+```yaml
+pricing:
+  deepseek/deepseek-chat:
+    input_per_million: 0.27
+    output_per_million: 1.10
+    cached_input_per_million: 0.07
+```
+
+Pricing examples are templates only. Verify current provider pricing before relying on estimates.
+
+CLI:
+
+```bash
+modelgate usage
+modelgate usage --range 24h
+modelgate usage --records --limit 20
+```
+
+Admin API:
+
+```bash
+curl http://127.0.0.1:11435/admin/usage/summary?range=today
+curl http://127.0.0.1:11435/admin/usage/timeline?range=24h
+curl http://127.0.0.1:11435/admin/usage/records?limit=20
+curl -X DELETE http://127.0.0.1:11435/admin/usage/records
+```
 
 ## Desktop App
 
@@ -334,18 +387,19 @@ Desktop app features:
 - manage providers, aliases, entrypoints, and active alias
 - validate config and save YAML with automatic reload
 - view request logs and request stats
+- view usage overview with tokens, requests, estimated cost, trends, and recent usage
 - copy Codex configuration
 
-The desktop app opens on **Switcher** by default. In the UI, an **Account** is a ModelGate alias profile such as `mock-main`, `deepseek-main`, or `qwen-main`. Switcher only shows account selection context: current account, provider, upstream model, endpoint, connection status, account cards, entrypoint notes, and a small Codex endpoint reminder. Configuration, logs, diagnostics, server control, CC Switch import/export, and other tools live on separate pages so the switching flow stays clean.
+The desktop app opens on **Switcher** by default. In the UI, an **Account** is a ModelGate alias profile such as `mock-main`, `deepseek-main`, or `qwen-main`. Switcher shows account selection context and an independent Usage Overview section. Configuration, logs, diagnostics, server control, CC Switch import/export, and other tools live on separate pages so the switching flow stays clean.
 
 Main navigation:
 
-- **Switcher**: choose the active alias/account by clicking an account card
+- **Switcher**: choose the active alias/account and inspect the local usage overview
 - **Configuration**: manage providers, aliases, entrypoints, presets, and CC Switch import/export
 - **Logs**: inspect request logs and request stats
 - **Advanced**: server control, diagnostics, and developer-oriented status panels
 
-The account switcher is implemented as a separate desktop feature module so future parallel modules can be added beside it, such as prompt profiles, routing rules, fallback chains, or usage quotas.
+The account switcher and usage overview are implemented as separate desktop feature modules so future parallel modules can be added beside them, such as prompt profiles, routing rules, fallback chains, or usage quotas.
 
 Current desktop limitations:
 
@@ -665,6 +719,8 @@ modelgate logs
 modelgate logs --limit 20
 modelgate logs --clear
 modelgate stats
+modelgate usage
+modelgate usage --records --limit 20
 modelgate presets
 ```
 
@@ -759,4 +815,5 @@ curl http://127.0.0.1:11435/v1/responses \
 - config reload through the local admin API
 - provider presets through the local admin API, CLI, and desktop Configuration tab
 - provider, alias, and active alias connectivity diagnostics
+- usage records, summary, timeline, CLI usage command, and desktop Usage Overview
 - export ModelGate local provider to CC Switch through `ccswitch://` deep links

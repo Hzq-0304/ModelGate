@@ -8,6 +8,8 @@ import {
   getProviderPresets,
   getStats,
   getStatus,
+  getUsageRecords,
+  getUsageSummary,
   reloadConfig,
   switchAlias,
   testActive,
@@ -16,7 +18,7 @@ import {
 } from "./cli/client.js";
 
 function printUsage() {
-  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|presets|ccswitch-link [--app codex]|test active [--responses]|test alias <alias> [--stream] [--responses]|test provider <provider> --model <model> [--stream] [--responses]>");
+  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|usage [--range today|24h|7d|all] [--records] [--limit N]|presets|ccswitch-link [--app codex]|test active [--responses]|test alias <alias> [--stream] [--responses]|test provider <provider> --model <model> [--stream] [--responses]>");
 }
 
 function formatTime(value: string) {
@@ -29,6 +31,14 @@ function formatTime(value: string) {
 function argValue(args: string[], name: string) {
   const index = args.indexOf(name);
   return index >= 0 ? args[index + 1] : undefined;
+}
+
+function formatNumber(value: number | undefined) {
+  return (value ?? 0).toLocaleString("en-US");
+}
+
+function formatCost(value: number | undefined, available: boolean) {
+  return available && typeof value === "number" ? `$${value.toFixed(6)}` : "N/A";
 }
 
 function printDiagnosticResult(result: DiagnosticResult) {
@@ -160,6 +170,46 @@ async function run() {
         console.log(`  ${provider}: ${count}`);
       }
     }
+    return;
+  }
+
+  if (command === "usage") {
+    const range = (argValue(args, "--range") ?? "today") as "today" | "24h" | "7d" | "all";
+    if (!["today", "24h", "7d", "all"].includes(range)) {
+      throw new Error("Invalid range. Use today, 24h, 7d, or all.");
+    }
+
+    if (args.includes("--records")) {
+      const limit = Number.parseInt(argValue(args, "--limit") ?? "50", 10);
+      const result = await getUsageRecords(range, Number.isFinite(limit) ? limit : 50);
+      console.log("Time                  Kind        API        OK   Alias             Provider     Model                Input      Output     Total      Cost");
+      for (const record of result.records) {
+        console.log(
+          `${formatTime(record.timestamp).padEnd(21)} ` +
+          `${record.kind.padEnd(11)} ` +
+          `${record.api_type.replace("_completions", "").padEnd(10)} ` +
+          `${(record.ok ? "yes" : "no").padEnd(4)} ` +
+          `${(record.resolved_alias ?? "-").padEnd(17)} ` +
+          `${(record.provider ?? "-").padEnd(12)} ` +
+          `${(record.upstream_model ?? "-").padEnd(20)} ` +
+          `${formatNumber(record.input_tokens).padEnd(10)} ` +
+          `${formatNumber(record.output_tokens).padEnd(10)} ` +
+          `${formatNumber(record.total_tokens).padEnd(10)} ` +
+          `${formatCost(record.estimated_cost_usd, record.cost_available)}`
+        );
+      }
+      return;
+    }
+
+    const summary = await getUsageSummary(range);
+    console.log(`Usage range: ${summary.range}`);
+    console.log("");
+    console.log(`Total tokens: ${formatNumber(summary.total_tokens)}`);
+    console.log(`Input tokens: ${formatNumber(summary.input_tokens)}`);
+    console.log(`Output tokens: ${formatNumber(summary.output_tokens)}`);
+    console.log(`Cached tokens: ${formatNumber(summary.cached_tokens)}`);
+    console.log(`Requests: ${formatNumber(summary.requests)}`);
+    console.log(`Estimated cost: ${formatCost(summary.estimated_cost_usd, summary.cost_available)}`);
     return;
   }
 

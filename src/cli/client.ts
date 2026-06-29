@@ -50,6 +50,46 @@ export type RequestStats = {
   by_provider: Record<string, number>;
 };
 
+export type UsageRange = "today" | "24h" | "7d" | "all";
+
+export type UsageRecord = {
+  id: string;
+  timestamp: string;
+  api_type: "chat_completions" | "responses";
+  path: "/v1/chat/completions" | "/v1/responses";
+  kind: "normal" | "diagnostic";
+  requested_model?: string;
+  resolved_alias?: string;
+  provider?: string;
+  upstream_model?: string;
+  fallback_mode?: "direct_responses" | "responses_to_chat";
+  stream: boolean;
+  ok: boolean;
+  status_code?: number;
+  duration_ms?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_tokens?: number;
+  reasoning_tokens?: number;
+  total_tokens?: number;
+  estimated_cost_usd?: number;
+  cost_available: boolean;
+};
+
+export type UsageSummary = {
+  range: UsageRange;
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  reasoning_tokens: number;
+  requests: number;
+  success: number;
+  failed: number;
+  estimated_cost_usd?: number;
+  cost_available: boolean;
+};
+
 export type ProviderPreset = {
   id: string;
   display_name: string;
@@ -168,6 +208,20 @@ export async function clearLogs() {
 export async function getStats() {
   const response = await fetch(`${getBaseUrl()}/admin/stats`);
   return parseResponse<RequestStats>(response);
+}
+
+export async function getUsageSummary(range: UsageRange = "today") {
+  const response = await fetch(`${getBaseUrl()}/admin/usage/summary?range=${encodeURIComponent(range)}`);
+  return parseResponse<UsageSummary>(response);
+}
+
+export async function getUsageRecords(range: UsageRange = "all", limit = 50) {
+  const params = new URLSearchParams({
+    range,
+    limit: String(limit)
+  });
+  const response = await fetch(`${getBaseUrl()}/admin/usage/records?${params.toString()}`);
+  return parseResponse<{ records: UsageRecord[] }>(response);
 }
 
 export async function getProviderPresets() {

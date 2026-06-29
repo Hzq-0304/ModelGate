@@ -13,10 +13,37 @@ import {
 import type { ChatCompletionRequestBody, ResolvedModelRoute, ResponsesRequestBody } from "../providers/types.js";
 import type { RequestLogEntry } from "../runtime/requestLog.js";
 import type { RuntimeState } from "../runtime/state.js";
+import {
+  estimateUsageCost,
+  extractChatUsage,
+  extractResponsesUsage,
+  type TokenUsage,
+  type UsageApiType,
+  type UsageFallbackMode,
+  type UsageKind,
+  type UsagePath
+} from "../runtime/usageStore.js";
 
 type ResolveModelRouteResult =
   | { route: ResolvedModelRoute }
   | { error: string };
+
+type UsageBase = {
+  kind: UsageKind;
+  api_type: UsageApiType;
+  path: UsagePath;
+  requested_model?: string;
+  stream: boolean;
+};
+
+type UsageDetails = {
+  resolved_alias?: string;
+  provider?: string;
+  upstream_model?: string;
+  fallback_mode?: UsageFallbackMode;
+  ok: boolean;
+  status_code?: number;
+};
 
 function truncate(value: string, maxLength = 300) {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
@@ -44,6 +71,27 @@ function promptChars(body: ChatCompletionRequestBody) {
 
 function responsesPromptChars(body: ResponsesRequestBody) {
   return contentLength(body.instructions) + contentLength(body.input);
+}
+
+function writeUsageRecord(
+  runtime: RuntimeState,
+  base: UsageBase,
+  startedMs: number,
+  details: UsageDetails,
+  usage: TokenUsage = {}
+) {
+  const finishedMs = Date.now();
+  const cost = estimateUsageCost(runtime.config, details.provider, details.upstream_model, usage);
+
+  runtime.usageStore.addUsageRecord({
+    id: crypto.randomUUID(),
+    timestamp: new Date(finishedMs).toISOString(),
+    ...base,
+    ...details,
+    duration_ms: finishedMs - startedMs,
+    ...usage,
+    ...cost
+  });
 }
 
 function resolveModelRoute(runtime: RuntimeState, requestedModel?: string): ResolveModelRouteResult {
@@ -280,7 +328,12 @@ function extractChatDelta(value: unknown) {
   return typeof first.delta?.content === "string" ? first.delta.content : "";
 }
 
-async function sendResponsesFallbackStream(upstream: Response, reply: Parameters<typeof sendOpenAICompatibleStream>[1], model: string) {
+async function sendResponsesFallbackStream(
+  upstream: Response,
+  reply: Parameters<typeof sendOpenAICompatibleStream>[1],
+  model: string,
+  onEventData?: (data: unknown) => void
+) {
   if (!upstream.body) {
     reply.status(502).send(createOpenAICompatibleError("Upstream response did not include a stream body", "upstream_error"));
     return;
@@ -336,6 +389,7 @@ async function sendResponsesFallbackStream(upstream: Response, reply: Parameters
           }
 
           const parsed = JSON.parse(data) as unknown;
+          onEventData?.(parsed);
           const delta = extractChatDelta(parsed);
           if (delta) {
             writeEvent("response.output_text.delta", { delta });
@@ -400,6 +454,13 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
       stream,
       prompt_chars: promptChars(body)
     };
+    const baseUsage = {
+      kind: "normal" as const,
+      path: "/v1/chat/completions" as const,
+      api_type: "chat_completions" as const,
+      requested_model: body.model,
+      stream
+    };
     const addLog = (details: Partial<RequestLogEntry>) => {
       const finishedMs = Date.now();
       runtime.requestLogs.addRequestLog({
@@ -410,6 +471,9 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         ...details
       });
     };
+    const addUsage = (details: UsageDetails, usage: TokenUsage = {}) => {
+      writeUsageRecord(runtime, baseUsage, startedMs, details, usage);
+    };
     const resolved = resolveModelRoute(runtime, body.model);
 
     if ("error" in resolved) {
@@ -418,6 +482,10 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         ok: false,
         error_type: "invalid_request_error",
         error_message: truncate(resolved.error)
+      });
+      addUsage({
+        status_code: 400,
+        ok: false
       });
       return reply
         .status(400)
@@ -429,6 +497,7 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
     if (route.provider.type === "mock") {
       if (!body.stream) {
         const response = createMockChatCompletion(route.requestedModel);
+        const usage = extractChatUsage(response);
         addLog({
           resolved_alias: route.aliasName,
           provider: route.providerName,
@@ -437,6 +506,13 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           ok: true,
           response_chars: JSON.stringify(response).length
         });
+        addUsage({
+          resolved_alias: route.aliasName,
+          provider: route.providerName,
+          upstream_model: route.upstreamModel,
+          status_code: 200,
+          ok: true
+        }, usage);
         return response;
       }
 
@@ -466,6 +542,13 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         status_code: 200,
         ok: true
       });
+      addUsage({
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: 200,
+        ok: true
+      });
       return;
     }
 
@@ -483,6 +566,13 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         error_type: "upstream_error",
         error_message: truncate(`Failed to reach upstream provider "${route.providerName}": ${getErrorMessage(error)}`)
       });
+      addUsage({
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: 502,
+        ok: false
+      });
       return reply
         .status(502)
         .send(createOpenAICompatibleError(`Failed to reach upstream provider "${route.providerName}": ${getErrorMessage(error)}`, "upstream_error"));
@@ -499,12 +589,25 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         error_type: upstreamError.error.type,
         error_message: truncate(upstreamError.error.message)
       });
+      addUsage({
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: upstream.status,
+        ok: false
+      });
       return reply.status(upstream.status).send(upstreamError);
     }
 
     if (body.stream) {
+      let streamUsage: TokenUsage = {};
       try {
-        await sendOpenAICompatibleStream(upstream, reply);
+        await sendOpenAICompatibleStream(upstream, reply, (data) => {
+          const nextUsage = extractChatUsage(data);
+          if (Object.values(nextUsage).some((value) => value !== undefined)) {
+            streamUsage = nextUsage;
+          }
+        });
         addLog({
           resolved_alias: route.aliasName,
           provider: route.providerName,
@@ -512,6 +615,13 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           status_code: upstream.status,
           ok: true
         });
+        addUsage({
+          resolved_alias: route.aliasName,
+          provider: route.providerName,
+          upstream_model: route.upstreamModel,
+          status_code: upstream.status,
+          ok: true
+        }, streamUsage);
       } catch (error) {
         addLog({
           resolved_alias: route.aliasName,
@@ -522,6 +632,13 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           error_type: "stream_error",
           error_message: truncate(getErrorMessage(error))
         });
+        addUsage({
+          resolved_alias: route.aliasName,
+          provider: route.providerName,
+          upstream_model: route.upstreamModel,
+          status_code: upstream.status || 502,
+          ok: false
+        }, streamUsage);
         throw error;
       }
       return;
@@ -539,6 +656,13 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         error_type: "upstream_error",
         error_message: truncate(`Upstream provider "${route.providerName}" returned invalid JSON: ${getErrorMessage(json)}`)
       });
+      addUsage({
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: 502,
+        ok: false
+      });
       return reply
         .status(502)
         .send(createOpenAICompatibleError(`Upstream provider "${route.providerName}" returned invalid JSON: ${getErrorMessage(json)}`, "upstream_error"));
@@ -552,6 +676,13 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
       ok: true,
       response_chars: JSON.stringify(json).length
     });
+    addUsage({
+      resolved_alias: route.aliasName,
+      provider: route.providerName,
+      upstream_model: route.upstreamModel,
+      status_code: upstream.status,
+      ok: true
+    }, extractChatUsage(json));
     return reply.status(upstream.status).send(json);
   });
 
@@ -571,6 +702,13 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
       stream,
       prompt_chars: responsesPromptChars(body)
     };
+    const baseUsage = {
+      kind: "normal" as const,
+      path: "/v1/responses" as const,
+      api_type: "responses" as const,
+      requested_model: body.model,
+      stream
+    };
     const addLog = (details: Partial<RequestLogEntry>) => {
       const finishedMs = Date.now();
       runtime.requestLogs.addRequestLog({
@@ -581,6 +719,9 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         ...details
       });
     };
+    const addUsage = (details: UsageDetails, usage: TokenUsage = {}) => {
+      writeUsageRecord(runtime, baseUsage, startedMs, details, usage);
+    };
     const resolved = resolveModelRoute(runtime, body.model);
 
     if ("error" in resolved) {
@@ -589,6 +730,10 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         ok: false,
         error_type: "invalid_request_error",
         error_message: truncate(resolved.error)
+      });
+      addUsage({
+        status_code: 400,
+        ok: false
       });
       return reply
         .status(400)
@@ -610,6 +755,14 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           error_type: "unsupported_responses_feature",
           error_message: truncate(converted.error)
         });
+        addUsage({
+          fallback_mode: "responses_to_chat",
+          resolved_alias: route.aliasName,
+          provider: route.providerName,
+          upstream_model: route.upstreamModel,
+          status_code: 400,
+          ok: false
+        });
         return reply
           .status(400)
           .send(createOpenAICompatibleError(converted.error, "unsupported_responses_feature"));
@@ -625,10 +778,19 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           status_code: 200,
           ok: true
         });
+        addUsage({
+          fallback_mode: "responses_to_chat",
+          resolved_alias: route.aliasName,
+          provider: route.providerName,
+          upstream_model: route.upstreamModel,
+          status_code: 200,
+          ok: true
+        });
         return;
       }
 
       const response = createMockResponse(route.upstreamModel);
+      const usage = extractResponsesUsage(response);
       addLog({
         fallback_mode: "responses_to_chat",
         resolved_alias: route.aliasName,
@@ -638,6 +800,14 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         ok: true,
         response_chars: JSON.stringify(response).length
       });
+      addUsage({
+        fallback_mode: "responses_to_chat",
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: 200,
+        ok: true
+      }, usage);
       return response;
     }
 
@@ -656,6 +826,14 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           error_type: "upstream_error",
           error_message: truncate(`Failed to reach upstream provider "${route.providerName}": ${getErrorMessage(error)}`)
         });
+        addUsage({
+          fallback_mode: "direct_responses",
+          resolved_alias: route.aliasName,
+          provider: route.providerName,
+          upstream_model: route.upstreamModel,
+          status_code: 502,
+          ok: false
+        });
         return reply
           .status(502)
           .send(createOpenAICompatibleError(`Failed to reach upstream provider "${route.providerName}": ${getErrorMessage(error)}`, "upstream_error"));
@@ -673,12 +851,26 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           error_type: upstreamError.error.type,
           error_message: truncate(upstreamError.error.message)
         });
+        addUsage({
+          fallback_mode: "direct_responses",
+          resolved_alias: route.aliasName,
+          provider: route.providerName,
+          upstream_model: route.upstreamModel,
+          status_code: upstream.status,
+          ok: false
+        });
         return reply.status(upstream.status).send(upstreamError);
       }
 
       if (stream) {
+        let streamUsage: TokenUsage = {};
         try {
-          await sendOpenAICompatibleStream(upstream, reply);
+          await sendOpenAICompatibleStream(upstream, reply, (data) => {
+            const nextUsage = extractResponsesUsage(data);
+            if (Object.values(nextUsage).some((value) => value !== undefined)) {
+              streamUsage = nextUsage;
+            }
+          });
           addLog({
             fallback_mode: "direct_responses",
             resolved_alias: route.aliasName,
@@ -687,6 +879,14 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
             status_code: upstream.status,
             ok: true
           });
+          addUsage({
+            fallback_mode: "direct_responses",
+            resolved_alias: route.aliasName,
+            provider: route.providerName,
+            upstream_model: route.upstreamModel,
+            status_code: upstream.status,
+            ok: true
+          }, streamUsage);
         } catch (error) {
           addLog({
             fallback_mode: "direct_responses",
@@ -698,6 +898,14 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
             error_type: "stream_error",
             error_message: truncate(getErrorMessage(error))
           });
+          addUsage({
+            fallback_mode: "direct_responses",
+            resolved_alias: route.aliasName,
+            provider: route.providerName,
+            upstream_model: route.upstreamModel,
+            status_code: upstream.status || 502,
+            ok: false
+          }, streamUsage);
           throw error;
         }
         return;
@@ -715,6 +923,14 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           error_type: "upstream_error",
           error_message: truncate(`Upstream provider "${route.providerName}" returned invalid JSON: ${getErrorMessage(json)}`)
         });
+        addUsage({
+          fallback_mode: "direct_responses",
+          resolved_alias: route.aliasName,
+          provider: route.providerName,
+          upstream_model: route.upstreamModel,
+          status_code: 502,
+          ok: false
+        });
         return reply
           .status(502)
           .send(createOpenAICompatibleError(`Upstream provider "${route.providerName}" returned invalid JSON: ${getErrorMessage(json)}`, "upstream_error"));
@@ -729,6 +945,14 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         ok: true,
         response_chars: JSON.stringify(json).length
       });
+      addUsage({
+        fallback_mode: "direct_responses",
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: upstream.status,
+        ok: true
+      }, extractResponsesUsage(json));
       return reply.status(upstream.status).send(json);
     }
 
@@ -743,6 +967,14 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         ok: false,
         error_type: "unsupported_responses_feature",
         error_message: truncate(converted.error)
+      });
+      addUsage({
+        fallback_mode: "responses_to_chat",
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: 400,
+        ok: false
       });
       return reply
         .status(400)
@@ -763,6 +995,14 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         error_type: "upstream_error",
         error_message: truncate(`Failed to reach upstream provider "${route.providerName}": ${getErrorMessage(error)}`)
       });
+      addUsage({
+        fallback_mode: "responses_to_chat",
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: 502,
+        ok: false
+      });
       return reply
         .status(502)
         .send(createOpenAICompatibleError(`Failed to reach upstream provider "${route.providerName}": ${getErrorMessage(error)}`, "upstream_error"));
@@ -780,11 +1020,25 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         error_type: upstreamError.error.type,
         error_message: truncate(upstreamError.error.message)
       });
+      addUsage({
+        fallback_mode: "responses_to_chat",
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: upstream.status,
+        ok: false
+      });
       return reply.status(upstream.status).send(upstreamError);
     }
 
     if (stream) {
-      await sendResponsesFallbackStream(upstream, reply, route.requestedModel);
+      let streamUsage: TokenUsage = {};
+      await sendResponsesFallbackStream(upstream, reply, route.requestedModel, (data) => {
+        const nextUsage = extractChatUsage(data);
+        if (Object.values(nextUsage).some((value) => value !== undefined)) {
+          streamUsage = nextUsage;
+        }
+      });
       addLog({
         fallback_mode: "responses_to_chat",
         resolved_alias: route.aliasName,
@@ -792,6 +1046,20 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         upstream_model: route.upstreamModel,
         status_code: upstream.status,
         ok: true
+      });
+      addUsage({
+        fallback_mode: "responses_to_chat",
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: upstream.status,
+        ok: true
+      }, {
+        input_tokens: streamUsage.input_tokens,
+        output_tokens: streamUsage.output_tokens,
+        cached_tokens: streamUsage.cached_tokens,
+        reasoning_tokens: streamUsage.reasoning_tokens,
+        total_tokens: streamUsage.total_tokens
       });
       return;
     }
@@ -808,12 +1076,21 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
         error_type: "upstream_error",
         error_message: truncate(`Upstream provider "${route.providerName}" returned invalid JSON: ${getErrorMessage(json)}`)
       });
+      addUsage({
+        fallback_mode: "responses_to_chat",
+        resolved_alias: route.aliasName,
+        provider: route.providerName,
+        upstream_model: route.upstreamModel,
+        status_code: 502,
+        ok: false
+      });
       return reply
         .status(502)
         .send(createOpenAICompatibleError(`Upstream provider "${route.providerName}" returned invalid JSON: ${getErrorMessage(json)}`, "upstream_error"));
     }
 
     const response = chatCompletionToResponsesJson(json as Record<string, unknown>, route.requestedModel);
+    const usage = extractResponsesUsage(response);
     addLog({
       fallback_mode: "responses_to_chat",
       resolved_alias: route.aliasName,
@@ -823,6 +1100,14 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
       ok: true,
       response_chars: JSON.stringify(response).length
     });
+    addUsage({
+      fallback_mode: "responses_to_chat",
+      resolved_alias: route.aliasName,
+      provider: route.providerName,
+      upstream_model: route.upstreamModel,
+      status_code: upstream.status,
+      ok: true
+    }, usage);
     return reply.status(upstream.status).send(response);
   });
 

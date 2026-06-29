@@ -1,6 +1,3 @@
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import type { FastifyReply } from "fastify";
 import type { ModelGateConfig } from "../config/schema.js";
 import type {
@@ -193,7 +190,11 @@ export async function readUpstreamError(response: Response): Promise<OpenAICompa
   );
 }
 
-export async function sendOpenAICompatibleStream(response: Response, reply: FastifyReply) {
+export async function sendOpenAICompatibleStream(
+  response: Response,
+  reply: FastifyReply,
+  onEventData?: (data: unknown) => void
+) {
   if (!response.body) {
     reply
       .status(502)
@@ -208,5 +209,49 @@ export async function sendOpenAICompatibleStream(response: Response, reply: Fast
     connection: "keep-alive"
   });
 
-  await pipeline(Readable.fromWeb(response.body as NodeReadableStream<Uint8Array>), reply.raw);
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      const text = decoder.decode(value, { stream: true });
+      reply.raw.write(value);
+
+      if (!onEventData) {
+        continue;
+      }
+
+      buffer += text;
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? "";
+
+      for (const event of events) {
+        for (const line of event.split("\n")) {
+          if (!line.startsWith("data:")) {
+            continue;
+          }
+
+          const data = line.slice(5).trim();
+          if (!data || data === "[DONE]") {
+            continue;
+          }
+
+          try {
+            onEventData(JSON.parse(data));
+          } catch {
+            // Ignore non-JSON SSE payloads while preserving the upstream stream.
+          }
+        }
+      }
+    }
+  } finally {
+    reply.raw.end();
+    await reader.cancel().catch(() => undefined);
+  }
 }

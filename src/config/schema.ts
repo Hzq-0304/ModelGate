@@ -27,6 +27,12 @@ export const entrypointSchema = z.object({
   use: z.string().min(1)
 });
 
+export const pricingSchema = z.object({
+  input_per_million: z.coerce.number().nonnegative(),
+  output_per_million: z.coerce.number().nonnegative(),
+  cached_input_per_million: z.coerce.number().nonnegative().optional()
+});
+
 export const modelGateConfigSchema = z.object({
   server: z.object({
     host: z.string().default("127.0.0.1"),
@@ -44,7 +50,8 @@ export const modelGateConfigSchema = z.object({
     mock: {
       type: "mock"
     }
-  })
+  }),
+  pricing: z.record(pricingSchema).default({})
 }).superRefine((config, context) => {
   for (const name of Object.keys(config.providers)) {
     if (!namePattern.test(name)) {
@@ -101,9 +108,21 @@ export const modelGateConfigSchema = z.object({
       });
     }
   }
+
+  for (const key of Object.keys(config.pricing)) {
+    const [provider, model, extra] = key.split("/");
+    if (!provider || !model || extra !== undefined || (model === "*" ? false : model.length === 0)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pricing", key],
+        message: `Pricing key "${key}" must use provider/model or provider/*`
+      });
+    }
+  }
 });
 
 export type ModelGateConfig = z.infer<typeof modelGateConfigSchema>;
 export type ProviderConfig = z.infer<typeof providerSchema>;
 export type AliasConfig = z.infer<typeof aliasSchema>;
 export type EntrypointConfig = z.infer<typeof entrypointSchema>;
+export type PricingConfig = z.infer<typeof pricingSchema>;

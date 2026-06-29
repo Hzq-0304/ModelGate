@@ -1,6 +1,7 @@
 import { readConfigObject } from "../config/configManager.js";
 import type { ProviderConfig } from "../config/schema.js";
 import type { RuntimeState } from "./state.js";
+import { estimateUsageCost } from "./usageStore.js";
 
 const diagnosticPrompt = "Reply with exactly: OK";
 const envOnlyPattern = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
@@ -614,6 +615,7 @@ export async function testActiveAlias(
 }
 
 export function addDiagnosticLog(runtime: RuntimeState, result: DiagnosticResult) {
+  const path = result.api_type === "responses" ? "/v1/responses" : "/v1/chat/completions";
   runtime.requestLogs.addRequestLog({
     id: crypto.randomUUID(),
     kind: "diagnostic",
@@ -621,7 +623,7 @@ export function addDiagnosticLog(runtime: RuntimeState, result: DiagnosticResult
     finished_at: new Date().toISOString(),
     duration_ms: result.duration_ms,
     method: "POST",
-    path: result.api_type === "responses" ? "/v1/responses" : "/v1/chat/completions",
+    path,
     api_type: result.api_type ?? "chat_completions",
     fallback_mode: result.fallback_mode,
     requested_model: result.alias ?? result.model,
@@ -635,5 +637,22 @@ export function addDiagnosticLog(runtime: RuntimeState, result: DiagnosticResult
     error_message: result.error_message,
     prompt_preview: diagnosticPrompt,
     prompt_chars: diagnosticPrompt.length
+  });
+  runtime.usageStore.addUsageRecord({
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    kind: "diagnostic",
+    path,
+    api_type: result.api_type ?? "chat_completions",
+    fallback_mode: result.fallback_mode,
+    requested_model: result.alias ?? result.model,
+    resolved_alias: result.alias,
+    provider: result.provider,
+    upstream_model: result.model,
+    stream: result.stream,
+    ok: result.ok,
+    status_code: result.status_code,
+    duration_ms: result.duration_ms,
+    ...estimateUsageCost(runtime.config, result.provider, result.model)
   });
 }

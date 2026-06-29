@@ -39,6 +39,7 @@ import {
 } from "./api";
 import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
 import type { ConnectionState } from "./features/account-switcher/accountTypes";
+import { UsageOverview } from "./features/usage-overview/UsageOverview";
 
 type ActiveTab = "switcher" | "configuration" | "logs" | "advanced";
 
@@ -1204,18 +1205,21 @@ export function App() {
       </nav>
 
       {activeTab === "switcher" ? (
-        <AccountSwitcher
-          accounts={aliasesList}
-          activeAlias={activeAlias}
-          activeAliasName={status?.active}
-          connection={connection}
-          endpoint={serverUrl}
-          entrypoints={status?.entrypoints ?? {}}
-          message={message}
-          switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
-          onAlreadyActive={() => setMessage("Already active")}
-          onSelectAccount={(alias) => void handleSwitch(alias)}
-        />
+        <section className="switcher-page">
+          <AccountSwitcher
+            accounts={aliasesList}
+            activeAlias={activeAlias}
+            activeAliasName={status?.active}
+            connection={connection}
+            endpoint={serverUrl}
+            entrypoints={status?.entrypoints ?? {}}
+            message={message}
+            switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
+            onAlreadyActive={() => setMessage("Already active")}
+            onSelectAccount={(alias) => void handleSwitch(alias)}
+          />
+          <UsageOverview disconnected={disconnected} />
+        </section>
       ) : activeTab === "advanced" ? (
         <>
 
