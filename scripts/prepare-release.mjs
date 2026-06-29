@@ -1,7 +1,13 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
-const version = "0.1.0";
+const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
+const version = packageJson.version;
+
+if (!version) {
+  throw new Error("package.json version is missing");
+}
+
 const releaseRoot = resolve("release", `modelgate-v${version}`);
 const artifactsDir = join(releaseRoot, "artifacts");
 const desktopReleaseDir = resolve("desktop", "src-tauri", "target", "release");
@@ -21,6 +27,10 @@ function copyOptional(source, target) {
   }
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function copyDesktopArtifacts() {
   const desktopExe = join(desktopReleaseDir, "modelgate-desktop.exe");
   copyRequired(desktopExe, join(artifactsDir, "modelgate-desktop.exe"));
@@ -29,12 +39,13 @@ function copyDesktopArtifacts() {
     throw new Error(`NSIS bundle directory is missing: ${nsisDir}`);
   }
 
+  const versionedInstallerPattern = new RegExp(`_${escapeRegExp(version)}_.*\\.exe$`, "i");
   const installers = readdirSync(nsisDir)
-    .filter((name) => name.toLowerCase().endsWith(".exe"))
+    .filter((name) => versionedInstallerPattern.test(name))
     .map((name) => join(nsisDir, name));
 
   if (installers.length === 0) {
-    throw new Error(`No NSIS installer found in ${nsisDir}`);
+    throw new Error(`No NSIS installer for v${version} found in ${nsisDir}`);
   }
 
   for (const installer of installers) {

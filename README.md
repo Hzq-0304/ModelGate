@@ -1,5 +1,7 @@
 # ModelGate
 
+Current release: `v0.1.1`
+
 ModelGate is a local OpenAI-compatible gateway for routing large-model requests and hot-switching upstream providers. Codex can keep using one local model name, while ModelGate decides which real provider and model receive new requests.
 
 ModelGate is intended for local use by default. Do not expose it directly to public networks or untrusted LANs.
@@ -382,7 +384,7 @@ If you manually enable MSI packaging, install WiX or ensure Tauri can download a
 
 ### Local Release Package
 
-Prepare a local v0.1.0 release directory:
+Prepare a local v0.1.1 release directory:
 
 ```bash
 npm run release:local
@@ -391,13 +393,13 @@ npm run release:local
 The release directory is written to:
 
 ```text
-release/modelgate-v0.1.0/
+release/modelgate-v0.1.1/
 ```
 
 To run the Node server from that release directory:
 
 ```bash
-cd release/modelgate-v0.1.0
+cd release/modelgate-v0.1.1
 npm install --omit=dev
 npm run start
 ```
@@ -405,7 +407,7 @@ npm run start
 Desktop artifacts are collected under:
 
 ```text
-release/modelgate-v0.1.0/artifacts/
+release/modelgate-v0.1.1/artifacts/
 ```
 
 Desktop app features:
@@ -442,7 +444,7 @@ Current desktop limitations:
 - managed server startup is intended for local repository development
 - provider API keys are not shown or managed in the desktop UI
 
-当前桌面端暂未内置 Node.js runtime。桌面端启动服务功能依赖本机 Node.js/npm，以及 ModelGate 项目或发布目录。
+当前桌面端暂未内置 Node.js runtime。桌面端 Server Control 依赖本机 Node.js/npm，以及 ModelGate 项目或发布目录。
 
 ### Desktop Configuration Management
 

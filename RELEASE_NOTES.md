@@ -1,3 +1,27 @@
+# ModelGate v0.1.1
+
+## Highlights
+
+- Refined desktop UI for a cleaner management experience.
+- Improved Home page layout with separated Account Switcher and Usage Overview.
+- Improved disconnected-state guidance.
+- Improved Configuration page structure.
+- Improved CC Switch import reliability.
+- Added or improved CC Switch scan report.
+- Kept API key handling safe: no plaintext provider API keys are displayed or saved.
+
+## Fixes
+
+- Fixed unreliable CC Switch provider import behavior.
+- Reduced desktop UI clutter.
+- Improved readability of Chinese / English UI labels where applicable.
+
+## Notes
+
+- ModelGate still does not modify the CC Switch database.
+- ModelGate still stores provider API keys as environment variable references such as `${DEEPSEEK_API_KEY}`.
+- The desktop app still requires local Node.js/npm for server process management in this release.
+
 # ModelGate v0.1.0
 
 ## Highlights
