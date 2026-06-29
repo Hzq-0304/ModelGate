@@ -291,6 +291,8 @@ ModelGate also includes a local desktop management interface built with Tauri v2
 
 Desktop UI supports English and Simplified Chinese. The selected language is stored locally in desktop localStorage.
 
+Desktop supports English / Simplified Chinese, and the language selection is saved locally.
+
 桌面端支持 English / 简体中文，语言选择会保存在本地。
 
 The desktop app can manage a local ModelGate server process when it is running from a local repository environment. It still does not bundle a Node.js runtime into the desktop app.
@@ -378,6 +380,34 @@ If you only need to run the app directly, use the release executable from `deskt
 
 If you manually enable MSI packaging, install WiX or ensure Tauri can download and verify the WiX tooling.
 
+### Local Release Package
+
+Prepare a local v0.1.0 release directory:
+
+```bash
+npm run release:local
+```
+
+The release directory is written to:
+
+```text
+release/modelgate-v0.1.0/
+```
+
+To run the Node server from that release directory:
+
+```bash
+cd release/modelgate-v0.1.0
+npm install --omit=dev
+npm run start
+```
+
+Desktop artifacts are collected under:
+
+```text
+release/modelgate-v0.1.0/artifacts/
+```
+
 Desktop app features:
 
 - view connection status
@@ -407,10 +437,12 @@ The account switcher and usage overview are implemented as separate desktop feat
 
 Current desktop limitations:
 
-- server process management depends on local Node.js and npm
-- the first version does not bundle Node.js into the desktop app
+- The current desktop app does not bundle a Node.js runtime.
+- The desktop Server Control requires Node.js/npm and a ModelGate project or release directory.
 - managed server startup is intended for local repository development
 - provider API keys are not shown or managed in the desktop UI
+
+当前桌面端暂未内置 Node.js runtime。桌面端启动服务功能依赖本机 Node.js/npm，以及 ModelGate 项目或发布目录。
 
 ### Desktop Configuration Management
 
