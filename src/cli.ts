@@ -15,7 +15,7 @@ import {
 } from "./cli/client.js";
 
 function printUsage() {
-  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|presets|test active|test alias <alias>|test provider <provider> --model <model>>");
+  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|presets|test active [--responses]|test alias <alias> [--stream] [--responses]|test provider <provider> --model <model> [--stream] [--responses]>");
 }
 
 function formatTime(value: string) {
@@ -41,6 +41,8 @@ function printDiagnosticResult(result: DiagnosticResult) {
 
   console.log(`Provider: ${result.provider ?? "-"}`);
   console.log(`Upstream model: ${result.model ?? "-"}`);
+  console.log(`API: ${result.api_type ?? "chat_completions"}`);
+  console.log(`Fallback: ${result.fallback_mode ?? "-"}`);
   console.log(`Stream: ${result.stream}`);
   if (result.status_code) {
     console.log(`HTTP status: ${result.status_code}`);
@@ -121,12 +123,14 @@ async function run() {
     const limit = Number.parseInt(argValue(args, "--limit") ?? "50", 10);
     const result = await getLogs(Number.isFinite(limit) ? limit : 50);
 
-    console.log("Time                  Kind        OK   Stream  Alias             Provider     Upstream Model       Duration");
+    console.log("Time                  Kind        API        Fallback           OK   Stream  Alias             Provider     Upstream Model       Duration");
     for (const entry of result.logs) {
       const error = entry.ok ? "" : `  ${entry.error_type ?? "error"} ${entry.status_code ?? ""}`.trimEnd();
       console.log(
         `${formatTime(entry.started_at).padEnd(21)} ` +
         `${(entry.kind ?? "normal").padEnd(11)} ` +
+        `${(entry.api_type ?? "chat_completions").replace("_completions", "").padEnd(10)} ` +
+        `${(entry.fallback_mode ?? "-").padEnd(18)} ` +
         `${(entry.ok ? "yes" : "no").padEnd(4)} ` +
         `${String(entry.stream).padEnd(7)} ` +
         `${(entry.resolved_alias ?? "-").padEnd(17)} ` +
@@ -174,9 +178,10 @@ async function run() {
   if (command === "test") {
     const target = value;
     const stream = args.includes("--stream");
+    const apiType = args.includes("--responses") ? "responses" : "chat_completions";
 
     if (target === "active") {
-      printDiagnosticResult(await testActive(stream));
+      printDiagnosticResult(await testActive(stream, apiType));
       return;
     }
 
@@ -186,7 +191,7 @@ async function run() {
         throw new Error("Missing alias name. Usage: modelgate test alias <alias> [--stream]");
       }
 
-      printDiagnosticResult(await testAlias(alias, stream));
+      printDiagnosticResult(await testAlias(alias, stream, apiType));
       return;
     }
 
@@ -196,7 +201,7 @@ async function run() {
         throw new Error("Missing provider name. Usage: modelgate test provider <provider> --model <model> [--stream]");
       }
 
-      printDiagnosticResult(await testProvider(provider, argValue(args, "--model"), stream));
+      printDiagnosticResult(await testProvider(provider, argValue(args, "--model"), stream, apiType));
       return;
     }
 

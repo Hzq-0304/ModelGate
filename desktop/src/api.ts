@@ -6,6 +6,10 @@ const baseUrl = "http://127.0.0.1:11435";
 export type HealthResponse = {
   ok: boolean;
   name: string;
+  capabilities?: {
+    chat_completions: boolean;
+    responses: boolean;
+  };
 };
 
 export type StatusResponse = {
@@ -49,6 +53,7 @@ export type ProviderConfig =
     type: "openai-compatible";
     base_url: string;
     api_key: string;
+    responses_api?: boolean;
     api_key_resolved?: boolean;
   };
 
@@ -86,6 +91,8 @@ export type RequestLogEntry = {
   started_at: string;
   finished_at?: string;
   duration_ms?: number;
+  api_type?: "chat_completions" | "responses";
+  fallback_mode?: "direct_responses" | "responses_to_chat";
   requested_model?: string;
   resolved_alias?: string;
   provider?: string;
@@ -129,6 +136,8 @@ export type DiagnosticCheck = {
 export type DiagnosticResult = {
   ok: boolean;
   target: "provider" | "alias" | "active";
+  api_type?: "chat_completions" | "responses";
+  fallback_mode?: "direct_responses" | "responses_to_chat";
   provider?: string;
   alias?: string;
   model?: string;
@@ -300,37 +309,37 @@ export async function getProviderPresets() {
   return parseJson<{ presets: ProviderPreset[] }>(response);
 }
 
-export async function testProvider(provider: string, model?: string, stream = false) {
+export async function testProvider(provider: string, model?: string, stream = false, apiType: "chat_completions" | "responses" = "chat_completions") {
   const response = await fetch(`${baseUrl}/admin/test/provider`, {
     method: "POST",
     headers: {
       "content-type": "application/json"
     },
-    body: JSON.stringify({ provider, model, stream })
+    body: JSON.stringify({ provider, model, stream, api_type: apiType })
   });
 
   return parseJson<DiagnosticResult>(response);
 }
 
-export async function testAlias(alias: string, stream = false) {
+export async function testAlias(alias: string, stream = false, apiType: "chat_completions" | "responses" = "chat_completions") {
   const response = await fetch(`${baseUrl}/admin/test/alias`, {
     method: "POST",
     headers: {
       "content-type": "application/json"
     },
-    body: JSON.stringify({ alias, stream })
+    body: JSON.stringify({ alias, stream, api_type: apiType })
   });
 
   return parseJson<DiagnosticResult>(response);
 }
 
-export async function testActive(stream = false) {
+export async function testActive(stream = false, apiType: "chat_completions" | "responses" = "chat_completions") {
   const response = await fetch(`${baseUrl}/admin/test/active`, {
     method: "POST",
     headers: {
       "content-type": "application/json"
     },
-    body: JSON.stringify({ stream })
+    body: JSON.stringify({ stream, api_type: apiType })
   });
 
   return parseJson<DiagnosticResult>(response);

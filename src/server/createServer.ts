@@ -28,7 +28,11 @@ export async function createServer(runtime: RuntimeState) {
 
   server.get("/health", async () => ({
     ok: true,
-    name: "ModelGate"
+    name: "ModelGate",
+    capabilities: {
+      chat_completions: true,
+      responses: true
+    }
   }));
 
   await registerModelRouter(server, runtime);

@@ -94,7 +94,8 @@ export function App() {
     name: "",
     type: "openai-compatible",
     baseUrl: "",
-    envName: ""
+    envName: "",
+    responsesApi: false
   });
   const [aliasForm, setAliasForm] = useState({
     editingName: "",
@@ -513,7 +514,8 @@ export function App() {
       name: "",
       type: "openai-compatible",
       baseUrl: "",
-      envName: ""
+      envName: "",
+      responsesApi: false
     });
   }
 
@@ -546,7 +548,8 @@ export function App() {
       : {
         type: "openai-compatible",
         base_url: providerForm.baseUrl.trim(),
-        api_key: `\${${providerForm.envName.trim()}}`
+        api_key: `\${${providerForm.envName.trim()}}`,
+        responses_api: providerForm.responsesApi
       };
 
     updateConfig((config) => {
@@ -567,7 +570,8 @@ export function App() {
       name,
       type: provider.type,
       baseUrl: provider.type === "openai-compatible" ? provider.base_url : "",
-      envName: providerEnvName(provider)
+      envName: providerEnvName(provider),
+      responsesApi: provider.type === "openai-compatible" ? Boolean(provider.responses_api) : false
     });
   }
 
@@ -1440,6 +1444,7 @@ export function App() {
                 <span>Name</span>
                 <span>Type</span>
                 <span>Base URL</span>
+                <span>Responses</span>
                 <span>API Key</span>
                 <span>Actions</span>
               </div>
@@ -1448,6 +1453,7 @@ export function App() {
                   <span>{name}</span>
                   <span>{provider.type}</span>
                   <span>{provider.type === "openai-compatible" ? provider.base_url : "-"}</span>
+                  <span>{provider.type === "openai-compatible" && provider.responses_api ? "direct" : "-"}</span>
                   <span>
                     {provider.type === "openai-compatible"
                       ? `${provider.api_key} ${provider.api_key_resolved ? "OK" : "Missing"}`
@@ -1471,6 +1477,10 @@ export function App() {
               </select>
               <input placeholder="Base URL" value={providerForm.baseUrl} onChange={(event) => setProviderForm({ ...providerForm, baseUrl: event.target.value })} disabled={providerForm.type === "mock"} />
               <input placeholder="API Key Env Name" value={providerForm.envName} onChange={(event) => setProviderForm({ ...providerForm, envName: event.target.value })} disabled={providerForm.type === "mock"} />
+              <label className="inline-checkbox">
+                <input type="checkbox" checked={providerForm.responsesApi} onChange={(event) => setProviderForm({ ...providerForm, responsesApi: event.target.checked })} disabled={providerForm.type === "mock"} />
+                Responses API
+              </label>
               <button onClick={saveProviderDraft} disabled={configBusy}>{providerForm.editingName ? "Update Provider" : "Add Provider"}</button>
             </div>
           </section>
@@ -1649,6 +1659,8 @@ export function App() {
               <div className="request-log-row request-log-head">
                 <span>Time</span>
                 <span>Kind</span>
+                <span>API</span>
+                <span>Fallback</span>
                 <span>Status</span>
                 <span>Stream</span>
                 <span>Requested Model</span>
@@ -1662,6 +1674,8 @@ export function App() {
                 <div className={entry.ok ? "request-log-row ok" : "request-log-row failed"} key={entry.id}>
                   <span>{formatLogTime(entry.started_at)}</span>
                   <span>{entry.kind === "diagnostic" ? "Diagnostic" : "Normal"}</span>
+                  <span>{entry.api_type === "responses" ? "responses" : "chat"}</span>
+                  <span>{entry.fallback_mode ?? "-"}</span>
                   <span><span className={entry.ok ? "pill" : "pill bad"}>{entry.ok ? "OK" : entry.status_code ?? "ERR"}</span></span>
                   <span>{entry.stream ? "stream" : "non-stream"}</span>
                   <span>{entry.requested_model ?? "-"}</span>

@@ -9,7 +9,8 @@ export const mockProviderSchema = z.object({
 export const openAICompatibleProviderSchema = z.object({
   type: z.literal("openai-compatible"),
   base_url: z.string().url(),
-  api_key: z.string().min(1)
+  api_key: z.string().min(1),
+  responses_api: z.boolean().default(false)
 });
 
 export const providerSchema = z.discriminatedUnion("type", [

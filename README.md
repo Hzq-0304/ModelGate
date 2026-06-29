@@ -97,7 +97,15 @@ providers:
     type: openai-compatible
     base_url: https://openrouter.ai/api/v1
     api_key: ${OPENROUTER_API_KEY}
+
+  openai:
+    type: openai-compatible
+    base_url: https://api.openai.com/v1
+    api_key: ${OPENAI_API_KEY}
+    responses_api: true
 ```
+
+`responses_api` defaults to `false`. Set it to `true` only for upstream providers that support `POST /responses`; otherwise ModelGate converts `/v1/responses` requests to chat completions internally.
 
 Set environment variables before starting ModelGate:
 
@@ -116,6 +124,52 @@ $env:DEEPSEEK_API_KEY = "your-api-key"
 If a config references `${ENV_NAME}` and that environment variable is missing, ModelGate fails fast with a clear error.
 
 Keep provider API keys in environment variables instead of YAML. The desktop app and admin API are designed to show `${ENV_NAME}` or `***`, never the real API key.
+
+## Responses API
+
+ModelGate supports a basic OpenAI Responses API compatibility endpoint:
+
+```text
+POST /v1/responses
+```
+
+This is a compatibility shim, not a complete implementation of every Responses API feature. Routing still uses the same entrypoint / alias / active alias resolution as `/v1/chat/completions`.
+
+Provider behavior:
+
+- `responses_api: true`: ModelGate forwards to `<base_url>/responses` and replaces the alias model with the upstream model.
+- `responses_api: false` or omitted: ModelGate converts the request to `/chat/completions`, then wraps the result in Responses-like JSON.
+- `mock`: ModelGate returns mock Responses JSON or mock Responses SSE.
+
+Fallback supports simple `input`, simple message-array `input`, `instructions`, `max_output_tokens`, `temperature`, `top_p`, `stream`, `tools`, and `tool_choice`. Complex features such as multimodal input, file search, computer use, custom output formats, and previous response state return a clear `unsupported_responses_feature` error instead of being silently ignored.
+
+Non-stream example:
+
+```bash
+curl http://127.0.0.1:11435/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer modelgate-local" \
+  -d '{
+    "model": "codex-main",
+    "instructions": "You are helpful.",
+    "input": "Reply with OK."
+  }'
+```
+
+Stream example:
+
+```bash
+curl http://127.0.0.1:11435/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer modelgate-local" \
+  -d '{
+    "model": "codex-main",
+    "stream": true,
+    "input": "Reply with OK in stream mode."
+  }'
+```
+
+`GET /v1/responses/:id` and `DELETE /v1/responses/:id` return `not_supported` because ModelGate does not persist responses yet.
 
 ## CLI
 
@@ -449,6 +503,9 @@ modelgate test active --stream
 modelgate test alias deepseek-main
 modelgate test alias deepseek-main --stream
 modelgate test provider deepseek --model deepseek-chat
+modelgate test active --responses
+modelgate test alias deepseek-main --responses
+modelgate test provider openai --model gpt-4.1 --responses
 ```
 
 Desktop:
@@ -457,7 +514,7 @@ Desktop:
 - Configuration: use **Test** on provider rows
 - Configuration: use **Test** or **Test Stream** on alias rows
 
-Diagnostics return check names, pass/fail status, HTTP status when available, duration, and a short error summary. They do not display API keys, do not log the `Authorization` header, and do not store full upstream responses. Diagnostic requests are marked as `diagnostic` in request logs.
+Diagnostics return check names, pass/fail status, HTTP status when available, duration, API type, fallback mode, and a short error summary. They do not display API keys, do not log the `Authorization` header, and do not store full upstream responses. Diagnostic requests are marked as `diagnostic` in request logs.
 
 ### Import From CC Switch
 
@@ -614,11 +671,38 @@ curl http://127.0.0.1:11435/v1/chat/completions \
   }'
 ```
 
+Responses request:
+
+```bash
+curl http://127.0.0.1:11435/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer modelgate-local" \
+  -d '{
+    "model": "codex-main",
+    "input": "Reply with OK."
+  }'
+```
+
+Responses stream request:
+
+```bash
+curl http://127.0.0.1:11435/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer modelgate-local" \
+  -d '{
+    "model": "codex-main",
+    "stream": true,
+    "input": "Reply with OK in stream mode."
+  }'
+```
+
 ## Supported
 
 - `/v1/models`
 - `/v1/chat/completions`
+- `/v1/responses`
 - stream and non-stream chat completions
+- stream and non-stream basic Responses API compatibility
 - `mock` provider
 - `openai-compatible` provider forwarding
 - runtime active alias switching

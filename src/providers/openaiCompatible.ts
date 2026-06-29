@@ -6,7 +6,8 @@ import type { ModelGateConfig } from "../config/schema.js";
 import type {
   ChatCompletionRequestBody,
   OpenAICompatibleError,
-  OpenAICompatibleProviderConfig
+  OpenAICompatibleProviderConfig,
+  ResponsesRequestBody
 } from "./types.js";
 
 type Delta = {
@@ -87,6 +88,35 @@ export function createMockChatCompletionChunk(
   };
 }
 
+export function createMockResponse(model: string) {
+  const created = Math.floor(Date.now() / 1000);
+  return {
+    id: `resp_mock_${crypto.randomUUID()}`,
+    object: "response",
+    created_at: created,
+    status: "completed",
+    model,
+    output: [
+      {
+        id: `msg_mock_${crypto.randomUUID()}`,
+        type: "message",
+        role: "assistant",
+        content: [
+          {
+            type: "output_text",
+            text: "Hello from ModelGate mock responses provider."
+          }
+        ]
+      }
+    ],
+    usage: {
+      input_tokens: 0,
+      output_tokens: 7,
+      total_tokens: 7
+    }
+  };
+}
+
 export function createOpenAICompatibleError(
   message: string,
   type = "invalid_request_error",
@@ -113,6 +143,27 @@ export async function forwardOpenAICompatibleChatCompletion(
   const baseUrl = provider.base_url.replace(/\/+$/, "");
 
   return fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${provider.api_key}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(upstreamBody)
+  });
+}
+
+export async function forwardOpenAICompatibleResponse(
+  body: ResponsesRequestBody,
+  provider: OpenAICompatibleProviderConfig,
+  upstreamModel: string
+): Promise<Response> {
+  const upstreamBody = {
+    ...body,
+    model: upstreamModel
+  };
+  const baseUrl = provider.base_url.replace(/\/+$/, "");
+
+  return fetch(`${baseUrl}/responses`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${provider.api_key}`,

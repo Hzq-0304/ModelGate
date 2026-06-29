@@ -16,6 +16,8 @@ export type DiagnosticCheck = {
 export type DiagnosticResult = {
   ok: boolean;
   target: "provider" | "alias" | "active";
+  api_type?: "chat_completions" | "responses";
+  fallback_mode?: "direct_responses" | "responses_to_chat";
   provider?: string;
   alias?: string;
   model?: string;
@@ -166,10 +168,21 @@ function validBaseUrlCheck(provider: ProviderConfig): DiagnosticCheck {
   }
 }
 
-function createFailureResult(target: ResolvedDiagnosticTarget, stream: boolean, startedMs: number, checks: DiagnosticCheck[], error: string): DiagnosticResult {
+function createFailureResult(
+  target: ResolvedDiagnosticTarget,
+  stream: boolean,
+  startedMs: number,
+  checks: DiagnosticCheck[],
+  error: string,
+  apiType: "chat_completions" | "responses"
+): DiagnosticResult {
   return {
     ok: false,
     target: target.target,
+    api_type: apiType,
+    fallback_mode: apiType === "responses"
+      ? target.provider.type === "openai-compatible" && target.provider.responses_api ? "direct_responses" : "responses_to_chat"
+      : undefined,
     provider: target.providerName,
     alias: target.aliasName,
     model: target.model,
@@ -197,7 +210,8 @@ async function runOpenAICompatibleTest(
   apiKey: string,
   stream: boolean,
   startedMs: number,
-  checks: DiagnosticCheck[]
+  checks: DiagnosticCheck[],
+  apiType: "chat_completions" | "responses"
 ): Promise<DiagnosticResult> {
   if (target.provider.type !== "openai-compatible") {
     throw new Error("Provider is not openai-compatible");
@@ -206,25 +220,38 @@ async function runOpenAICompatibleTest(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const baseUrl = target.provider.base_url.replace(/\/+$/, "");
+  const directResponses = apiType === "responses" && Boolean(target.provider.responses_api);
+  const fallbackMode = apiType === "responses"
+    ? directResponses ? "direct_responses" : "responses_to_chat"
+    : undefined;
+  const endpoint = directResponses ? "responses" : "chat/completions";
+  const requestBody = directResponses
+    ? {
+      model: target.model,
+      input: diagnosticPrompt,
+      max_output_tokens: 8,
+      stream
+    }
+    : {
+      model: target.model,
+      messages: [
+        {
+          role: "user",
+          content: diagnosticPrompt
+        }
+      ],
+      max_tokens: 8,
+      stream
+    };
 
   try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch(`${baseUrl}/${endpoint}`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify({
-        model: target.model,
-        messages: [
-          {
-            role: "user",
-            content: diagnosticPrompt
-          }
-        ],
-        max_tokens: 8,
-        stream
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal
     });
 
@@ -243,6 +270,8 @@ async function runOpenAICompatibleTest(
       return {
         ok: false,
         target: target.target,
+        api_type: apiType,
+        fallback_mode: fallbackMode,
         provider: target.providerName,
         alias: target.aliasName,
         model: target.model,
@@ -261,6 +290,8 @@ async function runOpenAICompatibleTest(
         return {
           ok: false,
           target: target.target,
+          api_type: apiType,
+          fallback_mode: fallbackMode,
           provider: target.providerName,
           alias: target.aliasName,
           model: target.model,
@@ -287,6 +318,8 @@ async function runOpenAICompatibleTest(
         return {
           ok: false,
           target: target.target,
+          api_type: apiType,
+          fallback_mode: fallbackMode,
           provider: target.providerName,
           alias: target.aliasName,
           model: target.model,
@@ -311,6 +344,8 @@ async function runOpenAICompatibleTest(
     return {
       ok: true,
       target: target.target,
+      api_type: apiType,
+      fallback_mode: fallbackMode,
       provider: target.providerName,
       alias: target.aliasName,
       model: target.model,
@@ -322,7 +357,11 @@ async function runOpenAICompatibleTest(
         {
           name: "chat_completion",
           ok: true,
-          message: stream ? "Received stream data." : "Received a successful chat completion response."
+          message: stream
+            ? "Received stream data."
+            : apiType === "responses"
+              ? "Received a successful Responses API diagnostic response."
+              : "Received a successful chat completion response."
         }
       ],
       message: stream ? "Stream diagnostic passed." : "Provider test passed."
@@ -336,6 +375,8 @@ async function runOpenAICompatibleTest(
     return {
       ok: false,
       target: target.target,
+      api_type: apiType,
+      fallback_mode: fallbackMode,
       provider: target.providerName,
       alias: target.aliasName,
       model: target.model,
@@ -467,23 +508,31 @@ function resolveAliasTarget(runtime: RuntimeState, aliasName: string, target: "a
   };
 }
 
-async function runDiagnostic(runtime: RuntimeState, target: ResolvedDiagnosticTarget, stream: boolean, startedMs: number): Promise<DiagnosticResult> {
+async function runDiagnostic(
+  runtime: RuntimeState,
+  target: ResolvedDiagnosticTarget,
+  stream: boolean,
+  startedMs: number,
+  apiType: "chat_completions" | "responses"
+): Promise<DiagnosticResult> {
   const baseUrl = validBaseUrlCheck(target.provider);
   const apiKey = apiKeyCheck(runtime, target.providerName, target.provider);
   const checks = [...target.checks, baseUrl, apiKey.check];
 
   if (!baseUrl.ok) {
-    return createFailureResult(target, stream, startedMs, checks, baseUrl.message ?? "Base URL is invalid.");
+    return createFailureResult(target, stream, startedMs, checks, baseUrl.message ?? "Base URL is invalid.", apiType);
   }
 
   if (!apiKey.check.ok) {
-    return createFailureResult(target, stream, startedMs, checks, apiKey.check.message ?? "API key is not available.");
+    return createFailureResult(target, stream, startedMs, checks, apiKey.check.message ?? "API key is not available.", apiType);
   }
 
   if (target.provider.type === "mock") {
     return {
       ok: true,
       target: target.target,
+      api_type: apiType,
+      fallback_mode: apiType === "responses" ? "responses_to_chat" : undefined,
       provider: target.providerName,
       alias: target.aliasName,
       model: target.model,
@@ -495,53 +544,73 @@ async function runDiagnostic(runtime: RuntimeState, target: ResolvedDiagnosticTa
         {
           name: "chat_completion",
           ok: true,
-          message: stream ? "Mock stream diagnostic passed." : "Mock provider test passed."
+          message: apiType === "responses"
+            ? stream ? "Mock Responses stream diagnostic passed." : "Mock Responses diagnostic passed."
+            : stream ? "Mock stream diagnostic passed." : "Mock provider test passed."
         }
       ],
       message: "Mock provider test passed."
     };
   }
 
-  return runOpenAICompatibleTest(target, apiKey.apiKey ?? target.provider.api_key, stream, startedMs, checks);
+  return runOpenAICompatibleTest(target, apiKey.apiKey ?? target.provider.api_key, stream, startedMs, checks, apiType);
 }
 
-export async function testProvider(runtime: RuntimeState, providerName: string, model?: string, stream = false) {
+export async function testProvider(
+  runtime: RuntimeState,
+  providerName: string,
+  model?: string,
+  stream = false,
+  apiType: "chat_completions" | "responses" = "chat_completions"
+) {
   const startedMs = Date.now();
   const target = resolveProviderTarget(runtime, providerName, model);
   if ("ok" in target) {
     return {
       ...target,
+      api_type: apiType,
       stream
     };
   }
 
-  return runDiagnostic(runtime, target, stream, startedMs);
+  return runDiagnostic(runtime, target, stream, startedMs, apiType);
 }
 
-export async function testAlias(runtime: RuntimeState, aliasName: string, stream = false) {
+export async function testAlias(
+  runtime: RuntimeState,
+  aliasName: string,
+  stream = false,
+  apiType: "chat_completions" | "responses" = "chat_completions"
+) {
   const startedMs = Date.now();
   const target = resolveAliasTarget(runtime, aliasName, "alias");
   if ("ok" in target) {
     return {
       ...target,
+      api_type: apiType,
       stream
     };
   }
 
-  return runDiagnostic(runtime, target, stream, startedMs);
+  return runDiagnostic(runtime, target, stream, startedMs, apiType);
 }
 
-export async function testActiveAlias(runtime: RuntimeState, stream = false) {
+export async function testActiveAlias(
+  runtime: RuntimeState,
+  stream = false,
+  apiType: "chat_completions" | "responses" = "chat_completions"
+) {
   const startedMs = Date.now();
   const target = resolveAliasTarget(runtime, runtime.activeAlias, "active");
   if ("ok" in target) {
     return {
       ...target,
+      api_type: apiType,
       stream
     };
   }
 
-  return runDiagnostic(runtime, target, stream, startedMs);
+  return runDiagnostic(runtime, target, stream, startedMs, apiType);
 }
 
 export function addDiagnosticLog(runtime: RuntimeState, result: DiagnosticResult) {
@@ -552,7 +621,9 @@ export function addDiagnosticLog(runtime: RuntimeState, result: DiagnosticResult
     finished_at: new Date().toISOString(),
     duration_ms: result.duration_ms,
     method: "POST",
-    path: "/v1/chat/completions",
+    path: result.api_type === "responses" ? "/v1/responses" : "/v1/chat/completions",
+    api_type: result.api_type ?? "chat_completions",
+    fallback_mode: result.fallback_mode,
     requested_model: result.alias ?? result.model,
     resolved_alias: result.alias,
     provider: result.provider,

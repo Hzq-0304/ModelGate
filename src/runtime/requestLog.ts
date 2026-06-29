@@ -5,7 +5,9 @@ export type RequestLogEntry = {
   finished_at?: string;
   duration_ms?: number;
   method: "POST";
-  path: "/v1/chat/completions";
+  path: "/v1/chat/completions" | "/v1/responses";
+  api_type?: "chat_completions" | "responses";
+  fallback_mode?: "direct_responses" | "responses_to_chat";
   requested_model?: string;
   resolved_alias?: string;
   provider?: string;

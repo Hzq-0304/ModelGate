@@ -493,6 +493,19 @@ dd {
   gap: 8px;
 }
 
+.inline-checkbox {
+  align-items: center;
+  color: #c7d1df;
+  display: flex;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.inline-checkbox input[type="checkbox"] {
+  min-height: auto;
+  width: auto;
+}
+
 .diagnostic-card {
   display: grid;
   gap: 14px;
@@ -625,7 +638,7 @@ dd {
 }
 
 .config-form {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .alias-form {
@@ -670,7 +683,7 @@ select:disabled {
 }
 
 .providers-table .config-row {
-  grid-template-columns: 0.75fr 1fr 1.6fr 1.2fr 220px;
+  grid-template-columns: 0.75fr 1fr 1.6fr 0.8fr 1.2fr 220px;
 }
 
 .aliases-config-table .config-row {
@@ -739,7 +752,7 @@ button.danger {
   border-radius: 7px;
   display: grid;
   gap: 10px;
-  grid-template-columns: 155px 95px 72px 90px 130px 130px 100px 150px 85px minmax(160px, 1fr);
+  grid-template-columns: 155px 95px 90px 145px 72px 90px 130px 130px 100px 150px 85px minmax(160px, 1fr);
   min-height: 48px;
   padding: 10px 12px;
 }

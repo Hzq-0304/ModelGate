@@ -27,15 +27,18 @@ type TestProviderBody = {
   provider?: string;
   model?: string;
   stream?: boolean;
+  api_type?: "chat_completions" | "responses";
 };
 
 type TestAliasBody = {
   alias?: string;
   stream?: boolean;
+  api_type?: "chat_completions" | "responses";
 };
 
 type TestActiveBody = {
   stream?: boolean;
+  api_type?: "chat_completions" | "responses";
 };
 
 function isLocalAddress(address?: string) {
@@ -95,7 +98,7 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
         .send(createOpenAICompatibleError("Request body must include provider"));
     }
 
-    const result = await testProvider(runtime, provider, request.body?.model, Boolean(request.body?.stream));
+    const result = await testProvider(runtime, provider, request.body?.model, Boolean(request.body?.stream), request.body?.api_type);
     addDiagnosticLog(runtime, result);
     return result;
   });
@@ -109,13 +112,13 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
         .send(createOpenAICompatibleError("Request body must include alias"));
     }
 
-    const result = await testAlias(runtime, alias, Boolean(request.body?.stream));
+    const result = await testAlias(runtime, alias, Boolean(request.body?.stream), request.body?.api_type);
     addDiagnosticLog(runtime, result);
     return result;
   });
 
   server.post<{ Body: TestActiveBody }>("/admin/test/active", async (request, reply) => {
-    const result = await testActiveAlias(runtime, Boolean(request.body?.stream));
+    const result = await testActiveAlias(runtime, Boolean(request.body?.stream), request.body?.api_type);
     addDiagnosticLog(runtime, result);
     return reply.send(result);
   });
