@@ -324,6 +324,7 @@ If you manually enable MSI packaging, install WiX or ensure Tauri can download a
 Desktop app features:
 
 - view connection status
+- switch the active account from the default Switcher page
 - start, stop, and restart a managed local server process
 - view active alias
 - view entrypoint resolution
@@ -334,6 +335,17 @@ Desktop app features:
 - validate config and save YAML with automatic reload
 - view request logs and request stats
 - copy Codex configuration
+
+The desktop app opens on **Switcher** by default. In the UI, an **Account** is a ModelGate alias profile such as `mock-main`, `deepseek-main`, or `qwen-main`. Switcher only shows account selection context: current account, provider, upstream model, endpoint, connection status, account cards, entrypoint notes, and a small Codex endpoint reminder. Configuration, logs, diagnostics, server control, CC Switch import/export, and other tools live on separate pages so the switching flow stays clean.
+
+Main navigation:
+
+- **Switcher**: choose the active alias/account by clicking an account card
+- **Configuration**: manage providers, aliases, entrypoints, presets, and CC Switch import/export
+- **Logs**: inspect request logs and request stats
+- **Advanced**: server control, diagnostics, and developer-oriented status panels
+
+The account switcher is implemented as a separate desktop feature module so future parallel modules can be added beside it, such as prompt profiles, routing rules, fallback chains, or usage quotas.
 
 Current desktop limitations:
 
@@ -511,7 +523,7 @@ modelgate test provider openai --model gpt-4.1 --responses
 
 Desktop:
 
-- Dashboard: use **Test Active** or **Test Active Stream**
+- Advanced: use **Test Active** or **Test Active Stream**
 - Configuration: use **Test** on provider rows
 - Configuration: use **Test** or **Test Stream** on alias rows
 

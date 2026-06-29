@@ -37,9 +37,10 @@ import {
   testProvider,
   validateAdminConfig
 } from "./api";
+import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
+import type { ConnectionState } from "./features/account-switcher/accountTypes";
 
-type ConnectionState = "checking" | "connected" | "disconnected";
-type ActiveTab = "dashboard" | "configuration" | "logs";
+type ActiveTab = "switcher" | "configuration" | "logs" | "advanced";
 
 type ImportDraft = CcSwitchImportCandidate & {
   selected: boolean;
@@ -82,7 +83,7 @@ function getErrorMessage(error: unknown) {
 }
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("switcher");
   const [connection, setConnection] = useState<ConnectionState>("checking");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [aliases, setAliases] = useState<AliasesResponse | null>(null);
@@ -1174,8 +1175,8 @@ export function App() {
       </header>
 
       <nav className="tabs">
-        <button className={activeTab === "dashboard" ? "tab active" : "tab"} onClick={() => setActiveTab("dashboard")}>
-          Dashboard
+        <button className={activeTab === "switcher" ? "tab active" : "tab"} onClick={() => setActiveTab("switcher")}>
+          Switcher
         </button>
         <button
           className={activeTab === "configuration" ? "tab active" : "tab"}
@@ -1197,9 +1198,25 @@ export function App() {
         >
           Logs
         </button>
+        <button className={activeTab === "advanced" ? "tab active" : "tab"} onClick={() => setActiveTab("advanced")}>
+          Advanced
+        </button>
       </nav>
 
-      {activeTab === "dashboard" ? (
+      {activeTab === "switcher" ? (
+        <AccountSwitcher
+          accounts={aliasesList}
+          activeAlias={activeAlias}
+          activeAliasName={status?.active}
+          connection={connection}
+          endpoint={serverUrl}
+          entrypoints={status?.entrypoints ?? {}}
+          message={message}
+          switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
+          onAlreadyActive={() => setMessage("Already active")}
+          onSelectAccount={(alias) => void handleSwitch(alias)}
+        />
+      ) : activeTab === "advanced" ? (
         <>
 
       {disconnected && (
@@ -1336,44 +1353,6 @@ export function App() {
 
       {renderDiagnosticResult()}
 
-      <section className="card table-card">
-        <div className="card-heading">
-          <span>Aliases</span>
-          <strong>{aliasesList.length}</strong>
-        </div>
-        <div className="alias-table">
-          <div className="alias-row alias-head">
-            <span>Name</span>
-            <span>Provider</span>
-            <span>Upstream Model</span>
-            <span>Action</span>
-          </div>
-          {aliasesList.map((alias) => {
-            const isActive = alias.name === status?.active;
-            return (
-              <div className={isActive ? "alias-row active" : "alias-row"} key={alias.name}>
-                <span>{alias.name}</span>
-                <span>{alias.provider}</span>
-                <span>{alias.model}</span>
-                <span>
-                  {isActive ? (
-                    <span className="pill">Active</span>
-                  ) : (
-                    <button
-                      className="secondary"
-                      onClick={() => void handleSwitch(alias.name)}
-                      disabled={busyAction !== null || disconnected}
-                    >
-                      {busyAction === `switch:${alias.name}` ? "Switching..." : "Switch"}
-                    </button>
-                  )}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
       <section className="card codex-card">
         <div className="card-heading">
           <span>Codex Configuration</span>
@@ -1383,7 +1362,6 @@ export function App() {
         </div>
         <pre>{codexConfig}</pre>
       </section>
-      {renderCcSwitchIntegration()}
         </>
       ) : activeTab === "configuration" ? (
         <section className="config-page">
