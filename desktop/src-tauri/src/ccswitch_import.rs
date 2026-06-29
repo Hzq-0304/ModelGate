@@ -22,6 +22,7 @@ pub struct CcSwitchImportCandidate {
     id: String,
     source_table: Option<String>,
     source_id: Option<String>,
+    app: String,
     name: String,
     provider_name: String,
     provider_type: String,
@@ -35,7 +36,27 @@ pub struct CcSwitchImportCandidate {
     suggested_modelgate_alias: String,
     suggested_env_name: String,
     complete: bool,
+    modelgate_managed: bool,
     warnings: Vec<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CcSwitchTableInfo {
+    name: String,
+    row_count: Option<usize>,
+    columns: Vec<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CcSwitchImportReport {
+    db_path: String,
+    tables: Vec<CcSwitchTableInfo>,
+    candidates_found: usize,
+    skipped_modelgate_managed: usize,
+    warnings: Vec<String>,
+    parser: String,
 }
 
 #[derive(Serialize)]
@@ -44,6 +65,17 @@ pub struct CcSwitchScanResult {
     candidates: Vec<CcSwitchImportCandidate>,
     skipped_modelgate_managed: usize,
     warnings: Vec<String>,
+    report: CcSwitchImportReport,
+}
+
+struct SchemaCandidateRow {
+    id: String,
+    app_type: String,
+    name: String,
+    settings_config: Value,
+    notes: Option<String>,
+    category: Option<String>,
+    meta: Value,
 }
 
 struct TableScanResult {
@@ -53,7 +85,7 @@ struct TableScanResult {
 
 const NAME_KEYS: &[&str] = &["name", "label", "display_name", "title", "provider_name"];
 const BASE_URL_KEYS: &[&str] = &["base_url", "baseurl", "api_base", "apibase", "endpoint", "url", "base"];
-const API_KEY_KEYS: &[&str] = &["api_key", "apikey", "key", "token", "auth_token"];
+const API_KEY_KEYS: &[&str] = &["api_key", "apikey", "key", "token", "auth_token", "openai_api_key"];
 const NOTES_KEYS: &[&str] = &["notes", "note", "description", "remark", "metadata"];
 const MODEL_KEYS: &[&str] = &[
     "model",
@@ -64,7 +96,7 @@ const MODEL_KEYS: &[&str] = &[
     "codex_model",
     "models",
 ];
-const TYPE_KEYS: &[&str] = &["type", "api_type", "protocol", "kind"];
+const TYPE_KEYS: &[&str] = &["type", "api_type", "protocol", "kind", "api_format"];
 
 #[tauri::command]
 pub fn detect_ccswitch_database() -> CcSwitchDatabaseDetection {
@@ -115,40 +147,51 @@ fn scan_database(path: &Path, show_managed: bool) -> Result<CcSwitchScanResult, 
     )
     .map_err(|error| format!("Failed to open SQLite database read-only: {error}"))?;
 
+    let db_path = path.to_string_lossy().to_string();
+    let tables = describe_tables(&connection)?;
     let mut warnings = Vec::new();
-    let tables = list_tables(&connection)?;
-    let mut candidates = Vec::new();
-    let mut skipped_modelgate_managed = 0usize;
 
-    for table in tables {
-        if !is_candidate_table(&table) {
-            continue;
-        }
-
-        match scan_table(&connection, &table, show_managed) {
-            Ok(mut table_result) => {
-                skipped_modelgate_managed += table_result.skipped_modelgate_managed;
-                candidates.append(&mut table_result.candidates);
+    let (mut candidates, skipped_modelgate_managed, parser) = if has_current_ccswitch_schema(&tables) {
+        match scan_current_schema(&connection, show_managed) {
+            Ok(result) => (result.candidates, result.skipped_modelgate_managed, "ccswitch-current-schema".to_string()),
+            Err(error) => {
+                warnings.push(format!("Current schema parser failed: {error}. Falling back to heuristic scanner."));
+                let result = scan_heuristic(&connection, &tables, show_managed, &mut warnings);
+                (result.candidates, result.skipped_modelgate_managed, "heuristic".to_string())
             }
-            Err(error) => warnings.push(format!("Failed to scan table {table}: {error}")),
         }
-    }
+    } else {
+        warnings.push("Current CC Switch providers/provider_endpoints schema was not found; using heuristic scanner.".to_string());
+        let result = scan_heuristic(&connection, &tables, show_managed, &mut warnings);
+        (result.candidates, result.skipped_modelgate_managed, "heuristic".to_string())
+    };
 
     dedupe_candidates(&mut candidates);
 
     if candidates.is_empty() {
-        warnings.push("No provider candidates were found. The CC Switch schema may be unsupported.".to_string());
+        warnings.push("Scanned database, but no importable provider candidates were recognized.".to_string());
+        warnings.push("Possible causes: schema changed, provider is not OpenAI-compatible, or base URL/model fields are missing.".to_string());
     }
 
+    let report = CcSwitchImportReport {
+        db_path,
+        tables,
+        candidates_found: candidates.len(),
+        skipped_modelgate_managed,
+        warnings: warnings.clone(),
+        parser,
+    };
+
     Ok(CcSwitchScanResult {
-        path: path.to_string_lossy().to_string(),
+        path: report.db_path.clone(),
         candidates,
         skipped_modelgate_managed,
         warnings,
+        report,
     })
 }
 
-fn list_tables(connection: &Connection) -> Result<Vec<String>, String> {
+fn describe_tables(connection: &Connection) -> Result<Vec<CcSwitchTableInfo>, String> {
     let mut statement = connection
         .prepare("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY name")
         .map_err(|error| error.to_string())?;
@@ -158,9 +201,432 @@ fn list_tables(connection: &Connection) -> Result<Vec<String>, String> {
 
     let mut tables = Vec::new();
     for row in rows {
-        tables.push(row.map_err(|error| error.to_string())?);
+        let name = row.map_err(|error| error.to_string())?;
+        let columns = table_columns(connection, &name).unwrap_or_default();
+        let row_count = table_row_count(connection, &name).ok();
+        tables.push(CcSwitchTableInfo {
+            name,
+            row_count,
+            columns,
+        });
     }
+
     Ok(tables)
+}
+
+fn table_columns(connection: &Connection, table: &str) -> Result<Vec<String>, String> {
+    let sql = format!("PRAGMA table_info({})", quote_identifier(table));
+    let mut statement = connection.prepare(&sql).map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| error.to_string())?;
+
+    let mut columns = Vec::new();
+    for row in rows {
+        columns.push(row.map_err(|error| error.to_string())?);
+    }
+    Ok(columns)
+}
+
+fn table_row_count(connection: &Connection, table: &str) -> Result<usize, String> {
+    let sql = format!("SELECT COUNT(*) FROM {}", quote_identifier(table));
+    let count = connection
+        .query_row(&sql, [], |row| row.get::<_, i64>(0))
+        .map_err(|error| error.to_string())?;
+    Ok(count.max(0) as usize)
+}
+
+fn has_current_ccswitch_schema(tables: &[CcSwitchTableInfo]) -> bool {
+    let Some(providers) = tables.iter().find(|table| table.name == "providers") else {
+        return false;
+    };
+    let required = ["id", "app_type", "name", "settings_config"];
+    required.iter().all(|column| providers.columns.iter().any(|item| item == column))
+}
+
+fn scan_current_schema(connection: &Connection, show_managed: bool) -> Result<TableScanResult, String> {
+    let endpoints = load_provider_endpoints(connection).unwrap_or_default();
+    let mut statement = connection
+        .prepare(
+            "SELECT id, app_type, name, settings_config, notes, category, meta
+             FROM providers
+             ORDER BY app_type ASC, COALESCE(sort_index, 999999), created_at ASC, id ASC",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let rows = statement
+        .query_map([], |row| {
+            let settings_text: String = row.get(3)?;
+            let meta_text: String = row.get(6).unwrap_or_else(|_| "{}".to_string());
+            Ok(SchemaCandidateRow {
+                id: row.get(0)?,
+                app_type: row.get(1)?,
+                name: row.get(2)?,
+                settings_config: serde_json::from_str(&settings_text).unwrap_or(Value::Null),
+                notes: row.get(4).ok(),
+                category: row.get(5).ok(),
+                meta: serde_json::from_str(&meta_text).unwrap_or(Value::Null),
+            })
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut candidates = Vec::new();
+    let mut skipped_modelgate_managed = 0usize;
+
+    for row in rows {
+        let row = row.map_err(|error| error.to_string())?;
+        let urls = endpoints
+            .get(&(row.id.clone(), row.app_type.clone()))
+            .cloned()
+            .unwrap_or_default();
+        let candidate = candidate_from_current_schema(&row, urls);
+
+        if !show_managed && candidate.modelgate_managed {
+            skipped_modelgate_managed += 1;
+            continue;
+        }
+
+        candidates.push(candidate);
+    }
+
+    Ok(TableScanResult {
+        candidates,
+        skipped_modelgate_managed,
+    })
+}
+
+fn load_provider_endpoints(connection: &Connection) -> Result<HashMap<(String, String), Vec<String>>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT provider_id, app_type, url
+             FROM provider_endpoints
+             ORDER BY added_at ASC, url ASC",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut endpoints: HashMap<(String, String), Vec<String>> = HashMap::new();
+    for row in rows {
+        let (provider_id, app_type, url) = row.map_err(|error| error.to_string())?;
+        endpoints.entry((provider_id, app_type)).or_default().push(url);
+    }
+    Ok(endpoints)
+}
+
+fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String>) -> CcSwitchImportCandidate {
+    let (base_url, api_key, models, provider_type_hint) = extract_current_provider_fields(row);
+    let base_url = base_url.or_else(|| endpoints.first().cloned());
+    let model = models.first().cloned();
+    let safe_provider = safe_name(&row.name);
+    let env_name = suggested_env_name(&safe_provider);
+    let modelgate_managed = is_current_schema_modelgate_managed(row, base_url.as_deref(), model.as_deref(), api_key.as_deref());
+    let provider_type = if current_provider_looks_openai_compatible(row, base_url.as_deref(), provider_type_hint.as_deref()) {
+        "openai-compatible"
+    } else {
+        "unknown"
+    };
+    let mut warnings = Vec::new();
+
+    if base_url.is_none() {
+        warnings.push("Missing base URL.".to_string());
+    }
+    if model.is_none() {
+        warnings.push("Missing model.".to_string());
+    }
+    if api_key.is_none() {
+        warnings.push("No API key field detected.".to_string());
+    }
+    if provider_type == "unknown" {
+        warnings.push(format!("Provider app '{}' is not clearly OpenAI-compatible.", row.app_type));
+    }
+    if modelgate_managed {
+        warnings.push("ModelGate-managed CC Switch provider.".to_string());
+    }
+    if row.category.as_deref() == Some("official") {
+        warnings.push("Official/default provider; review before importing.".to_string());
+    }
+
+    let complete = base_url.is_some() && model.is_some() && provider_type == "openai-compatible";
+
+    CcSwitchImportCandidate {
+        id: format!("providers:{}:{}", row.app_type, row.id),
+        source_table: Some("providers".to_string()),
+        source_id: Some(row.id.clone()),
+        app: row.app_type.clone(),
+        name: row.name.clone(),
+        provider_name: row.name.clone(),
+        provider_type: provider_type.to_string(),
+        base_url,
+        api_key_env: Some(env_name.clone()),
+        api_key_detected: api_key.is_some(),
+        api_key_preview: api_key.as_deref().map(mask_secret),
+        model,
+        models,
+        suggested_modelgate_provider: safe_provider.clone(),
+        suggested_modelgate_alias: format!("{safe_provider}-main"),
+        suggested_env_name: env_name,
+        complete,
+        modelgate_managed,
+        warnings,
+    }
+}
+
+fn extract_current_provider_fields(row: &SchemaCandidateRow) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
+    match row.app_type.as_str() {
+        "codex" => extract_codex_fields(&row.settings_config),
+        "claude" | "claude-desktop" => extract_claude_fields(&row.settings_config, &row.meta),
+        "gemini" => extract_gemini_fields(&row.settings_config),
+        "opencode" => extract_opencode_fields(&row.settings_config),
+        "openclaw" => extract_openclaw_fields(&row.settings_config),
+        "hermes" => extract_hermes_fields(&row.settings_config),
+        _ => extract_generic_json_fields(&row.settings_config),
+    }
+}
+
+fn extract_codex_fields(settings: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
+    let config_text = settings.get("config").and_then(Value::as_str).unwrap_or_default();
+    let base_url = extract_toml_string(config_text, "base_url");
+    let api_key = settings
+        .pointer("/auth/OPENAI_API_KEY")
+        .and_then(Value::as_str)
+        .map(String::from)
+        .or_else(|| extract_toml_string(config_text, "api_key"));
+    let mut models = Vec::new();
+    if let Some(model) = extract_toml_string(config_text, "model") {
+        models.push(model);
+    }
+    ("codex".to_string().into(), api_key, models, Some("openai-compatible".to_string()))
+        .map_first(base_url)
+}
+
+fn extract_claude_fields(settings: &Value, meta: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
+    let env = settings.get("env");
+    let base_url = json_string_at(env, "ANTHROPIC_BASE_URL");
+    let api_key = first_json_string(env, &[
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "OPENROUTER_API_KEY",
+        "GOOGLE_API_KEY",
+    ]);
+    let models = json_strings(env, &[
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    ]);
+    let hint = meta
+        .get("apiFormat")
+        .and_then(Value::as_str)
+        .map(String::from);
+    (base_url, api_key, models, hint)
+}
+
+fn extract_gemini_fields(settings: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
+    let env = settings.get("env");
+    (
+        json_string_at(env, "GOOGLE_GEMINI_BASE_URL"),
+        first_json_string(env, &["GEMINI_API_KEY", "GOOGLE_API_KEY"]),
+        json_strings(env, &["GEMINI_MODEL"]),
+        Some("gemini".to_string()),
+    )
+}
+
+fn extract_opencode_fields(settings: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
+    let options = settings.get("options");
+    let mut models = Vec::new();
+    collect_models_from_json(settings.get("models").unwrap_or(&Value::Null), &mut models);
+    (
+        json_string_at(options, "baseURL"),
+        json_string_at(options, "apiKey"),
+        models,
+        settings.get("npm").and_then(Value::as_str).map(String::from),
+    )
+}
+
+fn extract_openclaw_fields(settings: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
+    let mut models = Vec::new();
+    collect_models_from_json(settings.get("models").unwrap_or(&Value::Null), &mut models);
+    (
+        json_string_at(Some(settings), "baseUrl"),
+        json_string_at(Some(settings), "apiKey"),
+        models,
+        json_string_at(Some(settings), "api"),
+    )
+}
+
+fn extract_hermes_fields(settings: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
+    let mut models = Vec::new();
+    collect_models_from_json(settings.get("models").unwrap_or(&Value::Null), &mut models);
+    (
+        json_string_at(Some(settings), "base_url"),
+        json_string_at(Some(settings), "api_key"),
+        models,
+        json_string_at(Some(settings), "api_mode"),
+    )
+}
+
+fn extract_generic_json_fields(settings: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
+    let mut fields = HashMap::new();
+    collect_json_value(&mut fields, settings);
+    (
+        find_first(&fields, BASE_URL_KEYS),
+        find_first(&fields, API_KEY_KEYS),
+        find_models(&fields),
+        find_first(&fields, TYPE_KEYS),
+    )
+}
+
+trait TupleFirst {
+    fn map_first(self, first: Option<String>) -> (Option<String>, Option<String>, Vec<String>, Option<String>);
+}
+
+impl TupleFirst for (Option<String>, Option<String>, Vec<String>, Option<String>) {
+    fn map_first(self, first: Option<String>) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
+        (first, self.1, self.2, self.3)
+    }
+}
+
+fn extract_toml_string(config: &str, key: &str) -> Option<String> {
+    for line in config.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') || !trimmed.starts_with(key) {
+            continue;
+        }
+        let Some((left, right)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if left.trim() != key {
+            continue;
+        }
+        return Some(
+            right
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string(),
+        )
+        .filter(|value| !value.is_empty());
+    }
+    None
+}
+
+fn json_string_at(value: Option<&Value>, key: &str) -> Option<String> {
+    value?
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(String::from)
+}
+
+fn first_json_string(value: Option<&Value>, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = json_string_at(value, key) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn json_strings(value: Option<&Value>, keys: &[&str]) -> Vec<String> {
+    let mut output = Vec::new();
+    for key in keys {
+        if let Some(value) = json_string_at(value, key) {
+            output.push(value);
+        }
+    }
+    dedupe_strings(&mut output);
+    output
+}
+
+fn current_provider_looks_openai_compatible(row: &SchemaCandidateRow, base_url: Option<&str>, hint: Option<&str>) -> bool {
+    if matches!(row.app_type.as_str(), "codex" | "opencode" | "openclaw" | "hermes") {
+        return true;
+    }
+
+    if hint
+        .map(|value| {
+            let value = value.to_ascii_lowercase();
+            value.contains("openai") || value.contains("compatible") || value.contains("chat_completions")
+        })
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    base_url
+        .map(|url| {
+            let url = url.to_ascii_lowercase();
+            url.contains("/v1") || url.contains("openrouter") || url.contains("compatible")
+        })
+        .unwrap_or(false)
+}
+
+fn is_current_schema_modelgate_managed(
+    row: &SchemaCandidateRow,
+    base_url: Option<&str>,
+    model: Option<&str>,
+    api_key: Option<&str>,
+) -> bool {
+    let notes = row.notes.as_deref().unwrap_or_default().to_ascii_lowercase();
+    if notes.contains("modelgate-managed=true") {
+        return true;
+    }
+
+    if row.name.to_ascii_lowercase().contains("modelgate local") {
+        return true;
+    }
+
+    if base_url
+        .unwrap_or_default()
+        .trim_end_matches('/')
+        .eq_ignore_ascii_case("http://127.0.0.1:11435/v1")
+        || base_url
+            .unwrap_or_default()
+            .trim_end_matches('/')
+            .eq_ignore_ascii_case("http://localhost:11435/v1")
+    {
+        return true;
+    }
+
+    model == Some("codex-main") && api_key == Some("modelgate-local")
+}
+
+fn scan_heuristic(
+    connection: &Connection,
+    tables: &[CcSwitchTableInfo],
+    show_managed: bool,
+    warnings: &mut Vec<String>,
+) -> TableScanResult {
+    let mut candidates = Vec::new();
+    let mut skipped_modelgate_managed = 0usize;
+
+    for table in tables {
+        if !is_candidate_table(&table.name) {
+            continue;
+        }
+
+        match scan_table(connection, &table.name, show_managed) {
+            Ok(mut table_result) => {
+                skipped_modelgate_managed += table_result.skipped_modelgate_managed;
+                candidates.append(&mut table_result.candidates);
+            }
+            Err(error) => warnings.push(format!("Failed to scan table {}: {error}", table.name)),
+        }
+    }
+
+    TableScanResult {
+        candidates,
+        skipped_modelgate_managed,
+    }
 }
 
 fn is_candidate_table(table: &str) -> bool {
@@ -290,6 +756,7 @@ fn candidate_from_fields(
     };
     let safe_provider = safe_name(&provider_name);
     let env_name = suggested_env_name(&safe_provider);
+    let modelgate_managed = is_modelgate_managed_provider(fields);
     let mut warnings = Vec::new();
 
     if base_url.is_none() {
@@ -304,6 +771,9 @@ fn candidate_from_fields(
     if api_key.is_none() {
         warnings.push("No API key field detected.".to_string());
     }
+    if modelgate_managed {
+        warnings.push("ModelGate-managed CC Switch provider.".to_string());
+    }
 
     let complete = base_url.is_some() && model.is_some() && provider_type == "openai-compatible";
 
@@ -311,6 +781,7 @@ fn candidate_from_fields(
         id: format!("{table}:{row_index}:{safe_provider}"),
         source_table: Some(table.to_string()),
         source_id: find_source_id(fields),
+        app: find_first(fields, &["app_type", "app"]).unwrap_or_else(|| "unknown".to_string()),
         name,
         provider_name,
         provider_type: provider_type.to_string(),
@@ -324,6 +795,7 @@ fn candidate_from_fields(
         suggested_modelgate_alias: format!("{safe_provider}-main"),
         suggested_env_name: env_name,
         complete,
+        modelgate_managed,
         warnings,
     })
 }
@@ -383,8 +855,7 @@ fn find_models(fields: &HashMap<String, String>) -> Vec<String> {
         }
     }
 
-    let mut seen = HashSet::new();
-    models.retain(|model| seen.insert(model.clone()));
+    dedupe_strings(&mut models);
     models
 }
 
@@ -397,7 +868,13 @@ fn collect_models_from_json(value: &Value, models: &mut Vec<String>) {
         }
         Value::Array(items) => {
             for item in items {
-                collect_models_from_json(item, models);
+                if let Some(id) = item.get("id").and_then(Value::as_str) {
+                    models.push(id.to_string());
+                } else if let Some(name) = item.get("name").and_then(Value::as_str) {
+                    models.push(name.to_string());
+                } else {
+                    collect_models_from_json(item, models);
+                }
             }
         }
         Value::Object(map) => {
@@ -406,9 +883,20 @@ fn collect_models_from_json(value: &Value, models: &mut Vec<String>) {
                     collect_models_from_json(value, models);
                 }
             }
+            for (key, value) in map {
+                if value.is_object() {
+                    models.push(key.clone());
+                }
+            }
         }
         _ => {}
     }
+    dedupe_strings(models);
+}
+
+fn dedupe_strings(values: &mut Vec<String>) {
+    let mut seen = HashSet::new();
+    values.retain(|value| seen.insert(value.clone()));
 }
 
 fn find_source_id(fields: &HashMap<String, String>) -> Option<String> {
@@ -492,7 +980,8 @@ fn dedupe_candidates(candidates: &mut Vec<CcSwitchImportCandidate>) {
     let mut seen = HashSet::new();
     candidates.retain(|candidate| {
         let key = format!(
-            "{}|{}|{}",
+            "{}|{}|{}|{}",
+            candidate.app,
             candidate.suggested_modelgate_provider,
             candidate.base_url.clone().unwrap_or_default(),
             candidate.model.clone().unwrap_or_default()

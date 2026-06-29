@@ -1,21 +1,21 @@
 .switcher-page {
   display: grid;
-  gap: 18px;
+  gap: 16px;
 }
 
 .switcher-hero {
   align-items: center;
-  background: rgba(24, 29, 36, 0.94);
-  border: 1px solid rgba(143, 161, 184, 0.16);
+  background: #ffffff;
+  border: 1px solid #e4e9f2;
   border-radius: 8px;
   display: flex;
   gap: 20px;
   justify-content: space-between;
-  padding: 24px;
+  padding: 18px;
 }
 
 .switcher-kicker {
-  color: #9aa8ba;
+  color: #2563eb;
   display: inline-block;
   font-size: 12px;
   font-weight: 800;
@@ -24,19 +24,20 @@
 }
 
 .switcher-hero h2 {
-  font-size: 34px;
-  line-height: 1.1;
-  margin: 0 0 8px;
+  color: #101828;
+  font-size: 26px;
+  line-height: 1.15;
+  margin: 0 0 7px;
 }
 
 .switcher-hero p {
-  color: #9aa8ba;
+  color: #667085;
 }
 
 .switcher-status {
   align-items: center;
-  background: #202832;
-  border: 1px solid rgba(143, 161, 184, 0.16);
+  background: #f8fafc;
+  border: 1px solid #e4e9f2;
   border-radius: 7px;
   display: grid;
   gap: 4px 10px;
@@ -46,7 +47,7 @@
 }
 
 .switcher-status span:last-child {
-  color: #9aa8ba;
+  color: #667085;
   font-size: 13px;
   grid-column: 2;
 }
@@ -62,10 +63,12 @@
 }
 
 .switcher-notice {
-  background: rgba(78, 28, 35, 0.92);
-  border: 1px solid rgba(255, 100, 100, 0.42);
+  background: #fff4f2;
+  border: 1px solid #fecdca;
   border-radius: 8px;
-  color: #ffd9d9;
+  color: #b42318;
+  display: grid;
+  gap: 8px;
   padding: 14px 16px;
 }
 
@@ -76,53 +79,51 @@
 }
 
 .account-card {
-  background: #202832;
-  border: 1px solid rgba(143, 161, 184, 0.18);
+  background: #ffffff;
+  border: 1px solid #e4e9f2;
   border-radius: 8px;
-  color: #e9eef7;
+  color: #1f2937;
   display: grid;
   gap: 10px;
-  min-height: 190px;
+  min-height: 178px;
   padding: 16px;
   text-align: left;
   width: 100%;
 }
 
 .account-card:hover:not(:disabled) {
-  background: #263242;
-  border-color: rgba(92, 135, 255, 0.62);
+  background: #f8fafc;
+  border-color: #84adff;
   transform: translateY(-1px);
 }
 
 .account-card.active {
-  border-color: rgba(66, 211, 146, 0.82);
-  box-shadow:
-    inset 4px 0 0 #42d392,
-    0 0 28px rgba(66, 211, 146, 0.18);
+  border-color: #84adff;
+  box-shadow: inset 4px 0 0 #2563eb;
 }
 
 .account-card:disabled {
-  opacity: 0.58;
+  opacity: 0.6;
 }
 
 .account-card-status {
-  color: #9af0c5;
+  color: #2563eb;
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
 }
 
 .account-card:not(.active) .account-card-status {
-  color: #9aa8ba;
+  color: #667085;
 }
 
 .account-card strong {
-  font-size: 20px;
+  color: #101828;
+  font-size: 18px;
 }
 
 .account-card code {
-  color: #9aa8ba;
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  color: #667085;
 }
 
 .account-card dl {
@@ -146,8 +147,8 @@
 }
 
 .switcher-footnotes div {
-  background: rgba(24, 29, 36, 0.72);
-  border: 1px solid rgba(143, 161, 184, 0.12);
+  background: #ffffff;
+  border: 1px solid #e4e9f2;
   border-radius: 8px;
   display: grid;
   gap: 6px;
@@ -155,15 +156,27 @@
 }
 
 .switcher-footnotes strong {
-  color: #e9eef7;
+  color: #101828;
 }
 
 .switcher-footnotes span,
 .switcher-message {
-  color: #9aa8ba;
+  color: #667085;
   font-size: 14px;
 }
 
 .switcher-message.bad {
-  color: #ff9a9a;
+  color: #d92d20;
+}
+
+@media (max-width: 860px) {
+  .switcher-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .switcher-footnotes,
+  .switcher-current dl {
+    grid-template-columns: 1fr;
+  }
 }

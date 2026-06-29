@@ -424,14 +424,14 @@ Desktop app features:
 - view usage overview with tokens, requests, estimated cost, trends, and recent usage
 - copy Codex configuration
 
-The desktop app opens on **Switcher** by default. In the UI, an **Account** is a ModelGate alias profile such as `mock-main`, `deepseek-main`, or `qwen-main`. Switcher shows account selection context and an independent Usage Overview section. Configuration, logs, diagnostics, server control, CC Switch import/export, and other tools live on separate pages so the switching flow stays clean.
+The desktop app now uses a lighter desktop-management layout with clearer page hierarchy. It opens on **Home** by default. In the UI, an **Account** is a ModelGate alias profile such as `mock-main`, `deepseek-main`, or `qwen-main`. Home keeps Account Switcher and Usage Overview as separate sections, and disconnected server state now points users to **Advanced -> Server Control** or `npm run dev`.
 
 Main navigation:
 
-- **Switcher**: choose the active alias/account and inspect the local usage overview
-- **Configuration**: manage providers, aliases, entrypoints, presets, and CC Switch import/export
-- **Logs**: inspect request logs and request stats
-- **Advanced**: server control, diagnostics, and developer-oriented status panels
+- **Home / Switcher**: choose the active alias/account and inspect the local usage overview
+- **Configuration**: tabbed groups for Providers, Aliases, Entrypoints, Integrations, and Pricing
+- **Logs**: summary stats, provider stats, and recent request logs
+- **Advanced**: server control, diagnostics, Codex endpoint details, and developer-oriented status panels
 
 The account switcher and usage overview are implemented as separate desktop feature modules so future parallel modules can be added beside them, such as prompt profiles, routing rules, fallback chains, or usage quotas.
 
@@ -658,7 +658,7 @@ The first version is mainly aimed at Codex and OpenCode style OpenAI-compatible 
 
 ### Import From CC Switch
 
-The Configuration tab includes **Import from CC Switch** for read-only provider import.
+The Configuration tab includes **Import from CC Switch** under **Integrations** for read-only provider import.
 
 ModelGate scans CC Switch data without modifying it:
 
@@ -668,6 +668,8 @@ ModelGate scans CC Switch data without modifying it:
 - imports only provider, endpoint, and model-related data
 - does not import MCP servers, skills, prompts, or usage logs
 - skips ModelGate-managed providers by default to avoid import loops
+
+The scanner is based on the current CC Switch SQLite schema. It first looks for the real `providers` / `provider_endpoints` schema, reads `providers.settings_config` JSON, and extracts app-specific provider fields for Codex, Claude, Gemini, OpenCode, OpenClaw, and Hermes. If that schema is missing or cannot be parsed, it falls back to a heuristic scan and says so in the scan report.
 
 The desktop app first looks for:
 
@@ -681,7 +683,15 @@ On Windows this resolves to:
 C:\Users\<User>\.cc-switch\cc-switch.db
 ```
 
-You can also choose a database manually with **Select cc-switch.db**. The scanner opens SQLite in read-only mode and uses a best-effort schema scan, so it can handle CC Switch schema changes more gracefully.
+You can also choose a database manually with **Select cc-switch.db**. The scanner opens SQLite in read-only mode and shows a scan report even when no candidates are importable.
+
+Scan report includes:
+
+- parser: `ccswitch-current-schema` or `heuristic`
+- detected tables, columns, and row counts
+- candidates found
+- skipped ModelGate-managed provider count
+- warnings and likely reasons when no provider can be imported
 
 API keys are never imported as plaintext. If a key or token is detected, ModelGate only shows a masked preview and suggests an environment variable name. The saved ModelGate YAML uses this form:
 
@@ -703,11 +713,18 @@ npm run dev
 Import flow:
 
 1. Auto-detect or select `cc-switch.db`
-2. Preview candidates
-3. Edit provider name, base URL, env name, model, or alias
-4. Choose merge strategy
+2. Review **Scan Report**
+3. Review and edit **Candidates**
+4. Review the provider / alias YAML **Import Preview**
 5. Click **Import Selected**
 6. ModelGate validates and saves its own YAML config, then reloads
+
+If no provider is found, check **Scan Report**. Common causes are:
+
+- the CC Switch schema changed
+- the provider is not OpenAI-compatible
+- `settings_config` is missing base URL or model information
+- the only matching rows are ModelGate-managed providers hidden by default
 
 Future:
 

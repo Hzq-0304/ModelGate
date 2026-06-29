@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type AliasesResponse,
   type CcSwitchImportCandidate,
+  type CcSwitchImportReport,
   type CcSwitchProviderLink,
   type DiagnosticResult,
   type EditableConfig,
@@ -38,12 +39,16 @@ import {
   validateAdminConfig
 } from "./api";
 import { LanguageSelector } from "./components/LanguageSelector";
+import { PageHeader } from "./components/PageHeader";
 import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
 import type { ConnectionState } from "./features/account-switcher/accountTypes";
+import { CcSwitchExportPanel, type CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
+import { CcSwitchImportPanel } from "./features/ccswitch/CcSwitchImportPanel";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
 import { useI18n } from "./i18n/i18n";
 
 type ActiveTab = "switcher" | "configuration" | "logs" | "advanced";
+type ConfigSection = "providers" | "aliases" | "entrypoints" | "integrations" | "pricing";
 
 type ImportDraft = CcSwitchImportCandidate & {
   selected: boolean;
@@ -64,14 +69,6 @@ type PresetDraft = {
   setActive: boolean;
 };
 
-type CcSwitchExportDraft = {
-  name: string;
-  app: string;
-  endpoint: string;
-  apiKey: string;
-  model: string;
-};
-
 const serverUrl = getBaseUrl();
 const ccSwitchAppLabels: Record<string, string> = {
   codex: "Codex",
@@ -88,6 +85,7 @@ function getErrorMessage(error: unknown) {
 export function App() {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>("switcher");
+  const [configSection, setConfigSection] = useState<ConfigSection>("providers");
   const [connection, setConnection] = useState<ConnectionState>("checking");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [aliases, setAliases] = useState<AliasesResponse | null>(null);
@@ -97,6 +95,7 @@ export function App() {
   const [configMessage, setConfigMessage] = useState(t("usage.notLoaded"));
   const [ccSwitchPath, setCcSwitchPath] = useState("");
   const [ccSwitchMessage, setCcSwitchMessage] = useState("CC Switch import not scanned");
+  const [ccSwitchReport, setCcSwitchReport] = useState<CcSwitchImportReport | null>(null);
   const [showManagedCcSwitch, setShowManagedCcSwitch] = useState(false);
   const [ccSwitchExportDraft, setCcSwitchExportDraft] = useState<CcSwitchExportDraft>({
     name: "ModelGate Local",
@@ -386,12 +385,13 @@ export function App() {
 
   async function applyCcSwitchScan(scan: Awaited<ReturnType<typeof scanCcSwitchDatabase>>) {
     setCcSwitchPath(scan.path);
+    setCcSwitchReport(scan.report);
     setImportDrafts(scan.candidates.map(candidateToDraft));
     const warning = scan.warnings.length > 0 ? ` Warnings: ${scan.warnings.join(" ")}` : "";
     const skipped = scan.skipped_modelgate_managed > 0
       ? ` Skipped ${scan.skipped_modelgate_managed} ModelGate-managed CC Switch provider(s).`
       : "";
-    setCcSwitchMessage(`Found ${scan.candidates.length} candidate(s).${skipped}${warning}`);
+    setCcSwitchMessage(`Parser: ${scan.report.parser}. Found ${scan.candidates.length} candidate(s).${skipped}${warning}`);
   }
 
   async function handleScanAutoCcSwitch() {
@@ -1038,77 +1038,19 @@ export function App() {
     const deepLink = buildCcSwitchDeepLink();
 
     return (
-      <section className="card config-card ccswitch-export-card">
-        <div className="card-heading">
-          <span>{t("config.exportToCcSwitch")}</span>
-          <button className="secondary" onClick={() => void loadCcSwitchLink(ccSwitchExportDraft.app).catch((error) => setCcSwitchExportMessage(`Generate failed: ${getErrorMessage(error)}`))} disabled={busyAction !== null || disconnected}>
-            {t("config.generateDefaults")}
-          </button>
-        </div>
-        <p className="muted">
-          Export ModelGate as a local provider through a CC Switch deep link. The link uses the local placeholder API key only.
-        </p>
-        <div className="ccswitch-export-form">
-          <label>
-            {t("config.providerName")}
-            <input value={ccSwitchExportDraft.name} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, name: event.target.value })} />
-          </label>
-          <label>
-            {t("config.targetApp")}
-            <select value={ccSwitchExportDraft.app} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, app: event.target.value })}>
-              {Object.entries(ccSwitchAppLabels).map(([value, label]) => (
-                <option value={value} key={value}>{label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t("config.endpoint")}
-            <input value={ccSwitchExportDraft.endpoint} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, endpoint: event.target.value })} />
-          </label>
-          <label>
-            {t("config.apiKey")}
-            <input value={ccSwitchExportDraft.apiKey} readOnly disabled />
-          </label>
-          <label>
-            {t("common.model")}
-            <input value={ccSwitchExportDraft.model} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, model: event.target.value })} />
-          </label>
-        </div>
-        <dl className="ccswitch-export-preview">
-          <div>
-            <dt>{t("common.name")}</dt>
-            <dd>{ccSwitchExportDraft.name}</dd>
-          </div>
-          <div>
-            <dt>App</dt>
-            <dd>{ccSwitchAppLabels[ccSwitchExportDraft.app] ?? ccSwitchExportDraft.app}</dd>
-          </div>
-          <div>
-            <dt>{t("config.endpoint")}</dt>
-            <dd>{ccSwitchExportDraft.endpoint}</dd>
-          </div>
-          <div>
-            <dt>{t("config.apiKey")}</dt>
-            <dd>{ccSwitchExportDraft.apiKey}</dd>
-          </div>
-          <div>
-            <dt>{t("common.model")}</dt>
-            <dd>{ccSwitchExportDraft.model}</dd>
-          </div>
-        </dl>
-        <pre className="deep-link-preview">{deepLink}</pre>
-        <div className="server-actions">
-          <button onClick={() => void handleOpenCcSwitch()} disabled={busyAction !== null}>
-            {busyAction === "ccswitch:open" ? t("config.opening") : t("config.openInCcSwitch")}
-          </button>
-          <button className="secondary" onClick={() => void handleCopyCcSwitchLink()} disabled={busyAction !== null}>
-            {t("config.copyDeepLink")}
-          </button>
-          <span className={ccSwitchExportMessage.startsWith("Open failed") || ccSwitchExportMessage.startsWith("Generate failed") ? "action-message bad" : "action-message"}>
-            {ccSwitchExportMessage}
-          </span>
-        </div>
-      </section>
+      <CcSwitchExportPanel
+        appLabels={ccSwitchAppLabels}
+        busyAction={busyAction}
+        deepLink={deepLink}
+        disconnected={disconnected}
+        draft={ccSwitchExportDraft}
+        message={ccSwitchExportMessage}
+        onCopy={() => void handleCopyCcSwitchLink()}
+        onDraftChange={setCcSwitchExportDraft}
+        onGenerateDefaults={loadCcSwitchLink}
+        onGenerateMessage={setCcSwitchExportMessage}
+        onOpen={() => void handleOpenCcSwitch()}
+      />
     );
   }
 
@@ -1212,6 +1154,17 @@ export function App() {
 
       {activeTab === "switcher" ? (
         <section className="switcher-page">
+          {disconnected && (
+            <section className="notice error disconnected-guide">
+              <div>
+                <strong>{t("home.serverNotRunning")}</strong>
+                <span>{t("home.serverGuidance")}</span>
+              </div>
+              <button className="secondary" onClick={() => setActiveTab("advanced")}>
+                {t("home.goToServerControl")}
+              </button>
+            </section>
+          )}
           <AccountSwitcher
             accounts={aliasesList}
             activeAlias={activeAlias}
@@ -1375,6 +1328,16 @@ export function App() {
         </>
       ) : activeTab === "configuration" ? (
         <section className="config-page">
+          <PageHeader
+            title={t("config.title")}
+            subtitle={t("config.subtitle")}
+            actions={(
+              <span className={configMessage.startsWith("Save failed") || configMessage.startsWith("Validation failed") ? "action-message bad" : "action-message"}>
+                {configMessage}
+              </span>
+            )}
+          />
+
           <section className="card config-card">
             <div className="card-heading">
               <span>{t("config.title")}</span>
@@ -1393,15 +1356,26 @@ export function App() {
                   ))}
                 </select>
               </label>
-              <span className={configMessage.startsWith("Save failed") || configMessage.startsWith("Validation failed") ? "action-message bad" : "action-message"}>
-                {configMessage}
-              </span>
+              <span className="muted">{configPath || t("config.notLoaded")}</span>
             </div>
           </section>
 
-          {renderDiagnosticResult()}
-          {renderCcSwitchIntegration()}
+          <nav className="subtabs">
+            {(["providers", "aliases", "entrypoints", "integrations", "pricing"] as const).map((section) => (
+              <button
+                className={configSection === section ? "subtab active" : "subtab"}
+                key={section}
+                onClick={() => setConfigSection(section)}
+              >
+                {t(`config.section.${section}`)}
+              </button>
+            ))}
+          </nav>
 
+          {renderDiagnosticResult()}
+
+          {configSection === "providers" && (
+          <>
           <section className="card config-card preset-card">
             <div className="card-heading">
               <span>{t("config.providerPresets")}</span>
@@ -1497,101 +1471,6 @@ export function App() {
             )}
           </section>
 
-          <section className="card config-card import-card">
-            <div className="card-heading">
-              <span>{t("config.importFromCcSwitch")}</span>
-              <strong>{importDrafts.length}</strong>
-            </div>
-            <p className="muted">
-              Read-only import from CC Switch. Plaintext API keys are never imported; ModelGate saves environment variable references only.
-            </p>
-            <div className="server-actions">
-              <button onClick={() => void handleDetectCcSwitch()} disabled={busyAction !== null}>
-                {busyAction === "ccswitch:detect" ? t("config.detecting") : t("config.autoDetect")}
-              </button>
-              <button onClick={() => void handleScanAutoCcSwitch()} disabled={busyAction !== null || !ccSwitchPath}>
-                {busyAction === "ccswitch:scan" ? t("config.scanning") : t("config.scanAuto")}
-              </button>
-              <button className="secondary" onClick={() => void handleSelectCcSwitch()} disabled={busyAction !== null}>
-                {busyAction === "ccswitch:select" ? t("config.selecting") : t("config.selectDb")}
-              </button>
-            </div>
-            <div className="import-options">
-              <label>
-                <input type="checkbox" checked={showManagedCcSwitch} onChange={(event) => setShowManagedCcSwitch(event.target.checked)} />
-                Show ModelGate-managed providers
-              </label>
-            </div>
-            <div className="import-source">
-              <span>{ccSwitchPath ? `Source: ${ccSwitchPath}` : "CC Switch database was not found automatically. Select cc-switch.db manually."}</span>
-              <span className={ccSwitchMessage.startsWith("Import failed") || ccSwitchMessage.startsWith("Scan failed") ? "action-message bad" : "action-message"}>
-                {ccSwitchMessage}
-              </span>
-            </div>
-
-            {importDrafts.length > 0 && (
-              <>
-                <div className="import-options">
-                  <label>
-                    <input type="checkbox" checked={overwriteProviders} onChange={(event) => setOverwriteProviders(event.target.checked)} />
-                    Overwrite existing providers with same name
-                  </label>
-                  <label>
-                    <input type="checkbox" checked={overwriteAliases} onChange={(event) => setOverwriteAliases(event.target.checked)} />
-                    Overwrite existing aliases with same name
-                  </label>
-                  <label>
-                    <input type="checkbox" checked={setImportedActive} onChange={(event) => setSetImportedActive(event.target.checked)} />
-                    Set first imported alias as active
-                  </label>
-                </div>
-                <div className="ccswitch-table">
-                  <div className="ccswitch-row ccswitch-head">
-                    <span>{t("config.import")}</span>
-                    <span>{t("common.provider")}</span>
-                    <span>{t("config.baseUrl")}</span>
-                    <span>{t("config.detectedKey")}</span>
-                    <span>{t("config.envNameShort")}</span>
-                    <span>{t("common.model")}</span>
-                    <span>{t("common.alias")}</span>
-                    <span>{t("config.warnings")}</span>
-                  </div>
-                  {importDrafts.map((draft) => (
-                    <div className={draft.complete ? "ccswitch-row" : "ccswitch-row incomplete"} key={draft.id}>
-                      <span>
-                        <input
-                          type="checkbox"
-                          checked={draft.selected}
-                          onChange={(event) => updateImportDraft(draft.id, { selected: event.target.checked })}
-                        />
-                      </span>
-                      <input value={draft.providerName} onChange={(event) => updateImportDraft(draft.id, { providerName: event.target.value })} />
-                      <input value={draft.baseUrl} onChange={(event) => updateImportDraft(draft.id, { baseUrl: event.target.value })} />
-                      <span>{draft.api_key_detected ? draft.api_key_preview ?? "Detected" : "Not detected"}</span>
-                      <input value={draft.envName} onChange={(event) => updateImportDraft(draft.id, { envName: event.target.value })} />
-                      {draft.models.length > 1 ? (
-                        <select value={draft.modelValue} onChange={(event) => updateImportDraft(draft.id, { modelValue: event.target.value })}>
-                          {draft.models.map((model) => (
-                            <option key={model} value={model}>{model}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input value={draft.modelValue} onChange={(event) => updateImportDraft(draft.id, { modelValue: event.target.value })} />
-                      )}
-                      <input value={draft.aliasName} onChange={(event) => updateImportDraft(draft.id, { aliasName: event.target.value })} />
-                      <span>{draft.warnings.join(" ")}</span>
-                    </div>
-                  ))}
-                </div>
-                <section className="actions import-actions">
-                  <button onClick={() => void handleImportCcSwitch()} disabled={!editableConfig || busyAction !== null}>
-                    {busyAction === "ccswitch:import" ? t("config.importing") : t("config.importSelected")}
-                  </button>
-                </section>
-              </>
-            )}
-          </section>
-
           <section className="card config-card">
             <div className="card-heading">
               <span>{t("config.providers")}</span>
@@ -1642,7 +1521,37 @@ export function App() {
               <button onClick={saveProviderDraft} disabled={configBusy}>{providerForm.editingName ? t("config.updateProvider") : t("config.addProvider")}</button>
             </div>
           </section>
+          </>
+          )}
 
+          {configSection === "integrations" && (
+          <>
+          {renderCcSwitchIntegration()}
+          <CcSwitchImportPanel
+            busyAction={busyAction}
+            configLoaded={Boolean(editableConfig)}
+            drafts={importDrafts}
+            message={ccSwitchMessage}
+            overwriteAliases={overwriteAliases}
+            overwriteProviders={overwriteProviders}
+            path={ccSwitchPath}
+            report={ccSwitchReport}
+            setImportedActive={setImportedActive}
+            showManaged={showManagedCcSwitch}
+            onDetect={() => void handleDetectCcSwitch()}
+            onImport={() => void handleImportCcSwitch()}
+            onOverwriteAliasesChange={setOverwriteAliases}
+            onOverwriteProvidersChange={setOverwriteProviders}
+            onScanAuto={() => void handleScanAutoCcSwitch()}
+            onSelectDatabase={() => void handleSelectCcSwitch()}
+            onSetImportedActiveChange={setSetImportedActive}
+            onShowManagedChange={setShowManagedCcSwitch}
+            onUpdateDraft={updateImportDraft}
+          />
+          </>
+          )}
+
+          {configSection === "aliases" && (
           <section className="card config-card">
             <div className="card-heading">
               <span>{t("config.aliases")}</span>
@@ -1686,7 +1595,9 @@ export function App() {
               <button onClick={saveAliasDraft} disabled={configBusy}>{aliasForm.editingName ? t("config.updateAlias") : t("config.addAlias")}</button>
             </div>
           </section>
+          )}
 
+          {configSection === "entrypoints" && (
           <section className="card config-card">
             <div className="card-heading">
               <span>{t("config.entrypoints")}</span>
@@ -1720,6 +1631,17 @@ export function App() {
               <button onClick={saveEntrypointDraft} disabled={configBusy}>{entrypointForm.editingName ? t("config.updateEntrypoint") : t("config.addEntrypoint")}</button>
             </div>
           </section>
+          )}
+
+          {configSection === "pricing" && (
+            <section className="card config-card">
+              <div className="card-heading">
+                <span>{t("config.section.pricing")}</span>
+                <strong>{Object.keys(editableConfig?.pricing ?? {}).length}</strong>
+              </div>
+              <p className="muted">{t("config.pricingPlaceholder")}</p>
+            </section>
+          )}
 
           <section className="actions config-actions">
             <button onClick={() => void handleValidateConfig()} disabled={!editableConfig || busyAction !== null}>

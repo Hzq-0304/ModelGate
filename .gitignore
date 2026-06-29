@@ -3,6 +3,7 @@ dist/
 desktop/dist/
 desktop/src-tauri/target/
 release/
+.reference/
 .env
 .env.*
 .modelgate/

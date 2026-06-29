@@ -232,6 +232,7 @@ export type CcSwitchImportCandidate = {
   id: string;
   source_table?: string;
   source_id?: string;
+  app: string;
   name: string;
   provider_name: string;
   provider_type: "openai-compatible" | "unknown";
@@ -245,7 +246,21 @@ export type CcSwitchImportCandidate = {
   suggested_modelgate_alias: string;
   suggested_env_name: string;
   complete: boolean;
+  modelgate_managed: boolean;
   warnings: string[];
+};
+
+export type CcSwitchImportReport = {
+  dbPath: string;
+  tables: Array<{
+    name: string;
+    rowCount?: number;
+    columns: string[];
+  }>;
+  candidatesFound: number;
+  skippedModelGateManaged: number;
+  warnings: string[];
+  parser: "ccswitch-current-schema" | "heuristic";
 };
 
 export type CcSwitchScanResult = {
@@ -253,6 +268,7 @@ export type CcSwitchScanResult = {
   candidates: CcSwitchImportCandidate[];
   skipped_modelgate_managed: number;
   warnings: string[];
+  report: CcSwitchImportReport;
 };
 
 export type CcSwitchProviderLink = {
