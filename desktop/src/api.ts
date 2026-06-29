@@ -82,6 +82,7 @@ export type ConfigValidationResponse = {
 
 export type RequestLogEntry = {
   id: string;
+  kind?: "normal" | "diagnostic";
   started_at: string;
   finished_at?: string;
   duration_ms?: number;
@@ -117,6 +118,26 @@ export type ProviderPreset = {
   suggested_env_name: string;
   notes?: string;
   models?: string[];
+};
+
+export type DiagnosticCheck = {
+  name: string;
+  ok: boolean;
+  message?: string;
+};
+
+export type DiagnosticResult = {
+  ok: boolean;
+  target: "provider" | "alias" | "active";
+  provider?: string;
+  alias?: string;
+  model?: string;
+  stream: boolean;
+  duration_ms: number;
+  status_code?: number;
+  checks: DiagnosticCheck[];
+  message?: string;
+  error_message?: string;
 };
 
 export type CcSwitchDatabaseDetection = {
@@ -277,6 +298,42 @@ export async function getRequestStats() {
 export async function getProviderPresets() {
   const response = await fetch(`${baseUrl}/admin/provider-presets`);
   return parseJson<{ presets: ProviderPreset[] }>(response);
+}
+
+export async function testProvider(provider: string, model?: string, stream = false) {
+  const response = await fetch(`${baseUrl}/admin/test/provider`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ provider, model, stream })
+  });
+
+  return parseJson<DiagnosticResult>(response);
+}
+
+export async function testAlias(alias: string, stream = false) {
+  const response = await fetch(`${baseUrl}/admin/test/alias`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ alias, stream })
+  });
+
+  return parseJson<DiagnosticResult>(response);
+}
+
+export async function testActive(stream = false) {
+  const response = await fetch(`${baseUrl}/admin/test/active`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ stream })
+  });
+
+  return parseJson<DiagnosticResult>(response);
 }
 
 export async function detectCcSwitchDatabase() {

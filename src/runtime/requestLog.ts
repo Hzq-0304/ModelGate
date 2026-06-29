@@ -1,5 +1,6 @@
 export type RequestLogEntry = {
   id: string;
+  kind?: "normal" | "diagnostic";
   started_at: string;
   finished_at?: string;
   duration_ms?: number;

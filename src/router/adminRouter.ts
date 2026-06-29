@@ -8,6 +8,7 @@ import {
 } from "../config/configManager.js";
 import { providerPresets } from "../config/providerPresets.js";
 import { createOpenAICompatibleError } from "../providers/openaiCompatible.js";
+import { addDiagnosticLog, testActiveAlias, testAlias, testProvider } from "../runtime/diagnostics.js";
 import type { RuntimeState } from "../runtime/state.js";
 
 type SwitchBody = {
@@ -20,6 +21,21 @@ type ConfigBody = {
 
 type LogsQuery = {
   limit?: string;
+};
+
+type TestProviderBody = {
+  provider?: string;
+  model?: string;
+  stream?: boolean;
+};
+
+type TestAliasBody = {
+  alias?: string;
+  stream?: boolean;
+};
+
+type TestActiveBody = {
+  stream?: boolean;
 };
 
 function isLocalAddress(address?: string) {
@@ -69,6 +85,40 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
   server.get("/admin/provider-presets", async () => ({
     presets: providerPresets
   }));
+
+  server.post<{ Body: TestProviderBody }>("/admin/test/provider", async (request, reply) => {
+    const provider = request.body?.provider;
+
+    if (!provider) {
+      return reply
+        .status(400)
+        .send(createOpenAICompatibleError("Request body must include provider"));
+    }
+
+    const result = await testProvider(runtime, provider, request.body?.model, Boolean(request.body?.stream));
+    addDiagnosticLog(runtime, result);
+    return result;
+  });
+
+  server.post<{ Body: TestAliasBody }>("/admin/test/alias", async (request, reply) => {
+    const alias = request.body?.alias;
+
+    if (!alias) {
+      return reply
+        .status(400)
+        .send(createOpenAICompatibleError("Request body must include alias"));
+    }
+
+    const result = await testAlias(runtime, alias, Boolean(request.body?.stream));
+    addDiagnosticLog(runtime, result);
+    return result;
+  });
+
+  server.post<{ Body: TestActiveBody }>("/admin/test/active", async (request, reply) => {
+    const result = await testActiveAlias(runtime, Boolean(request.body?.stream));
+    addDiagnosticLog(runtime, result);
+    return reply.send(result);
+  });
 
   server.get("/admin/config", async (_request, reply) => {
     try {

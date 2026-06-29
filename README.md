@@ -131,6 +131,9 @@ npm run cli -- logs -- --limit 20
 npm run cli -- logs -- --clear
 npm run cli -- stats
 npm run cli -- presets
+npm run cli -- test active
+npm run cli -- test alias mock-main
+npm run cli -- test alias mock-main -- --stream
 ```
 
 The CLI connects to `http://127.0.0.1:11435` by default. Override it with:
@@ -157,6 +160,15 @@ Admin endpoints are intended for local requests only:
 curl http://127.0.0.1:11435/admin/status
 curl http://127.0.0.1:11435/admin/aliases
 curl http://127.0.0.1:11435/admin/provider-presets
+curl -X POST http://127.0.0.1:11435/admin/test/active \
+  -H "Content-Type: application/json" \
+  -d '{"stream":false}'
+curl -X POST http://127.0.0.1:11435/admin/test/alias \
+  -H "Content-Type: application/json" \
+  -d '{"alias":"mock-main","stream":false}'
+curl -X POST http://127.0.0.1:11435/admin/test/provider \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"mock","model":"mock-codex-model","stream":false}'
 curl -X POST http://127.0.0.1:11435/admin/switch \
   -H "Content-Type: application/json" \
   -d '{"active":"mock-main"}'
@@ -401,6 +413,52 @@ Roadmap:
 modelgate add-provider deepseek
 ```
 
+### Connectivity Diagnostics
+
+ModelGate can test a provider, alias, or the current active alias on demand. Diagnostics are useful after adding a provider or alias because they check the route, environment-variable backed API key, base URL, upstream model, and chat completion behavior before Codex uses the route.
+
+Diagnostics never run automatically at startup and never batch-test every provider. You must click a button or run a CLI command. For OpenAI-compatible providers, each test sends one tiny real request with this fixed prompt:
+
+```text
+Reply with exactly: OK
+```
+
+The request uses a small token limit and may still create a very small provider charge. Mock provider diagnostics do not make network requests.
+
+Admin API:
+
+```bash
+curl -X POST http://127.0.0.1:11435/admin/test/active \
+  -H "Content-Type: application/json" \
+  -d '{"stream":false}'
+
+curl -X POST http://127.0.0.1:11435/admin/test/alias \
+  -H "Content-Type: application/json" \
+  -d '{"alias":"deepseek-main","stream":true}'
+
+curl -X POST http://127.0.0.1:11435/admin/test/provider \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"deepseek","model":"deepseek-chat","stream":false}'
+```
+
+CLI:
+
+```bash
+modelgate test active
+modelgate test active --stream
+modelgate test alias deepseek-main
+modelgate test alias deepseek-main --stream
+modelgate test provider deepseek --model deepseek-chat
+```
+
+Desktop:
+
+- Dashboard: use **Test Active** or **Test Active Stream**
+- Configuration: use **Test** on provider rows
+- Configuration: use **Test** or **Test Stream** on alias rows
+
+Diagnostics return check names, pass/fail status, HTTP status when available, duration, and a short error summary. They do not display API keys, do not log the `Authorization` header, and do not store full upstream responses. Diagnostic requests are marked as `diagnostic` in request logs.
+
 ### Import From CC Switch
 
 The Configuration tab includes **Import from CC Switch** for read-only provider import.
@@ -566,3 +624,4 @@ curl http://127.0.0.1:11435/v1/chat/completions \
 - runtime active alias switching
 - config reload through the local admin API
 - provider presets through the local admin API, CLI, and desktop Configuration tab
+- provider, alias, and active alias connectivity diagnostics

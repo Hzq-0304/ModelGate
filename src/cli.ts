@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {
+  type DiagnosticResult,
   clearLogs,
   getAliases,
   getLogs,
@@ -7,11 +8,14 @@ import {
   getStats,
   getStatus,
   reloadConfig,
-  switchAlias
+  switchAlias,
+  testActive,
+  testAlias,
+  testProvider
 } from "./cli/client.js";
 
 function printUsage() {
-  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|presets>");
+  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|presets|test active|test alias <alias>|test provider <provider> --model <model>>");
 }
 
 function formatTime(value: string) {
@@ -24,6 +28,36 @@ function formatTime(value: string) {
 function argValue(args: string[], name: string) {
   const index = args.indexOf(name);
   return index >= 0 ? args[index + 1] : undefined;
+}
+
+function printDiagnosticResult(result: DiagnosticResult) {
+  if (result.target === "provider") {
+    console.log(`Testing provider: ${result.provider ?? "-"}`);
+  } else if (result.target === "active") {
+    console.log(`Testing active alias: ${result.alias ?? "-"}`);
+  } else {
+    console.log(`Testing alias: ${result.alias ?? "-"}`);
+  }
+
+  console.log(`Provider: ${result.provider ?? "-"}`);
+  console.log(`Upstream model: ${result.model ?? "-"}`);
+  console.log(`Stream: ${result.stream}`);
+  if (result.status_code) {
+    console.log(`HTTP status: ${result.status_code}`);
+  }
+  console.log("");
+
+  for (const check of result.checks) {
+    const status = check.ok ? "OK" : "FAIL";
+    console.log(`[${status}] ${check.name}${check.message ? `: ${check.message}` : ""}`);
+  }
+
+  console.log("");
+  console.log(`Result: ${result.ok ? "passed" : "failed"}`);
+  console.log(`Duration: ${result.duration_ms}ms`);
+  if (result.error_message) {
+    console.log(`Error: ${result.error_message}`);
+  }
 }
 
 async function run() {
@@ -87,11 +121,12 @@ async function run() {
     const limit = Number.parseInt(argValue(args, "--limit") ?? "50", 10);
     const result = await getLogs(Number.isFinite(limit) ? limit : 50);
 
-    console.log("Time                  OK   Stream  Alias             Provider     Upstream Model       Duration");
+    console.log("Time                  Kind        OK   Stream  Alias             Provider     Upstream Model       Duration");
     for (const entry of result.logs) {
       const error = entry.ok ? "" : `  ${entry.error_type ?? "error"} ${entry.status_code ?? ""}`.trimEnd();
       console.log(
         `${formatTime(entry.started_at).padEnd(21)} ` +
+        `${(entry.kind ?? "normal").padEnd(11)} ` +
         `${(entry.ok ? "yes" : "no").padEnd(4)} ` +
         `${String(entry.stream).padEnd(7)} ` +
         `${(entry.resolved_alias ?? "-").padEnd(17)} ` +
@@ -134,6 +169,38 @@ async function run() {
       );
     }
     return;
+  }
+
+  if (command === "test") {
+    const target = value;
+    const stream = args.includes("--stream");
+
+    if (target === "active") {
+      printDiagnosticResult(await testActive(stream));
+      return;
+    }
+
+    if (target === "alias") {
+      const alias = args[2];
+      if (!alias) {
+        throw new Error("Missing alias name. Usage: modelgate test alias <alias> [--stream]");
+      }
+
+      printDiagnosticResult(await testAlias(alias, stream));
+      return;
+    }
+
+    if (target === "provider") {
+      const provider = args[2];
+      if (!provider) {
+        throw new Error("Missing provider name. Usage: modelgate test provider <provider> --model <model> [--stream]");
+      }
+
+      printDiagnosticResult(await testProvider(provider, argValue(args, "--model"), stream));
+      return;
+    }
+
+    throw new Error("Unknown test target. Usage: modelgate test <active|alias|provider>");
   }
 
   throw new Error(`Unknown command "${command}"`);

@@ -23,6 +23,7 @@ type SwitchResult = {
 
 export type RequestLogEntry = {
   id: string;
+  kind?: "normal" | "diagnostic";
   started_at: string;
   finished_at?: string;
   duration_ms?: number;
@@ -58,6 +59,26 @@ export type ProviderPreset = {
   suggested_env_name: string;
   notes?: string;
   models?: string[];
+};
+
+export type DiagnosticCheck = {
+  name: string;
+  ok: boolean;
+  message?: string;
+};
+
+export type DiagnosticResult = {
+  ok: boolean;
+  target: "provider" | "alias" | "active";
+  provider?: string;
+  alias?: string;
+  model?: string;
+  stream: boolean;
+  duration_ms: number;
+  status_code?: number;
+  checks: DiagnosticCheck[];
+  message?: string;
+  error_message?: string;
 };
 
 type ErrorResponse = {
@@ -135,4 +156,40 @@ export async function getStats() {
 export async function getProviderPresets() {
   const response = await fetch(`${getBaseUrl()}/admin/provider-presets`);
   return parseResponse<{ presets: ProviderPreset[] }>(response);
+}
+
+export async function testProvider(provider: string, model?: string, stream = false) {
+  const response = await fetch(`${getBaseUrl()}/admin/test/provider`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ provider, model, stream })
+  });
+
+  return parseResponse<DiagnosticResult>(response);
+}
+
+export async function testAlias(alias: string, stream = false) {
+  const response = await fetch(`${getBaseUrl()}/admin/test/alias`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ alias, stream })
+  });
+
+  return parseResponse<DiagnosticResult>(response);
+}
+
+export async function testActive(stream = false) {
+  const response = await fetch(`${getBaseUrl()}/admin/test/active`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ stream })
+  });
+
+  return parseResponse<DiagnosticResult>(response);
 }

@@ -265,6 +265,13 @@ dd {
   gap: 10px;
 }
 
+.diagnostic-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
 .server-hint {
   background: rgba(255, 204, 102, 0.12);
   border: 1px solid rgba(255, 204, 102, 0.28);
@@ -486,6 +493,58 @@ dd {
   gap: 8px;
 }
 
+.diagnostic-card {
+  display: grid;
+  gap: 14px;
+}
+
+.diagnostic-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.diagnostic-summary dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostic-checks {
+  display: grid;
+  gap: 8px;
+}
+
+.diagnostic-check {
+  align-items: center;
+  background: #202832;
+  border: 1px solid rgba(66, 211, 146, 0.28);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 64px 180px 1fr;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.diagnostic-check.failed {
+  border-color: rgba(255, 100, 100, 0.38);
+}
+
+.diagnostic-check span {
+  color: #9af0c5;
+  font-weight: 800;
+}
+
+.diagnostic-check.failed span {
+  color: #ffb6b6;
+}
+
+.diagnostic-check p {
+  color: #b9c4d3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .import-source,
 .import-options {
   display: grid;
@@ -611,11 +670,11 @@ select:disabled {
 }
 
 .providers-table .config-row {
-  grid-template-columns: 0.75fr 1fr 1.6fr 1.2fr 150px;
+  grid-template-columns: 0.75fr 1fr 1.6fr 1.2fr 220px;
 }
 
 .aliases-config-table .config-row {
-  grid-template-columns: 1fr 1fr 1.2fr 230px;
+  grid-template-columns: 1fr 1fr 1.2fr 420px;
 }
 
 .entrypoints-table .config-row {
@@ -680,7 +739,7 @@ button.danger {
   border-radius: 7px;
   display: grid;
   gap: 10px;
-  grid-template-columns: 155px 72px 90px 130px 130px 100px 150px 85px minmax(160px, 1fr);
+  grid-template-columns: 155px 95px 72px 90px 130px 130px 100px 150px 85px minmax(160px, 1fr);
   min-height: 48px;
   padding: 10px 12px;
 }

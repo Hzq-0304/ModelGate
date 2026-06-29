@@ -87,6 +87,7 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
     const stream = Boolean(body.stream);
     const baseLog = {
       id: crypto.randomUUID(),
+      kind: "normal" as const,
       started_at: startedAt.toISOString(),
       method: "POST" as const,
       path: "/v1/chat/completions" as const,

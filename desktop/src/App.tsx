@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type AliasesResponse,
   type CcSwitchImportCandidate,
+  type DiagnosticResult,
   type EditableConfig,
   type ProviderPreset,
   type ProviderConfig,
@@ -28,6 +29,9 @@ import {
   startServerProcess,
   stopServerProcess,
   switchAlias,
+  testActive,
+  testAlias,
+  testProvider,
   validateAdminConfig
 } from "./api";
 
@@ -83,6 +87,8 @@ export function App() {
   const [requestLogs, setRequestLogs] = useState<RequestLogEntry[]>([]);
   const [requestStats, setRequestStats] = useState<RequestStats | null>(null);
   const [logsMessage, setLogsMessage] = useState("Logs not loaded");
+  const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
+  const [diagnosticMessage, setDiagnosticMessage] = useState("Diagnostics not run");
   const [providerForm, setProviderForm] = useState({
     editingName: "",
     name: "",
@@ -805,6 +811,136 @@ export function App() {
     }
   }
 
+  function formatDiagnosticResult(result: DiagnosticResult) {
+    const lines = [
+      `Target: ${result.target}${result.alias ? ` ${result.alias}` : result.provider ? ` ${result.provider}` : ""}`,
+      `Provider: ${result.provider ?? "-"}`,
+      `Model: ${result.model ?? "-"}`,
+      `Stream: ${result.stream}`,
+      `Status: ${result.ok ? "Passed" : "Failed"}`,
+      `Duration: ${result.duration_ms}ms`
+    ];
+
+    if (result.status_code) {
+      lines.push(`HTTP status: ${result.status_code}`);
+    }
+
+    lines.push("", "Checks:");
+    for (const check of result.checks) {
+      lines.push(`  ${check.ok ? "OK" : "FAIL"} ${check.name}${check.message ? `: ${check.message}` : ""}`);
+    }
+
+    if (result.error_message) {
+      lines.push("", `Error: ${result.error_message}`);
+    }
+
+    return lines.join("\n");
+  }
+
+  async function handleCopyDiagnostic() {
+    if (!diagnosticResult) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(formatDiagnosticResult(diagnosticResult));
+      setDiagnosticMessage("Diagnostics result copied");
+    } catch {
+      setDiagnosticMessage("Copy failed. Select the diagnostics result manually.");
+    }
+  }
+
+  async function runDiagnostic(action: string, callback: () => Promise<DiagnosticResult>) {
+    setBusyAction(action);
+    setDiagnosticMessage("Running diagnostics...");
+
+    try {
+      const result = await callback();
+      setDiagnosticResult(result);
+      setDiagnosticMessage(result.ok ? "Diagnostics passed" : "Diagnostics failed");
+      await loadLogs().catch(() => undefined);
+    } catch (error) {
+      setDiagnosticMessage(`Diagnostics failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function providerDiagnosticModel(providerName: string) {
+    return aliasEntries.find(([, alias]) => alias.provider === providerName)?.[1].model;
+  }
+
+  function handleTestProvider(providerName: string) {
+    const inferredModel = providerDiagnosticModel(providerName);
+    const model = inferredModel ?? window.prompt(`Model for provider ${providerName}`)?.trim();
+    if (!model) {
+      setDiagnosticMessage("Provider diagnostics require a model.");
+      return;
+    }
+
+    void runDiagnostic(`diagnostic:provider:${providerName}`, () => testProvider(providerName, model, false));
+  }
+
+  function renderDiagnosticResult() {
+    if (!diagnosticResult) {
+      return null;
+    }
+
+    return (
+      <section className="card diagnostic-card">
+        <div className="card-heading">
+          <span>Diagnostics Result</span>
+          <button className="secondary" onClick={() => void handleCopyDiagnostic()}>Copy</button>
+        </div>
+        <dl className="diagnostic-summary">
+          <div>
+            <dt>Target</dt>
+            <dd>{diagnosticResult.target}{diagnosticResult.alias ? ` ${diagnosticResult.alias}` : diagnosticResult.provider ? ` ${diagnosticResult.provider}` : ""}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd><span className={diagnosticResult.ok ? "pill" : "pill bad"}>{diagnosticResult.ok ? "Passed" : "Failed"}</span></dd>
+          </div>
+          <div>
+            <dt>Provider</dt>
+            <dd>{diagnosticResult.provider ?? "-"}</dd>
+          </div>
+          <div>
+            <dt>Model</dt>
+            <dd>{diagnosticResult.model ?? "-"}</dd>
+          </div>
+          <div>
+            <dt>Stream</dt>
+            <dd>{diagnosticResult.stream ? "true" : "false"}</dd>
+          </div>
+          <div>
+            <dt>Duration</dt>
+            <dd>{diagnosticResult.duration_ms}ms</dd>
+          </div>
+          <div>
+            <dt>HTTP Status</dt>
+            <dd>{diagnosticResult.status_code ?? "-"}</dd>
+          </div>
+        </dl>
+        <div className="diagnostic-checks">
+          {diagnosticResult.checks.map((check) => (
+            <div className={check.ok ? "diagnostic-check" : "diagnostic-check failed"} key={check.name}>
+              <span>{check.ok ? "OK" : "FAIL"}</span>
+              <strong>{check.name}</strong>
+              <p>{check.message ?? ""}</p>
+            </div>
+          ))}
+        </div>
+        {diagnosticResult.error_message && (
+          <p className="inline-error">{diagnosticResult.error_message}</p>
+        )}
+        <span className={diagnosticMessage.startsWith("Diagnostics failed") ? "action-message bad" : "action-message"}>
+          {diagnosticMessage}
+        </span>
+      </section>
+    );
+  }
+
   function formatLogTime(value: string) {
     const date = new Date(value);
     return Number.isNaN(date.getTime())
@@ -984,16 +1120,26 @@ export function App() {
             {status && <strong>{status.active}</strong>}
           </div>
           {status && activeAlias ? (
-            <dl>
-              <div>
-                <dt>Provider</dt>
-                <dd>{activeAlias.provider}</dd>
+            <>
+              <dl>
+                <div>
+                  <dt>Provider</dt>
+                  <dd>{activeAlias.provider}</dd>
+                </div>
+                <div>
+                  <dt>Upstream Model</dt>
+                  <dd>{activeAlias.model}</dd>
+                </div>
+              </dl>
+              <div className="diagnostic-actions">
+                <button onClick={() => void runDiagnostic("diagnostic:active", () => testActive(false))} disabled={busyAction !== null || disconnected}>
+                  {busyAction === "diagnostic:active" ? "Testing..." : "Test Active"}
+                </button>
+                <button className="secondary" onClick={() => void runDiagnostic("diagnostic:active-stream", () => testActive(true))} disabled={busyAction !== null || disconnected}>
+                  {busyAction === "diagnostic:active-stream" ? "Testing..." : "Test Active Stream"}
+                </button>
               </div>
-              <div>
-                <dt>Upstream Model</dt>
-                <dd>{activeAlias.model}</dd>
-              </div>
-            </dl>
+            </>
           ) : status ? (
             <p className="inline-error">Active alias is missing from the alias list.</p>
           ) : (
@@ -1021,6 +1167,8 @@ export function App() {
           )}
         </article>
       </section>
+
+      {renderDiagnosticResult()}
 
       <section className="card table-card">
         <div className="card-heading">
@@ -1095,6 +1243,8 @@ export function App() {
               </span>
             </div>
           </section>
+
+          {renderDiagnosticResult()}
 
           <section className="card config-card preset-card">
             <div className="card-heading">
@@ -1304,6 +1454,9 @@ export function App() {
                       : "-"}
                   </span>
                   <span className="row-actions">
+                    <button className="secondary" onClick={() => handleTestProvider(name)} disabled={busyAction !== null}>
+                      {busyAction === `diagnostic:provider:${name}` ? "Testing..." : "Test"}
+                    </button>
                     <button className="secondary" onClick={() => editProvider(name, provider)} disabled={configBusy}>Edit</button>
                     <button className="secondary danger" onClick={() => deleteProvider(name)} disabled={configBusy}>Delete</button>
                   </span>
@@ -1340,6 +1493,12 @@ export function App() {
                   <span>{alias.provider}</span>
                   <span>{alias.model}</span>
                   <span className="row-actions">
+                    <button className="secondary" onClick={() => void runDiagnostic(`diagnostic:alias:${name}`, () => testAlias(name, false))} disabled={busyAction !== null}>
+                      {busyAction === `diagnostic:alias:${name}` ? "Testing..." : "Test"}
+                    </button>
+                    <button className="secondary" onClick={() => void runDiagnostic(`diagnostic:alias-stream:${name}`, () => testAlias(name, true))} disabled={busyAction !== null}>
+                      {busyAction === `diagnostic:alias-stream:${name}` ? "Testing..." : "Test Stream"}
+                    </button>
                     <button className="secondary" onClick={() => editAlias(name, alias)} disabled={configBusy}>Edit</button>
                     <button className="secondary" onClick={() => setActiveAlias(name)} disabled={configBusy}>Set Active</button>
                     <button className="secondary danger" onClick={() => deleteAlias(name)} disabled={configBusy}>Delete</button>
@@ -1489,6 +1648,7 @@ export function App() {
             <div className="request-log-table">
               <div className="request-log-row request-log-head">
                 <span>Time</span>
+                <span>Kind</span>
                 <span>Status</span>
                 <span>Stream</span>
                 <span>Requested Model</span>
@@ -1501,6 +1661,7 @@ export function App() {
               {requestLogs.map((entry) => (
                 <div className={entry.ok ? "request-log-row ok" : "request-log-row failed"} key={entry.id}>
                   <span>{formatLogTime(entry.started_at)}</span>
+                  <span>{entry.kind === "diagnostic" ? "Diagnostic" : "Normal"}</span>
                   <span><span className={entry.ok ? "pill" : "pill bad"}>{entry.ok ? "OK" : entry.status_code ?? "ERR"}</span></span>
                   <span>{entry.stream ? "stream" : "non-stream"}</span>
                   <span>{entry.requested_model ?? "-"}</span>
