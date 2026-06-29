@@ -178,7 +178,21 @@ export type CcSwitchImportCandidate = {
 export type CcSwitchScanResult = {
   path: string;
   candidates: CcSwitchImportCandidate[];
+  skipped_modelgate_managed: number;
   warnings: string[];
+};
+
+export type CcSwitchProviderLink = {
+  url: string;
+  provider: {
+    name: string;
+    app: string;
+    endpoint: string;
+    api_key: string;
+    model: string;
+    notes: string;
+    enabled: boolean;
+  };
 };
 
 type ErrorResponse = {
@@ -309,6 +323,11 @@ export async function getProviderPresets() {
   return parseJson<{ presets: ProviderPreset[] }>(response);
 }
 
+export async function getCcSwitchLink(app = "codex") {
+  const response = await fetch(`${baseUrl}/admin/ccswitch-link?app=${encodeURIComponent(app)}`);
+  return parseJson<CcSwitchProviderLink>(response);
+}
+
 export async function testProvider(provider: string, model?: string, stream = false, apiType: "chat_completions" | "responses" = "chat_completions") {
   const response = await fetch(`${baseUrl}/admin/test/provider`, {
     method: "POST",
@@ -356,15 +375,15 @@ export async function detectCcSwitchDatabase() {
   return invoke<CcSwitchDatabaseDetection>("detect_ccswitch_database");
 }
 
-export async function scanCcSwitchDatabase() {
+export async function scanCcSwitchDatabase(showManaged = false) {
   if (!isTauriRuntime()) {
     throw new Error("CC Switch import is only available in the desktop app.");
   }
 
-  return invoke<CcSwitchScanResult>("scan_ccswitch_database");
+  return invoke<CcSwitchScanResult>("scan_ccswitch_database", { showManaged });
 }
 
-export async function selectAndScanCcSwitchDatabase() {
+export async function selectAndScanCcSwitchDatabase(showManaged = false) {
   if (!isTauriRuntime()) {
     throw new Error("CC Switch import is only available in the desktop app.");
   }
@@ -384,8 +403,17 @@ export async function selectAndScanCcSwitchDatabase() {
   }
 
   return invoke<CcSwitchScanResult>("scan_selected_ccswitch_database", {
-    path: selected
+    path: selected,
+    showManaged
   });
+}
+
+export async function openCcSwitchDeepLink(url: string) {
+  if (!isTauriRuntime()) {
+    throw new Error("Opening CC Switch is only available in the desktop app.");
+  }
+
+  return invoke<string>("open_ccswitch_deep_link", { url });
 }
 
 export async function getServerProcessStatus() {

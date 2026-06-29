@@ -85,6 +85,19 @@ export type DiagnosticResult = {
   error_message?: string;
 };
 
+export type CcSwitchProviderLink = {
+  url: string;
+  provider: {
+    name: string;
+    app: string;
+    endpoint: string;
+    api_key: string;
+    model: string;
+    notes: string;
+    enabled: boolean;
+  };
+};
+
 type ErrorResponse = {
   error?: {
     message?: string;
@@ -160,6 +173,11 @@ export async function getStats() {
 export async function getProviderPresets() {
   const response = await fetch(`${getBaseUrl()}/admin/provider-presets`);
   return parseResponse<{ presets: ProviderPreset[] }>(response);
+}
+
+export async function getCcSwitchLink(app = "codex") {
+  const response = await fetch(`${getBaseUrl()}/admin/ccswitch-link?app=${encodeURIComponent(app)}`);
+  return parseResponse<CcSwitchProviderLink>(response);
 }
 
 export async function testProvider(provider: string, model?: string, stream = false, apiType: "chat_completions" | "responses" = "chat_completions") {

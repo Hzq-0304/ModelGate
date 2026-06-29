@@ -185,6 +185,7 @@ npm run cli -- logs -- --limit 20
 npm run cli -- logs -- --clear
 npm run cli -- stats
 npm run cli -- presets
+npm run cli -- ccswitch-link -- --app codex
 npm run cli -- test active
 npm run cli -- test alias mock-main
 npm run cli -- test alias mock-main -- --stream
@@ -516,6 +517,43 @@ Desktop:
 
 Diagnostics return check names, pass/fail status, HTTP status when available, duration, API type, fallback mode, and a short error summary. They do not display API keys, do not log the `Authorization` header, and do not store full upstream responses. Diagnostic requests are marked as `diagnostic` in request logs.
 
+### Export To CC Switch
+
+The desktop app can export ModelGate as a local provider for CC Switch through a `ccswitch://` deep link. This does not write the CC Switch database, CC Switch settings, or any live Codex / Claude / Gemini / OpenCode configuration. CC Switch opens its own import confirmation UI and the user confirms the import there.
+
+Default exported provider:
+
+```text
+Name: ModelGate Local
+Endpoint: http://127.0.0.1:11435/v1
+API Key: modelgate-local
+Model: codex-main
+```
+
+The deep link includes only the local ModelGate endpoint, local placeholder API key, and public entrypoint model. It never includes real upstream provider API keys. Notes include `modelgate-managed=true` so ModelGate can skip this provider during later CC Switch imports and avoid import loops.
+
+Desktop:
+
+- Open **CC Switch Integration**
+- Choose target app: Codex, Claude Code, Gemini, OpenCode, or OpenClaw
+- Review provider name, endpoint, API key, and model
+- Click **Open in CC Switch** or **Copy Deep Link**
+
+CLI:
+
+```bash
+modelgate ccswitch-link --app codex
+modelgate ccswitch-link --app opencode
+```
+
+Admin API:
+
+```bash
+curl http://127.0.0.1:11435/admin/ccswitch-link?app=codex
+```
+
+The first version is mainly aimed at Codex and OpenCode style OpenAI-compatible provider flows. When importing from CC Switch back into ModelGate, ModelGate-managed providers are hidden by default. Enable **Show ModelGate-managed providers** only for debugging.
+
 ### Import From CC Switch
 
 The Configuration tab includes **Import from CC Switch** for read-only provider import.
@@ -527,6 +565,7 @@ ModelGate scans CC Switch data without modifying it:
 - does not modify Codex, Claude, Gemini, OpenCode, or other live configs
 - imports only provider, endpoint, and model-related data
 - does not import MCP servers, skills, prompts, or usage logs
+- skips ModelGate-managed providers by default to avoid import loops
 
 The desktop app first looks for:
 
@@ -570,7 +609,6 @@ Import flow:
 
 Future:
 
-- `ccswitch://` deep link import
 - SQL backup import
 - JSON import
 - multi-model alias generation
@@ -709,3 +747,4 @@ curl http://127.0.0.1:11435/v1/responses \
 - config reload through the local admin API
 - provider presets through the local admin API, CLI, and desktop Configuration tab
 - provider, alias, and active alias connectivity diagnostics
+- export ModelGate local provider to CC Switch through `ccswitch://` deep links

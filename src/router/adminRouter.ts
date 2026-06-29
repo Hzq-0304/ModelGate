@@ -7,6 +7,7 @@ import {
   writeConfigObject
 } from "../config/configManager.js";
 import { providerPresets } from "../config/providerPresets.js";
+import { createCcSwitchProviderLink, isCcSwitchApp } from "../integrations/ccswitchLink.js";
 import { createOpenAICompatibleError } from "../providers/openaiCompatible.js";
 import { addDiagnosticLog, testActiveAlias, testAlias, testProvider } from "../runtime/diagnostics.js";
 import type { RuntimeState } from "../runtime/state.js";
@@ -21,6 +22,10 @@ type ConfigBody = {
 
 type LogsQuery = {
   limit?: string;
+};
+
+type CcSwitchLinkQuery = {
+  app?: string;
 };
 
 type TestProviderBody = {
@@ -88,6 +93,18 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
   server.get("/admin/provider-presets", async () => ({
     presets: providerPresets
   }));
+
+  server.get<{ Querystring: CcSwitchLinkQuery }>("/admin/ccswitch-link", async (request, reply) => {
+    const app = request.query.app ?? "codex";
+
+    if (!isCcSwitchApp(app)) {
+      return reply
+        .status(400)
+        .send(createOpenAICompatibleError(`Unsupported CC Switch app "${app}"`, "invalid_request_error"));
+    }
+
+    return createCcSwitchProviderLink(runtime, app);
+  });
 
   server.post<{ Body: TestProviderBody }>("/admin/test/provider", async (request, reply) => {
     const provider = request.body?.provider;

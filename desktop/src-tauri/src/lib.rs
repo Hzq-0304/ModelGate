@@ -1,4 +1,5 @@
 mod ccswitch_import;
+mod ccswitch_export;
 mod server_process;
 
 use tauri::{Manager, WindowEvent};
@@ -12,6 +13,7 @@ pub fn run() {
             ccswitch_import::detect_ccswitch_database,
             ccswitch_import::scan_ccswitch_database,
             ccswitch_import::scan_selected_ccswitch_database,
+            ccswitch_export::open_ccswitch_deep_link,
             server_process::get_server_process_status,
             server_process::start_server_process,
             server_process::stop_server_process,

@@ -373,6 +373,50 @@ dd {
   user-select: text;
 }
 
+.ccswitch-export-card .muted {
+  line-height: 1.5;
+}
+
+.ccswitch-export-form {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr 1.6fr 1fr 1fr;
+}
+
+.ccswitch-export-form label {
+  color: #9aa8ba;
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  text-transform: uppercase;
+}
+
+.ccswitch-export-preview {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.ccswitch-export-preview dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deep-link-preview {
+  background: #0d1117;
+  border: 1px solid rgba(143, 161, 184, 0.14);
+  border-radius: 7px;
+  color: #dfe7f3;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  line-height: 1.5;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .config-page {
   display: grid;
   gap: 18px;

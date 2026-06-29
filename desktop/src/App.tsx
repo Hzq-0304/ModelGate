@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type AliasesResponse,
   type CcSwitchImportCandidate,
+  type CcSwitchProviderLink,
   type DiagnosticResult,
   type EditableConfig,
   type ProviderPreset,
@@ -15,6 +16,7 @@ import {
   getAliases,
   getAdminConfig,
   getBaseUrl,
+  getCcSwitchLink,
   getHealth,
   getProviderPresets,
   getRequestLogs,
@@ -26,6 +28,7 @@ import {
   saveAdminConfig,
   scanCcSwitchDatabase,
   selectAndScanCcSwitchDatabase,
+  openCcSwitchDeepLink,
   startServerProcess,
   stopServerProcess,
   switchAlias,
@@ -57,7 +60,22 @@ type PresetDraft = {
   setActive: boolean;
 };
 
+type CcSwitchExportDraft = {
+  name: string;
+  app: string;
+  endpoint: string;
+  apiKey: string;
+  model: string;
+};
+
 const serverUrl = getBaseUrl();
+const ccSwitchAppLabels: Record<string, string> = {
+  codex: "Codex",
+  claude: "Claude Code",
+  gemini: "Gemini",
+  opencode: "OpenCode",
+  openclaw: "OpenClaw"
+};
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -74,6 +92,15 @@ export function App() {
   const [configMessage, setConfigMessage] = useState("Configuration not loaded");
   const [ccSwitchPath, setCcSwitchPath] = useState("");
   const [ccSwitchMessage, setCcSwitchMessage] = useState("CC Switch import not scanned");
+  const [showManagedCcSwitch, setShowManagedCcSwitch] = useState(false);
+  const [ccSwitchExportDraft, setCcSwitchExportDraft] = useState<CcSwitchExportDraft>({
+    name: "ModelGate Local",
+    app: "codex",
+    endpoint: `${serverUrl}/v1`,
+    apiKey: "modelgate-local",
+    model: "codex-main"
+  });
+  const [ccSwitchExportMessage, setCcSwitchExportMessage] = useState("CC Switch link not generated");
   const [importDrafts, setImportDrafts] = useState<ImportDraft[]>([]);
   const [overwriteProviders, setOverwriteProviders] = useState(false);
   const [overwriteAliases, setOverwriteAliases] = useState(false);
@@ -195,6 +222,59 @@ export function App() {
     return result.presets;
   }
 
+  function applyCcSwitchLink(link: CcSwitchProviderLink) {
+    setCcSwitchExportDraft({
+      name: link.provider.name,
+      app: link.provider.app,
+      endpoint: link.provider.endpoint,
+      apiKey: link.provider.api_key,
+      model: link.provider.model
+    });
+    setCcSwitchExportMessage("CC Switch link generated");
+  }
+
+  async function loadCcSwitchLink(app = ccSwitchExportDraft.app) {
+    const link = await getCcSwitchLink(app);
+    applyCcSwitchLink(link);
+    return link;
+  }
+
+  function buildCcSwitchDeepLink() {
+    const params = new URLSearchParams({
+      resource: "provider",
+      app: ccSwitchExportDraft.app,
+      name: ccSwitchExportDraft.name,
+      endpoint: ccSwitchExportDraft.endpoint,
+      apiKey: "modelgate-local",
+      model: ccSwitchExportDraft.model,
+      notes: "Managed by ModelGate. modelgate-managed=true",
+      enabled: "true"
+    });
+
+    return `ccswitch://v1/import?${params.toString()}`;
+  }
+
+  async function handleCopyCcSwitchLink() {
+    try {
+      await navigator.clipboard.writeText(buildCcSwitchDeepLink());
+      setCcSwitchExportMessage("Deep link copied");
+    } catch {
+      setCcSwitchExportMessage("Copy failed. Select the deep link manually.");
+    }
+  }
+
+  async function handleOpenCcSwitch() {
+    setBusyAction("ccswitch:open");
+    try {
+      await openCcSwitchDeepLink(buildCcSwitchDeepLink());
+      setCcSwitchExportMessage("Opened CC Switch import link");
+    } catch (error) {
+      setCcSwitchExportMessage(`Open failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function handleTogglePresetPanel() {
     const nextVisible = !showPresetPanel;
     setShowPresetPanel(nextVisible);
@@ -303,13 +383,16 @@ export function App() {
     setCcSwitchPath(scan.path);
     setImportDrafts(scan.candidates.map(candidateToDraft));
     const warning = scan.warnings.length > 0 ? ` Warnings: ${scan.warnings.join(" ")}` : "";
-    setCcSwitchMessage(`Found ${scan.candidates.length} candidate(s).${warning}`);
+    const skipped = scan.skipped_modelgate_managed > 0
+      ? ` Skipped ${scan.skipped_modelgate_managed} ModelGate-managed CC Switch provider(s).`
+      : "";
+    setCcSwitchMessage(`Found ${scan.candidates.length} candidate(s).${skipped}${warning}`);
   }
 
   async function handleScanAutoCcSwitch() {
     setBusyAction("ccswitch:scan");
     try {
-      await applyCcSwitchScan(await scanCcSwitchDatabase());
+      await applyCcSwitchScan(await scanCcSwitchDatabase(showManagedCcSwitch));
     } catch (error) {
       setCcSwitchMessage(`Scan failed: ${getErrorMessage(error)}`);
     } finally {
@@ -320,7 +403,7 @@ export function App() {
   async function handleSelectCcSwitch() {
     setBusyAction("ccswitch:select");
     try {
-      const scan = await selectAndScanCcSwitchDatabase();
+      const scan = await selectAndScanCcSwitchDatabase(showManagedCcSwitch);
       if (!scan) {
         setCcSwitchMessage("No database selected.");
         return;
@@ -356,6 +439,7 @@ export function App() {
       setConnection("connected");
       setMessage("Status refreshed");
       await loadConfiguration().catch(() => undefined);
+      await loadCcSwitchLink("codex").catch(() => undefined);
     } catch (error) {
       setConnection("disconnected");
       setStatus(null);
@@ -945,6 +1029,84 @@ export function App() {
     );
   }
 
+  function renderCcSwitchIntegration() {
+    const deepLink = buildCcSwitchDeepLink();
+
+    return (
+      <section className="card config-card ccswitch-export-card">
+        <div className="card-heading">
+          <span>CC Switch Integration</span>
+          <button className="secondary" onClick={() => void loadCcSwitchLink(ccSwitchExportDraft.app).catch((error) => setCcSwitchExportMessage(`Generate failed: ${getErrorMessage(error)}`))} disabled={busyAction !== null || disconnected}>
+            Generate Defaults
+          </button>
+        </div>
+        <p className="muted">
+          Export ModelGate as a local provider through a CC Switch deep link. The link uses the local placeholder API key only.
+        </p>
+        <div className="ccswitch-export-form">
+          <label>
+            Provider Name
+            <input value={ccSwitchExportDraft.name} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, name: event.target.value })} />
+          </label>
+          <label>
+            Target App
+            <select value={ccSwitchExportDraft.app} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, app: event.target.value })}>
+              {Object.entries(ccSwitchAppLabels).map(([value, label]) => (
+                <option value={value} key={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Endpoint
+            <input value={ccSwitchExportDraft.endpoint} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, endpoint: event.target.value })} />
+          </label>
+          <label>
+            API Key
+            <input value={ccSwitchExportDraft.apiKey} readOnly disabled />
+          </label>
+          <label>
+            Model
+            <input value={ccSwitchExportDraft.model} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, model: event.target.value })} />
+          </label>
+        </div>
+        <dl className="ccswitch-export-preview">
+          <div>
+            <dt>Name</dt>
+            <dd>{ccSwitchExportDraft.name}</dd>
+          </div>
+          <div>
+            <dt>App</dt>
+            <dd>{ccSwitchAppLabels[ccSwitchExportDraft.app] ?? ccSwitchExportDraft.app}</dd>
+          </div>
+          <div>
+            <dt>Endpoint</dt>
+            <dd>{ccSwitchExportDraft.endpoint}</dd>
+          </div>
+          <div>
+            <dt>API Key</dt>
+            <dd>{ccSwitchExportDraft.apiKey}</dd>
+          </div>
+          <div>
+            <dt>Model</dt>
+            <dd>{ccSwitchExportDraft.model}</dd>
+          </div>
+        </dl>
+        <pre className="deep-link-preview">{deepLink}</pre>
+        <div className="server-actions">
+          <button onClick={() => void handleOpenCcSwitch()} disabled={busyAction !== null}>
+            {busyAction === "ccswitch:open" ? "Opening..." : "Open in CC Switch"}
+          </button>
+          <button className="secondary" onClick={() => void handleCopyCcSwitchLink()} disabled={busyAction !== null}>
+            Copy Deep Link
+          </button>
+          <span className={ccSwitchExportMessage.startsWith("Open failed") || ccSwitchExportMessage.startsWith("Generate failed") ? "action-message bad" : "action-message"}>
+            {ccSwitchExportMessage}
+          </span>
+        </div>
+      </section>
+    );
+  }
+
   function formatLogTime(value: string) {
     const date = new Date(value);
     return Number.isNaN(date.getTime())
@@ -1221,6 +1383,7 @@ export function App() {
         </div>
         <pre>{codexConfig}</pre>
       </section>
+      {renderCcSwitchIntegration()}
         </>
       ) : activeTab === "configuration" ? (
         <section className="config-page">
@@ -1249,6 +1412,7 @@ export function App() {
           </section>
 
           {renderDiagnosticResult()}
+          {renderCcSwitchIntegration()}
 
           <section className="card config-card preset-card">
             <div className="card-heading">
@@ -1363,6 +1527,12 @@ export function App() {
               <button className="secondary" onClick={() => void handleSelectCcSwitch()} disabled={busyAction !== null}>
                 {busyAction === "ccswitch:select" ? "Selecting..." : "Select cc-switch.db"}
               </button>
+            </div>
+            <div className="import-options">
+              <label>
+                <input type="checkbox" checked={showManagedCcSwitch} onChange={(event) => setShowManagedCcSwitch(event.target.checked)} />
+                Show ModelGate-managed providers
+              </label>
             </div>
             <div className="import-source">
               <span>{ccSwitchPath ? `Source: ${ccSwitchPath}` : "CC Switch database was not found automatically. Select cc-switch.db manually."}</span>

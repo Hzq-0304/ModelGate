@@ -3,6 +3,7 @@ import {
   type DiagnosticResult,
   clearLogs,
   getAliases,
+  getCcSwitchLink,
   getLogs,
   getProviderPresets,
   getStats,
@@ -15,7 +16,7 @@ import {
 } from "./cli/client.js";
 
 function printUsage() {
-  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|presets|test active [--responses]|test alias <alias> [--stream] [--responses]|test provider <provider> --model <model> [--stream] [--responses]>");
+  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|presets|ccswitch-link [--app codex]|test active [--responses]|test alias <alias> [--stream] [--responses]|test provider <provider> --model <model> [--stream] [--responses]>");
 }
 
 function formatTime(value: string) {
@@ -172,6 +173,13 @@ async function run() {
         `${preset.default_model}`
       );
     }
+    return;
+  }
+
+  if (command === "ccswitch-link") {
+    const app = argValue(args, "--app") ?? "codex";
+    const result = await getCcSwitchLink(app);
+    console.log(result.url);
     return;
   }
 

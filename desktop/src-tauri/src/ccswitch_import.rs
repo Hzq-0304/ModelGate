@@ -42,12 +42,19 @@ pub struct CcSwitchImportCandidate {
 pub struct CcSwitchScanResult {
     path: String,
     candidates: Vec<CcSwitchImportCandidate>,
+    skipped_modelgate_managed: usize,
     warnings: Vec<String>,
+}
+
+struct TableScanResult {
+    candidates: Vec<CcSwitchImportCandidate>,
+    skipped_modelgate_managed: usize,
 }
 
 const NAME_KEYS: &[&str] = &["name", "label", "display_name", "title", "provider_name"];
 const BASE_URL_KEYS: &[&str] = &["base_url", "baseurl", "api_base", "apibase", "endpoint", "url", "base"];
 const API_KEY_KEYS: &[&str] = &["api_key", "apikey", "key", "token", "auth_token"];
+const NOTES_KEYS: &[&str] = &["notes", "note", "description", "remark", "metadata"];
 const MODEL_KEYS: &[&str] = &[
     "model",
     "model_name",
@@ -79,13 +86,13 @@ pub fn detect_ccswitch_database() -> CcSwitchDatabaseDetection {
 }
 
 #[tauri::command]
-pub fn scan_ccswitch_database() -> Result<CcSwitchScanResult, String> {
-    scan_database(&default_database_path())
+pub fn scan_ccswitch_database(show_managed: Option<bool>) -> Result<CcSwitchScanResult, String> {
+    scan_database(&default_database_path(), show_managed.unwrap_or(false))
 }
 
 #[tauri::command]
-pub fn scan_selected_ccswitch_database(path: String) -> Result<CcSwitchScanResult, String> {
-    scan_database(Path::new(&path))
+pub fn scan_selected_ccswitch_database(path: String, show_managed: Option<bool>) -> Result<CcSwitchScanResult, String> {
+    scan_database(Path::new(&path), show_managed.unwrap_or(false))
 }
 
 fn default_database_path() -> PathBuf {
@@ -97,7 +104,7 @@ fn default_database_path() -> PathBuf {
     home.join(".cc-switch").join("cc-switch.db")
 }
 
-fn scan_database(path: &Path) -> Result<CcSwitchScanResult, String> {
+fn scan_database(path: &Path, show_managed: bool) -> Result<CcSwitchScanResult, String> {
     if !path.is_file() {
         return Err(format!("CC Switch database not found: {}", path.display()));
     }
@@ -111,14 +118,18 @@ fn scan_database(path: &Path) -> Result<CcSwitchScanResult, String> {
     let mut warnings = Vec::new();
     let tables = list_tables(&connection)?;
     let mut candidates = Vec::new();
+    let mut skipped_modelgate_managed = 0usize;
 
     for table in tables {
         if !is_candidate_table(&table) {
             continue;
         }
 
-        match scan_table(&connection, &table) {
-            Ok(mut table_candidates) => candidates.append(&mut table_candidates),
+        match scan_table(&connection, &table, show_managed) {
+            Ok(mut table_result) => {
+                skipped_modelgate_managed += table_result.skipped_modelgate_managed;
+                candidates.append(&mut table_result.candidates);
+            }
             Err(error) => warnings.push(format!("Failed to scan table {table}: {error}")),
         }
     }
@@ -132,6 +143,7 @@ fn scan_database(path: &Path) -> Result<CcSwitchScanResult, String> {
     Ok(CcSwitchScanResult {
         path: path.to_string_lossy().to_string(),
         candidates,
+        skipped_modelgate_managed,
         warnings,
     })
 }
@@ -160,7 +172,7 @@ fn is_candidate_table(table: &str) -> bool {
         || name.contains("model")
 }
 
-fn scan_table(connection: &Connection, table: &str) -> Result<Vec<CcSwitchImportCandidate>, String> {
+fn scan_table(connection: &Connection, table: &str, show_managed: bool) -> Result<TableScanResult, String> {
     let sql = format!("SELECT * FROM {} LIMIT 100", quote_identifier(table));
     let mut statement = connection.prepare(&sql).map_err(|error| error.to_string())?;
     let column_names = statement
@@ -170,6 +182,7 @@ fn scan_table(connection: &Connection, table: &str) -> Result<Vec<CcSwitchImport
         .collect::<Vec<_>>();
     let mut rows = statement.query([]).map_err(|error| error.to_string())?;
     let mut candidates = Vec::new();
+    let mut skipped_modelgate_managed = 0usize;
     let mut row_index = 0usize;
 
     while let Some(row) = rows.next().map_err(|error| error.to_string())? {
@@ -183,13 +196,22 @@ fn scan_table(connection: &Connection, table: &str) -> Result<Vec<CcSwitchImport
             }
         }
 
+        if !show_managed && is_modelgate_managed_provider(&fields) {
+            skipped_modelgate_managed += 1;
+            row_index += 1;
+            continue;
+        }
+
         if let Some(candidate) = candidate_from_fields(table, row_index, &fields) {
             candidates.push(candidate);
         }
         row_index += 1;
     }
 
-    Ok(candidates)
+    Ok(TableScanResult {
+        candidates,
+        skipped_modelgate_managed,
+    })
 }
 
 fn quote_identifier(value: &str) -> String {
@@ -315,6 +337,33 @@ fn find_first(fields: &HashMap<String, String>, keys: &[&str]) -> Option<String>
         }
     }
     None
+}
+
+fn is_modelgate_managed_provider(fields: &HashMap<String, String>) -> bool {
+    let notes = find_first(fields, NOTES_KEYS).unwrap_or_default().to_ascii_lowercase();
+    if notes.contains("modelgate-managed=true") {
+        return true;
+    }
+
+    let name = find_first(fields, NAME_KEYS).unwrap_or_default().to_ascii_lowercase();
+    if name.contains("modelgate local") {
+        return true;
+    }
+
+    let endpoint = find_first(fields, BASE_URL_KEYS)
+        .unwrap_or_default()
+        .trim_end_matches('/')
+        .to_ascii_lowercase();
+    if matches!(
+        endpoint.as_str(),
+        "http://127.0.0.1:11435/v1" | "http://localhost:11435/v1"
+    ) {
+        return true;
+    }
+
+    let model = find_first(fields, MODEL_KEYS).unwrap_or_default();
+    let api_key = find_first(fields, API_KEY_KEYS).unwrap_or_default();
+    model == "codex-main" && api_key == "modelgate-local"
 }
 
 fn find_models(fields: &HashMap<String, String>) -> Vec<String> {
