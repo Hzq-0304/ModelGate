@@ -1,4 +1,5 @@
 import type { UsageRecord } from "./usageTypes";
+import { useI18n } from "../../i18n/i18n";
 
 function formatTime(value: string) {
   const date = new Date(value);
@@ -18,22 +19,24 @@ function formatCost(record: UsageRecord) {
 }
 
 export function UsageRecentTable({ records }: { records: UsageRecord[] }) {
+  const { t } = useI18n();
+
   return (
     <section className="usage-table-panel">
-      <div className="usage-section-title">Recent Usage</div>
+      <div className="usage-section-title">{t("usage.recent")}</div>
       {records.length > 0 ? (
         <div className="usage-table">
           <div className="usage-row usage-head">
-            <span>Time</span>
-            <span>Alias</span>
-            <span>Provider</span>
-            <span>Model</span>
-            <span>API</span>
-            <span>Input</span>
-            <span>Output</span>
-            <span>Total</span>
-            <span>Cost</span>
-            <span>Status</span>
+            <span>{t("usage.time")}</span>
+            <span>{t("common.alias")}</span>
+            <span>{t("common.provider")}</span>
+            <span>{t("common.model")}</span>
+            <span>{t("usage.api")}</span>
+            <span>{t("usage.input")}</span>
+            <span>{t("usage.output")}</span>
+            <span>{t("usage.total")}</span>
+            <span>{t("usage.cost")}</span>
+            <span>{t("common.status")}</span>
           </div>
           {records.map((record) => (
             <div className={record.ok ? "usage-row" : "usage-row failed"} key={record.id}>
@@ -51,7 +54,7 @@ export function UsageRecentTable({ records }: { records: UsageRecord[] }) {
           ))}
         </div>
       ) : (
-        <div className="usage-empty">No usage records yet. Send a request through ModelGate to see usage here.</div>
+        <div className="usage-empty">{t("usage.empty")}</div>
       )}
     </section>
   );

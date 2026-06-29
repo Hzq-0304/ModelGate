@@ -289,6 +289,10 @@ curl -X DELETE http://127.0.0.1:11435/admin/usage/records
 
 ModelGate also includes a local desktop management interface built with Tauri v2, React, TypeScript, Vite, and plain CSS. The desktop app is a management panel only; it does not call upstream model providers and does not manage provider API keys.
 
+Desktop UI supports English and Simplified Chinese. The selected language is stored locally in desktop localStorage.
+
+桌面端支持 English / 简体中文，语言选择会保存在本地。
+
 The desktop app can manage a local ModelGate server process when it is running from a local repository environment. It still does not bundle a Node.js runtime into the desktop app.
 
 Development option 1, start the server yourself:

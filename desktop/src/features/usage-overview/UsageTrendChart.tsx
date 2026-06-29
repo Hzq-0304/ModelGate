@@ -1,4 +1,5 @@
 import type { UsageTimeline } from "./usageTypes";
+import { useI18n } from "../../i18n/i18n";
 
 function buildPath(values: number[], width: number, height: number) {
   const max = Math.max(...values, 1);
@@ -14,6 +15,7 @@ function buildPath(values: number[], width: number, height: number) {
 }
 
 export function UsageTrendChart({ timeline }: { timeline: UsageTimeline | null }) {
+  const { t } = useI18n();
   const points = timeline?.points ?? [];
   const hasPoints = points.length > 0;
   const hasCost = points.some((point) => point.cost_available);
@@ -25,20 +27,20 @@ export function UsageTrendChart({ timeline }: { timeline: UsageTimeline | null }
   return (
     <section className="usage-chart-panel">
       <div className="usage-chart-heading">
-        <span>Usage Trend</span>
+        <span>{t("usage.trend")}</span>
         <div className="usage-legend">
-          <span><i className="legend-token" />Tokens</span>
-          {hasCost && <span><i className="legend-cost" />Cost</span>}
+          <span><i className="legend-token" />{t("usage.tokens")}</span>
+          {hasCost && <span><i className="legend-cost" />{t("usage.cost")}</span>}
         </div>
       </div>
       {hasPoints ? (
-        <svg className="usage-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Usage trend">
+        <svg className="usage-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t("usage.trend")}>
           <path className="usage-chart-grid" d={`M 0 ${height - 1} H ${width}`} />
           <path className="usage-token-line" d={buildPath(tokens, width, height)} />
           {hasCost && <path className="usage-cost-line" d={buildPath(costs, width, height)} />}
         </svg>
       ) : (
-        <div className="usage-chart-empty">No usage records yet. Send a request through ModelGate to see usage here.</div>
+        <div className="usage-chart-empty">{t("usage.empty")}</div>
       )}
     </section>
   );

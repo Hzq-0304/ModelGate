@@ -88,6 +88,29 @@ button.secondary:hover:not(:disabled) {
   padding: 22px 24px;
 }
 
+.topbar-tools {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+}
+
+.language-selector {
+  align-items: center;
+  color: #9aa8ba;
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 8px;
+  text-transform: uppercase;
+}
+
+.language-selector select {
+  min-height: 34px;
+  min-width: 145px;
+  padding: 6px 9px;
+  text-transform: none;
+}
+
 h1 {
   font-size: 32px;
   line-height: 1.1;
@@ -849,6 +872,11 @@ button.danger {
     align-items: flex-start;
     flex-direction: column;
     gap: 16px;
+  }
+
+  .topbar-tools {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .connection {

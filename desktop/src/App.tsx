@@ -37,9 +37,11 @@ import {
   testProvider,
   validateAdminConfig
 } from "./api";
+import { LanguageSelector } from "./components/LanguageSelector";
 import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
 import type { ConnectionState } from "./features/account-switcher/accountTypes";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
+import { useI18n } from "./i18n/i18n";
 
 type ActiveTab = "switcher" | "configuration" | "logs" | "advanced";
 
@@ -84,6 +86,7 @@ function getErrorMessage(error: unknown) {
 }
 
 export function App() {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>("switcher");
   const [connection, setConnection] = useState<ConnectionState>("checking");
   const [status, setStatus] = useState<StatusResponse | null>(null);
@@ -91,7 +94,7 @@ export function App() {
   const [serverProcess, setServerProcess] = useState<ServerProcessStatus | null>(null);
   const [configPath, setConfigPath] = useState("");
   const [editableConfig, setEditableConfig] = useState<EditableConfig | null>(null);
-  const [configMessage, setConfigMessage] = useState("Configuration not loaded");
+  const [configMessage, setConfigMessage] = useState(t("usage.notLoaded"));
   const [ccSwitchPath, setCcSwitchPath] = useState("");
   const [ccSwitchMessage, setCcSwitchMessage] = useState("CC Switch import not scanned");
   const [showManagedCcSwitch, setShowManagedCcSwitch] = useState(false);
@@ -115,7 +118,7 @@ export function App() {
   const [presetMessage, setPresetMessage] = useState("Preset library not loaded");
   const [requestLogs, setRequestLogs] = useState<RequestLogEntry[]>([]);
   const [requestStats, setRequestStats] = useState<RequestStats | null>(null);
-  const [logsMessage, setLogsMessage] = useState("Logs not loaded");
+  const [logsMessage, setLogsMessage] = useState(t("usage.notLoaded"));
   const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
   const [diagnosticMessage, setDiagnosticMessage] = useState("Diagnostics not run");
   const [providerForm, setProviderForm] = useState({
@@ -137,7 +140,7 @@ export function App() {
     name: "",
     use: "active"
   });
-  const [message, setMessage] = useState("Ready");
+  const [message, setMessage] = useState(t("advanced.statusRefreshed"));
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [copyOk, setCopyOk] = useState(false);
 
@@ -979,43 +982,43 @@ export function App() {
     return (
       <section className="card diagnostic-card">
         <div className="card-heading">
-          <span>Diagnostics Result</span>
-          <button className="secondary" onClick={() => void handleCopyDiagnostic()}>Copy</button>
+          <span>{t("advanced.diagnosticsResult")}</span>
+          <button className="secondary" onClick={() => void handleCopyDiagnostic()}>{t("common.copy")}</button>
         </div>
         <dl className="diagnostic-summary">
           <div>
-            <dt>Target</dt>
+            <dt>{t("advanced.target")}</dt>
             <dd>{diagnosticResult.target}{diagnosticResult.alias ? ` ${diagnosticResult.alias}` : diagnosticResult.provider ? ` ${diagnosticResult.provider}` : ""}</dd>
           </div>
           <div>
-            <dt>Status</dt>
-            <dd><span className={diagnosticResult.ok ? "pill" : "pill bad"}>{diagnosticResult.ok ? "Passed" : "Failed"}</span></dd>
+            <dt>{t("common.status")}</dt>
+            <dd><span className={diagnosticResult.ok ? "pill" : "pill bad"}>{diagnosticResult.ok ? t("advanced.passed") : t("common.failed")}</span></dd>
           </div>
           <div>
-            <dt>Provider</dt>
+            <dt>{t("common.provider")}</dt>
             <dd>{diagnosticResult.provider ?? "-"}</dd>
           </div>
           <div>
-            <dt>Model</dt>
+            <dt>{t("common.model")}</dt>
             <dd>{diagnosticResult.model ?? "-"}</dd>
           </div>
           <div>
-            <dt>Stream</dt>
+            <dt>{t("logs.stream")}</dt>
             <dd>{diagnosticResult.stream ? "true" : "false"}</dd>
           </div>
           <div>
-            <dt>Duration</dt>
+            <dt>{t("common.duration")}</dt>
             <dd>{diagnosticResult.duration_ms}ms</dd>
           </div>
           <div>
-            <dt>HTTP Status</dt>
+            <dt>{t("advanced.httpStatus")}</dt>
             <dd>{diagnosticResult.status_code ?? "-"}</dd>
           </div>
         </dl>
         <div className="diagnostic-checks">
           {diagnosticResult.checks.map((check) => (
             <div className={check.ok ? "diagnostic-check" : "diagnostic-check failed"} key={check.name}>
-              <span>{check.ok ? "OK" : "FAIL"}</span>
+              <span>{check.ok ? t("common.ok") : t("common.fail")}</span>
               <strong>{check.name}</strong>
               <p>{check.message ?? ""}</p>
             </div>
@@ -1037,9 +1040,9 @@ export function App() {
     return (
       <section className="card config-card ccswitch-export-card">
         <div className="card-heading">
-          <span>CC Switch Integration</span>
+          <span>{t("config.exportToCcSwitch")}</span>
           <button className="secondary" onClick={() => void loadCcSwitchLink(ccSwitchExportDraft.app).catch((error) => setCcSwitchExportMessage(`Generate failed: ${getErrorMessage(error)}`))} disabled={busyAction !== null || disconnected}>
-            Generate Defaults
+            {t("config.generateDefaults")}
           </button>
         </div>
         <p className="muted">
@@ -1047,11 +1050,11 @@ export function App() {
         </p>
         <div className="ccswitch-export-form">
           <label>
-            Provider Name
+            {t("config.providerName")}
             <input value={ccSwitchExportDraft.name} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, name: event.target.value })} />
           </label>
           <label>
-            Target App
+            {t("config.targetApp")}
             <select value={ccSwitchExportDraft.app} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, app: event.target.value })}>
               {Object.entries(ccSwitchAppLabels).map(([value, label]) => (
                 <option value={value} key={value}>{label}</option>
@@ -1059,21 +1062,21 @@ export function App() {
             </select>
           </label>
           <label>
-            Endpoint
+            {t("config.endpoint")}
             <input value={ccSwitchExportDraft.endpoint} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, endpoint: event.target.value })} />
           </label>
           <label>
-            API Key
+            {t("config.apiKey")}
             <input value={ccSwitchExportDraft.apiKey} readOnly disabled />
           </label>
           <label>
-            Model
+            {t("common.model")}
             <input value={ccSwitchExportDraft.model} onChange={(event) => setCcSwitchExportDraft({ ...ccSwitchExportDraft, model: event.target.value })} />
           </label>
         </div>
         <dl className="ccswitch-export-preview">
           <div>
-            <dt>Name</dt>
+            <dt>{t("common.name")}</dt>
             <dd>{ccSwitchExportDraft.name}</dd>
           </div>
           <div>
@@ -1081,25 +1084,25 @@ export function App() {
             <dd>{ccSwitchAppLabels[ccSwitchExportDraft.app] ?? ccSwitchExportDraft.app}</dd>
           </div>
           <div>
-            <dt>Endpoint</dt>
+            <dt>{t("config.endpoint")}</dt>
             <dd>{ccSwitchExportDraft.endpoint}</dd>
           </div>
           <div>
-            <dt>API Key</dt>
+            <dt>{t("config.apiKey")}</dt>
             <dd>{ccSwitchExportDraft.apiKey}</dd>
           </div>
           <div>
-            <dt>Model</dt>
+            <dt>{t("common.model")}</dt>
             <dd>{ccSwitchExportDraft.model}</dd>
           </div>
         </dl>
         <pre className="deep-link-preview">{deepLink}</pre>
         <div className="server-actions">
           <button onClick={() => void handleOpenCcSwitch()} disabled={busyAction !== null}>
-            {busyAction === "ccswitch:open" ? "Opening..." : "Open in CC Switch"}
+            {busyAction === "ccswitch:open" ? t("config.opening") : t("config.openInCcSwitch")}
           </button>
           <button className="secondary" onClick={() => void handleCopyCcSwitchLink()} disabled={busyAction !== null}>
-            Copy Deep Link
+            {t("config.copyDeepLink")}
           </button>
           <span className={ccSwitchExportMessage.startsWith("Open failed") || ccSwitchExportMessage.startsWith("Generate failed") ? "action-message bad" : "action-message"}>
             {ccSwitchExportMessage}
@@ -1121,17 +1124,17 @@ export function App() {
   const disconnected = connection === "disconnected";
   const serverMode = serverProcess?.mode ?? "unknown";
   const serverStatusText = serverProcess?.running
-    ? "Running"
+    ? t("advanced.running")
     : serverMode === "stopped"
-      ? "Stopped"
-      : "Unknown";
+      ? t("advanced.stopped")
+      : t("advanced.unknown");
   const launchModeText = serverMode === "managed"
-    ? "Managed by desktop"
+    ? t("advanced.managed")
     : serverMode === "external"
-      ? "External"
+      ? t("advanced.external")
       : serverMode === "stopped"
-        ? "Not running"
-        : "Unknown";
+        ? t("advanced.notRunning")
+        : t("advanced.unknown");
   const serverBusy = busyAction?.startsWith("server:") ?? false;
   const isExternalServer = serverMode === "external";
   const isManagedServer = serverMode === "managed";
@@ -1165,19 +1168,22 @@ export function App() {
     <main className="shell">
       <header className="topbar">
         <div>
-          <h1>ModelGate</h1>
-          <p>Local LLM Gateway</p>
+          <h1>{t("app.title")}</h1>
+          <p>{t("app.subtitle")}</p>
         </div>
-        <div className="connection">
-          <span className={`status-dot ${connection}`} />
-          <strong>{connection === "connected" ? "Connected" : connection === "checking" ? "Checking" : "Disconnected"}</strong>
-          <span>{serverUrl}</span>
+        <div className="topbar-tools">
+          <LanguageSelector />
+          <div className="connection">
+            <span className={`status-dot ${connection}`} />
+            <strong>{connection === "connected" ? t("app.connected") : connection === "checking" ? t("app.checking") : t("app.disconnected")}</strong>
+            <span>{serverUrl}</span>
+          </div>
         </div>
       </header>
 
       <nav className="tabs">
         <button className={activeTab === "switcher" ? "tab active" : "tab"} onClick={() => setActiveTab("switcher")}>
-          Switcher
+          {t("nav.switcher")}
         </button>
         <button
           className={activeTab === "configuration" ? "tab active" : "tab"}
@@ -1188,7 +1194,7 @@ export function App() {
             }
           }}
         >
-          Configuration
+          {t("nav.configuration")}
         </button>
         <button
           className={activeTab === "logs" ? "tab active" : "tab"}
@@ -1197,10 +1203,10 @@ export function App() {
             void loadLogs().catch((error) => setLogsMessage(`Failed to load logs: ${getErrorMessage(error)}`));
           }}
         >
-          Logs
+          {t("nav.logs")}
         </button>
         <button className={activeTab === "advanced" ? "tab active" : "tab"} onClick={() => setActiveTab("advanced")}>
-          Advanced
+          {t("nav.advanced")}
         </button>
       </nav>
 
@@ -1215,7 +1221,7 @@ export function App() {
             entrypoints={status?.entrypoints ?? {}}
             message={message}
             switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
-            onAlreadyActive={() => setMessage("Already active")}
+            onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
             onSelectAccount={(alias) => void handleSwitch(alias)}
           />
           <UsageOverview disconnected={disconnected} />
@@ -1225,17 +1231,17 @@ export function App() {
 
       {disconnected && (
         <section className="notice error">
-          <strong>ModelGate server is not running.</strong>
-          <span>Start it with: npm run dev</span>
+          <strong>{t("advanced.serverNotRunning")}</strong>
+          <span>{t("advanced.startWithDev")}</span>
         </section>
       )}
 
       <section className="actions">
         <button onClick={() => void refresh()} disabled={busyAction !== null}>
-          {busyAction === "refresh" ? "Refreshing..." : "Refresh"}
+          {busyAction === "refresh" ? t("common.refreshing") : t("common.refresh")}
         </button>
         <button onClick={() => void handleReload()} disabled={busyAction !== null || disconnected}>
-          {busyAction === "reload" ? "Reloading..." : "Reload Config"}
+          {busyAction === "reload" ? t("config.reloading") : t("config.reload")}
         </button>
         <span className={message.startsWith("Failed") || disconnected ? "action-message bad" : "action-message"}>
           {message}
@@ -1244,25 +1250,25 @@ export function App() {
 
       <section className="card server-card">
         <div className="card-heading">
-          <span>Server Control</span>
+          <span>{t("advanced.serverControl")}</span>
           <strong>{serverStatusText}</strong>
         </div>
         <dl className="server-details">
           <div>
-            <dt>Status</dt>
+            <dt>{t("common.status")}</dt>
             <dd>{serverStatusText}</dd>
           </div>
           <div>
-            <dt>Launch Mode</dt>
+            <dt>{t("advanced.launchMode")}</dt>
             <dd>{launchModeText}</dd>
           </div>
           <div>
-            <dt>Endpoint</dt>
+            <dt>{t("config.endpoint")}</dt>
             <dd>{serverProcess?.endpoint ?? serverUrl}</dd>
           </div>
           <div>
-            <dt>PID</dt>
-            <dd>{serverProcess?.pid ?? "None"}</dd>
+            <dt>{t("advanced.pid")}</dt>
+            <dd>{serverProcess?.pid ?? t("advanced.none")}</dd>
           </div>
         </dl>
         {isExternalServer && (
@@ -1278,24 +1284,24 @@ export function App() {
             onClick={() => void handleStartServer()}
             disabled={busyAction !== null || !isStoppedServer}
           >
-            {busyAction === "server:start" ? "Starting..." : "Start Server"}
+            {busyAction === "server:start" ? t("advanced.starting") : t("advanced.startServer")}
           </button>
           <button
             className="secondary"
             onClick={() => void handleStopServer()}
             disabled={busyAction !== null || !hasManagedChild}
           >
-            {busyAction === "server:stop" ? "Stopping..." : "Stop Server"}
+            {busyAction === "server:stop" ? t("advanced.stopping") : t("advanced.stopServer")}
           </button>
           <button
             className="secondary"
             onClick={() => void handleRestartServer()}
             disabled={busyAction !== null || !hasManagedChild}
           >
-            {busyAction === "server:restart" ? "Restarting..." : "Restart Server"}
+            {busyAction === "server:restart" ? t("advanced.restarting") : t("advanced.restartServer")}
           </button>
           <button className="secondary" onClick={() => void refresh()} disabled={busyAction !== null || serverBusy}>
-            Refresh
+            {t("common.refresh")}
           </button>
         </div>
       </section>
@@ -1303,27 +1309,27 @@ export function App() {
       <section className="grid">
         <article className="card active-card">
           <div className="card-heading">
-            <span>Active Alias</span>
+            <span>{t("advanced.activeAlias")}</span>
             {status && <strong>{status.active}</strong>}
           </div>
           {status && activeAlias ? (
             <>
               <dl>
                 <div>
-                  <dt>Provider</dt>
+                  <dt>{t("common.provider")}</dt>
                   <dd>{activeAlias.provider}</dd>
                 </div>
                 <div>
-                  <dt>Upstream Model</dt>
+                  <dt>{t("config.upstreamModel")}</dt>
                   <dd>{activeAlias.model}</dd>
                 </div>
               </dl>
               <div className="diagnostic-actions">
                 <button onClick={() => void runDiagnostic("diagnostic:active", () => testActive(false))} disabled={busyAction !== null || disconnected}>
-                  {busyAction === "diagnostic:active" ? "Testing..." : "Test Active"}
+                  {busyAction === "diagnostic:active" ? t("common.testing") : t("advanced.testActive")}
                 </button>
                 <button className="secondary" onClick={() => void runDiagnostic("diagnostic:active-stream", () => testActive(true))} disabled={busyAction !== null || disconnected}>
-                  {busyAction === "diagnostic:active-stream" ? "Testing..." : "Test Active Stream"}
+                  {busyAction === "diagnostic:active-stream" ? t("common.testing") : t("advanced.testActiveStream")}
                 </button>
               </div>
             </>
@@ -1336,7 +1342,7 @@ export function App() {
 
         <article className="card">
           <div className="card-heading">
-            <span>Entrypoints</span>
+            <span>{t("config.entrypoints")}</span>
             <strong>{entrypoints.length}</strong>
           </div>
           {entrypoints.length > 0 ? (
@@ -1359,9 +1365,9 @@ export function App() {
 
       <section className="card codex-card">
         <div className="card-heading">
-          <span>Codex Configuration</span>
+          <span>{t("advanced.codexConfiguration")}</span>
           <button className="secondary" onClick={() => void handleCopy()}>
-            {copyOk ? "Copied" : "Copy"}
+            {copyOk ? t("common.copied") : t("common.copy")}
           </button>
         </div>
         <pre>{codexConfig}</pre>
@@ -1371,12 +1377,12 @@ export function App() {
         <section className="config-page">
           <section className="card config-card">
             <div className="card-heading">
-              <span>Configuration</span>
-              <strong>{configPath || "Not loaded"}</strong>
+              <span>{t("config.title")}</span>
+              <strong>{configPath || t("config.notLoaded")}</strong>
             </div>
             <div className="config-summary">
               <label>
-                Active Alias
+                {t("config.activeAlias")}
                 <select
                   value={editableConfig?.active ?? ""}
                   onChange={(event) => editableConfig && setActiveAlias(event.target.value)}
@@ -1398,9 +1404,9 @@ export function App() {
 
           <section className="card config-card preset-card">
             <div className="card-heading">
-              <span>Provider Presets</span>
+              <span>{t("config.providerPresets")}</span>
               <button className="secondary" onClick={() => void handleTogglePresetPanel()} disabled={busyAction !== null}>
-                {showPresetPanel ? "Hide Presets" : "Add from Preset"}
+                {showPresetPanel ? t("config.hidePresets") : t("config.addFromPreset")}
               </button>
             </div>
             <p className="muted">
@@ -1410,12 +1416,12 @@ export function App() {
               <>
                 <div className="preset-toolbar">
                   <input
-                    placeholder="Search presets"
+                    placeholder={t("config.searchPresets")}
                     value={presetSearch}
                     onChange={(event) => setPresetSearch(event.target.value)}
                   />
                   <button className="secondary" onClick={() => void loadProviderPresets().catch((error) => setPresetMessage(`Failed to load presets: ${getErrorMessage(error)}`))} disabled={busyAction !== null}>
-                    {busyAction === "preset:load" ? "Loading..." : "Refresh Presets"}
+                    {busyAction === "preset:load" ? t("common.loading") : t("config.refreshPresets")}
                   </button>
                   <span className={presetMessage.startsWith("Failed") || presetMessage.startsWith("Add preset failed") ? "action-message bad" : "action-message"}>
                     {presetMessage}
@@ -1423,9 +1429,9 @@ export function App() {
                 </div>
                 <div className="preset-table">
                   <div className="preset-row preset-head">
-                    <span>Provider</span>
-                    <span>Base URL</span>
-                    <span>Default Model</span>
+                    <span>{t("common.provider")}</span>
+                    <span>{t("config.baseUrl")}</span>
+                    <span>{t("config.defaultModel")}</span>
                   </div>
                   {filteredPresets.map((preset) => (
                     <button
@@ -1448,23 +1454,23 @@ export function App() {
                     </div>
                     <div className="preset-form">
                       <label>
-                        Provider Name
+                        {t("config.providerName")}
                         <input value={presetDraft.providerName} onChange={(event) => updatePresetDraft({ providerName: event.target.value })} />
                       </label>
                       <label>
-                        Alias Name
+                        {t("config.aliasName")}
                         <input value={presetDraft.aliasName} onChange={(event) => updatePresetDraft({ aliasName: event.target.value })} />
                       </label>
                       <label>
-                        Base URL
+                        {t("config.baseUrl")}
                         <input value={presetDraft.baseUrl} onChange={(event) => updatePresetDraft({ baseUrl: event.target.value })} />
                       </label>
                       <label>
-                        Environment Variable Name
+                        {t("config.envName")}
                         <input value={presetDraft.envName} onChange={(event) => updatePresetDraft({ envName: event.target.value })} />
                       </label>
                       <label>
-                        Upstream Model
+                        {t("config.upstreamModel")}
                         {selectedPreset.models && selectedPreset.models.length > 1 ? (
                           <select value={presetDraft.modelValue} onChange={(event) => updatePresetDraft({ modelValue: event.target.value })}>
                             {selectedPreset.models.map((model) => (
@@ -1479,10 +1485,10 @@ export function App() {
                     <div className="preset-actions">
                       <label>
                         <input type="checkbox" checked={presetDraft.setActive} onChange={(event) => updatePresetDraft({ setActive: event.target.checked })} />
-                        Set as active after adding
+                        {t("config.setActive")}
                       </label>
                       <button onClick={() => void handleAddPresetProvider()} disabled={!editableConfig || busyAction !== null}>
-                        {presetBusy ? "Adding..." : "Add Provider"}
+                        {presetBusy ? t("common.adding") : t("config.addProvider")}
                       </button>
                     </div>
                   </div>
@@ -1493,7 +1499,7 @@ export function App() {
 
           <section className="card config-card import-card">
             <div className="card-heading">
-              <span>Import from CC Switch</span>
+              <span>{t("config.importFromCcSwitch")}</span>
               <strong>{importDrafts.length}</strong>
             </div>
             <p className="muted">
@@ -1501,13 +1507,13 @@ export function App() {
             </p>
             <div className="server-actions">
               <button onClick={() => void handleDetectCcSwitch()} disabled={busyAction !== null}>
-                {busyAction === "ccswitch:detect" ? "Detecting..." : "Auto Detect"}
+                {busyAction === "ccswitch:detect" ? t("config.detecting") : t("config.autoDetect")}
               </button>
               <button onClick={() => void handleScanAutoCcSwitch()} disabled={busyAction !== null || !ccSwitchPath}>
-                {busyAction === "ccswitch:scan" ? "Scanning..." : "Scan Auto-detected Database"}
+                {busyAction === "ccswitch:scan" ? t("config.scanning") : t("config.scanAuto")}
               </button>
               <button className="secondary" onClick={() => void handleSelectCcSwitch()} disabled={busyAction !== null}>
-                {busyAction === "ccswitch:select" ? "Selecting..." : "Select cc-switch.db"}
+                {busyAction === "ccswitch:select" ? t("config.selecting") : t("config.selectDb")}
               </button>
             </div>
             <div className="import-options">
@@ -1541,14 +1547,14 @@ export function App() {
                 </div>
                 <div className="ccswitch-table">
                   <div className="ccswitch-row ccswitch-head">
-                    <span>Import</span>
-                    <span>Provider</span>
-                    <span>Base URL</span>
-                    <span>Detected Key</span>
-                    <span>Env Name</span>
-                    <span>Model</span>
-                    <span>Alias</span>
-                    <span>Warnings</span>
+                    <span>{t("config.import")}</span>
+                    <span>{t("common.provider")}</span>
+                    <span>{t("config.baseUrl")}</span>
+                    <span>{t("config.detectedKey")}</span>
+                    <span>{t("config.envNameShort")}</span>
+                    <span>{t("common.model")}</span>
+                    <span>{t("common.alias")}</span>
+                    <span>{t("config.warnings")}</span>
                   </div>
                   {importDrafts.map((draft) => (
                     <div className={draft.complete ? "ccswitch-row" : "ccswitch-row incomplete"} key={draft.id}>
@@ -1579,7 +1585,7 @@ export function App() {
                 </div>
                 <section className="actions import-actions">
                   <button onClick={() => void handleImportCcSwitch()} disabled={!editableConfig || busyAction !== null}>
-                    {busyAction === "ccswitch:import" ? "Importing..." : "Import Selected"}
+                    {busyAction === "ccswitch:import" ? t("config.importing") : t("config.importSelected")}
                   </button>
                 </section>
               </>
@@ -1588,17 +1594,17 @@ export function App() {
 
           <section className="card config-card">
             <div className="card-heading">
-              <span>Providers</span>
+              <span>{t("config.providers")}</span>
               <strong>{providerEntries.length}</strong>
             </div>
             <div className="config-table providers-table">
               <div className="config-row config-head">
-                <span>Name</span>
-                <span>Type</span>
-                <span>Base URL</span>
-                <span>Responses</span>
-                <span>API Key</span>
-                <span>Actions</span>
+                <span>{t("common.name")}</span>
+                <span>{t("common.type")}</span>
+                <span>{t("config.baseUrl")}</span>
+                <span>{t("config.responses")}</span>
+                <span>{t("config.apiKey")}</span>
+                <span>{t("common.actions")}</span>
               </div>
               {providerEntries.map(([name, provider]) => (
                 <div className="config-row" key={name}>
@@ -1613,41 +1619,41 @@ export function App() {
                   </span>
                   <span className="row-actions">
                     <button className="secondary" onClick={() => handleTestProvider(name)} disabled={busyAction !== null}>
-                      {busyAction === `diagnostic:provider:${name}` ? "Testing..." : "Test"}
+                      {busyAction === `diagnostic:provider:${name}` ? t("common.testing") : t("config.test")}
                     </button>
-                    <button className="secondary" onClick={() => editProvider(name, provider)} disabled={configBusy}>Edit</button>
-                    <button className="secondary danger" onClick={() => deleteProvider(name)} disabled={configBusy}>Delete</button>
+                    <button className="secondary" onClick={() => editProvider(name, provider)} disabled={configBusy}>{t("common.edit")}</button>
+                    <button className="secondary danger" onClick={() => deleteProvider(name)} disabled={configBusy}>{t("common.delete")}</button>
                   </span>
                 </div>
               ))}
             </div>
             <div className="config-form">
-              <input placeholder="Name" value={providerForm.name} onChange={(event) => setProviderForm({ ...providerForm, name: event.target.value })} />
+              <input placeholder={t("common.name")} value={providerForm.name} onChange={(event) => setProviderForm({ ...providerForm, name: event.target.value })} />
               <select value={providerForm.type} onChange={(event) => setProviderForm({ ...providerForm, type: event.target.value })}>
                 <option value="openai-compatible">openai-compatible</option>
                 <option value="mock">mock</option>
               </select>
-              <input placeholder="Base URL" value={providerForm.baseUrl} onChange={(event) => setProviderForm({ ...providerForm, baseUrl: event.target.value })} disabled={providerForm.type === "mock"} />
-              <input placeholder="API Key Env Name" value={providerForm.envName} onChange={(event) => setProviderForm({ ...providerForm, envName: event.target.value })} disabled={providerForm.type === "mock"} />
+              <input placeholder={t("config.baseUrl")} value={providerForm.baseUrl} onChange={(event) => setProviderForm({ ...providerForm, baseUrl: event.target.value })} disabled={providerForm.type === "mock"} />
+              <input placeholder={t("config.apiKeyEnvName")} value={providerForm.envName} onChange={(event) => setProviderForm({ ...providerForm, envName: event.target.value })} disabled={providerForm.type === "mock"} />
               <label className="inline-checkbox">
                 <input type="checkbox" checked={providerForm.responsesApi} onChange={(event) => setProviderForm({ ...providerForm, responsesApi: event.target.checked })} disabled={providerForm.type === "mock"} />
                 Responses API
               </label>
-              <button onClick={saveProviderDraft} disabled={configBusy}>{providerForm.editingName ? "Update Provider" : "Add Provider"}</button>
+              <button onClick={saveProviderDraft} disabled={configBusy}>{providerForm.editingName ? t("config.updateProvider") : t("config.addProvider")}</button>
             </div>
           </section>
 
           <section className="card config-card">
             <div className="card-heading">
-              <span>Aliases</span>
+              <span>{t("config.aliases")}</span>
               <strong>{aliasEntries.length}</strong>
             </div>
             <div className="config-table aliases-config-table">
               <div className="config-row config-head">
-                <span>Name</span>
-                <span>Provider</span>
-                <span>Upstream Model</span>
-                <span>Actions</span>
+                <span>{t("common.name")}</span>
+                <span>{t("common.provider")}</span>
+                <span>{t("config.upstreamModel")}</span>
+                <span>{t("common.actions")}</span>
               </div>
               {aliasEntries.map(([name, alias]) => (
                 <div className={editableConfig?.active === name ? "config-row active" : "config-row"} key={name}>
@@ -1656,74 +1662,74 @@ export function App() {
                   <span>{alias.model}</span>
                   <span className="row-actions">
                     <button className="secondary" onClick={() => void runDiagnostic(`diagnostic:alias:${name}`, () => testAlias(name, false))} disabled={busyAction !== null}>
-                      {busyAction === `diagnostic:alias:${name}` ? "Testing..." : "Test"}
+                      {busyAction === `diagnostic:alias:${name}` ? t("common.testing") : t("config.test")}
                     </button>
                     <button className="secondary" onClick={() => void runDiagnostic(`diagnostic:alias-stream:${name}`, () => testAlias(name, true))} disabled={busyAction !== null}>
-                      {busyAction === `diagnostic:alias-stream:${name}` ? "Testing..." : "Test Stream"}
+                      {busyAction === `diagnostic:alias-stream:${name}` ? t("common.testing") : t("config.testStream")}
                     </button>
-                    <button className="secondary" onClick={() => editAlias(name, alias)} disabled={configBusy}>Edit</button>
-                    <button className="secondary" onClick={() => setActiveAlias(name)} disabled={configBusy}>Set Active</button>
-                    <button className="secondary danger" onClick={() => deleteAlias(name)} disabled={configBusy}>Delete</button>
+                    <button className="secondary" onClick={() => editAlias(name, alias)} disabled={configBusy}>{t("common.edit")}</button>
+                    <button className="secondary" onClick={() => setActiveAlias(name)} disabled={configBusy}>{t("config.setActive")}</button>
+                    <button className="secondary danger" onClick={() => deleteAlias(name)} disabled={configBusy}>{t("common.delete")}</button>
                   </span>
                 </div>
               ))}
             </div>
             <div className="config-form alias-form">
-              <input placeholder="Name" value={aliasForm.name} onChange={(event) => setAliasForm({ ...aliasForm, name: event.target.value })} />
+              <input placeholder={t("common.name")} value={aliasForm.name} onChange={(event) => setAliasForm({ ...aliasForm, name: event.target.value })} />
               <select value={aliasForm.provider} onChange={(event) => setAliasForm({ ...aliasForm, provider: event.target.value })}>
-                <option value="">Provider</option>
+                <option value="">{t("common.provider")}</option>
                 {providerNames.map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
-              <input placeholder="Upstream Model" value={aliasForm.model} onChange={(event) => setAliasForm({ ...aliasForm, model: event.target.value })} />
-              <button onClick={saveAliasDraft} disabled={configBusy}>{aliasForm.editingName ? "Update Alias" : "Add Alias"}</button>
+              <input placeholder={t("config.upstreamModel")} value={aliasForm.model} onChange={(event) => setAliasForm({ ...aliasForm, model: event.target.value })} />
+              <button onClick={saveAliasDraft} disabled={configBusy}>{aliasForm.editingName ? t("config.updateAlias") : t("config.addAlias")}</button>
             </div>
           </section>
 
           <section className="card config-card">
             <div className="card-heading">
-              <span>Entrypoints</span>
+              <span>{t("config.entrypoints")}</span>
               <strong>{entrypointEntries.length}</strong>
             </div>
             <div className="config-table entrypoints-table">
               <div className="config-row config-head">
-                <span>Name</span>
-                <span>Use</span>
-                <span>Actions</span>
+                <span>{t("common.name")}</span>
+                <span>{t("config.use")}</span>
+                <span>{t("common.actions")}</span>
               </div>
               {entrypointEntries.map(([name, entrypoint]) => (
                 <div className="config-row" key={name}>
                   <span>{name}</span>
                   <span>{entrypoint.use}</span>
                   <span className="row-actions">
-                    <button className="secondary" onClick={() => editEntrypoint(name, entrypoint)} disabled={configBusy}>Edit</button>
-                    <button className="secondary danger" onClick={() => deleteEntrypoint(name)} disabled={configBusy}>Delete</button>
+                    <button className="secondary" onClick={() => editEntrypoint(name, entrypoint)} disabled={configBusy}>{t("common.edit")}</button>
+                    <button className="secondary danger" onClick={() => deleteEntrypoint(name)} disabled={configBusy}>{t("common.delete")}</button>
                   </span>
                 </div>
               ))}
             </div>
             <div className="config-form entrypoint-form">
-              <input placeholder="Name" value={entrypointForm.name} onChange={(event) => setEntrypointForm({ ...entrypointForm, name: event.target.value })} />
+              <input placeholder={t("common.name")} value={entrypointForm.name} onChange={(event) => setEntrypointForm({ ...entrypointForm, name: event.target.value })} />
               <select value={entrypointForm.use} onChange={(event) => setEntrypointForm({ ...entrypointForm, use: event.target.value })}>
                 <option value="active">active</option>
                 {aliasNames.map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
-              <button onClick={saveEntrypointDraft} disabled={configBusy}>{entrypointForm.editingName ? "Update Entrypoint" : "Add Entrypoint"}</button>
+              <button onClick={saveEntrypointDraft} disabled={configBusy}>{entrypointForm.editingName ? t("config.updateEntrypoint") : t("config.addEntrypoint")}</button>
             </div>
           </section>
 
           <section className="actions config-actions">
             <button onClick={() => void handleValidateConfig()} disabled={!editableConfig || busyAction !== null}>
-              {busyAction === "config:validate" ? "Validating..." : "Validate"}
+              {busyAction === "config:validate" ? t("config.validating") : t("config.validate")}
             </button>
             <button onClick={() => void handleSaveConfig()} disabled={!editableConfig || busyAction !== null}>
-              {busyAction === "config:save" ? "Saving..." : "Save & Reload"}
+              {busyAction === "config:save" ? t("config.saving") : t("config.saveReload")}
             </button>
             <button className="secondary" onClick={() => void handleResetConfig()} disabled={busyAction !== null}>
-              {busyAction === "config:reset" ? "Resetting..." : "Reset"}
+              {busyAction === "config:reset" ? t("config.resetting") : t("config.reset")}
             </button>
           </section>
         </section>
@@ -1731,40 +1737,40 @@ export function App() {
         <section className="logs-page">
           {disconnected && (
             <section className="notice error">
-              <strong>ModelGate server is not connected.</strong>
-              <span>Start or reconnect the server to view request logs.</span>
+              <strong>{t("logs.notConnected")}</strong>
+              <span>{t("logs.startToView")}</span>
             </section>
           )}
 
           <section className="grid">
             <article className="card stats-card">
               <div className="card-heading">
-                <span>Request Stats</span>
+                <span>{t("logs.requestStats")}</span>
                 <strong>{requestStats?.total ?? 0}</strong>
               </div>
               <dl className="stats-grid">
                 <div>
-                  <dt>Total Requests</dt>
+                  <dt>{t("logs.totalRequests")}</dt>
                   <dd>{requestStats?.total ?? 0}</dd>
                 </div>
                 <div>
-                  <dt>Success</dt>
+                  <dt>{t("common.success")}</dt>
                   <dd>{requestStats?.success ?? 0}</dd>
                 </div>
                 <div>
-                  <dt>Failed</dt>
+                  <dt>{t("common.failed")}</dt>
                   <dd>{requestStats?.failed ?? 0}</dd>
                 </div>
                 <div>
-                  <dt>Average Duration</dt>
+                  <dt>{t("logs.averageDuration")}</dt>
                   <dd>{requestStats?.avg_duration_ms ?? 0}ms</dd>
                 </div>
                 <div>
-                  <dt>Stream</dt>
+                  <dt>{t("logs.stream")}</dt>
                   <dd>{requestStats?.stream ?? 0}</dd>
                 </div>
                 <div>
-                  <dt>Non-stream</dt>
+                  <dt>{t("logs.nonStream")}</dt>
                   <dd>{requestStats?.non_stream ?? 0}</dd>
                 </div>
               </dl>
@@ -1772,7 +1778,7 @@ export function App() {
 
             <article className="card stats-card">
               <div className="card-heading">
-                <span>By Provider</span>
+                <span>{t("logs.byProvider")}</span>
                 <strong>{Object.keys(requestStats?.by_provider ?? {}).length}</strong>
               </div>
               <div className="provider-stats">
@@ -1784,7 +1790,7 @@ export function App() {
                     </div>
                   ))
                 ) : (
-                  <p className="muted">No provider stats yet.</p>
+                  <p className="muted">{t("logs.noProviderStats")}</p>
                 )}
               </div>
             </article>
@@ -1792,10 +1798,10 @@ export function App() {
 
           <section className="actions">
             <button onClick={() => void handleRefreshLogs()} disabled={busyAction !== null || disconnected}>
-              {busyAction === "logs:refresh" ? "Refreshing..." : "Refresh"}
+              {busyAction === "logs:refresh" ? t("common.refreshing") : t("common.refresh")}
             </button>
             <button className="secondary danger" onClick={() => void handleClearLogs()} disabled={busyAction !== null || disconnected}>
-              {busyAction === "logs:clear" ? "Clearing..." : "Clear Logs"}
+              {busyAction === "logs:clear" ? t("logs.clearing") : t("logs.clearLogs")}
             </button>
             <span className={logsMessage.startsWith("Failed") ? "action-message bad" : "action-message"}>
               {logsMessage}
@@ -1804,28 +1810,28 @@ export function App() {
 
           <section className="card table-card">
             <div className="card-heading">
-              <span>Recent Requests</span>
+              <span>{t("logs.recentRequests")}</span>
               <strong>{requestLogs.length}</strong>
             </div>
             <div className="request-log-table">
               <div className="request-log-row request-log-head">
-                <span>Time</span>
-                <span>Kind</span>
+                <span>{t("usage.time")}</span>
+                <span>{t("logs.kind")}</span>
                 <span>API</span>
-                <span>Fallback</span>
-                <span>Status</span>
-                <span>Stream</span>
-                <span>Requested Model</span>
-                <span>Alias</span>
-                <span>Provider</span>
-                <span>Upstream Model</span>
-                <span>Duration</span>
-                <span>Error</span>
+                <span>{t("logs.fallback")}</span>
+                <span>{t("common.status")}</span>
+                <span>{t("logs.stream")}</span>
+                <span>{t("logs.requestedModel")}</span>
+                <span>{t("common.alias")}</span>
+                <span>{t("common.provider")}</span>
+                <span>{t("config.upstreamModel")}</span>
+                <span>{t("common.duration")}</span>
+                <span>{t("common.error")}</span>
               </div>
               {requestLogs.map((entry) => (
                 <div className={entry.ok ? "request-log-row ok" : "request-log-row failed"} key={entry.id}>
                   <span>{formatLogTime(entry.started_at)}</span>
-                  <span>{entry.kind === "diagnostic" ? "Diagnostic" : "Normal"}</span>
+                  <span>{entry.kind === "diagnostic" ? t("logs.diagnostic") : t("logs.normal")}</span>
                   <span>{entry.api_type === "responses" ? "responses" : "chat"}</span>
                   <span>{entry.fallback_mode ?? "-"}</span>
                   <span><span className={entry.ok ? "pill" : "pill bad"}>{entry.ok ? "OK" : entry.status_code ?? "ERR"}</span></span>

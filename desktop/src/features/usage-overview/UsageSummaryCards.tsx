@@ -1,4 +1,5 @@
 import type { UsageSummary } from "./usageTypes";
+import { useI18n } from "../../i18n/i18n";
 
 function formatNumber(value: number | undefined) {
   return (value ?? 0).toLocaleString("en-US");
@@ -13,13 +14,14 @@ function formatCost(summary: UsageSummary | null) {
 }
 
 export function UsageSummaryCards({ summary }: { summary: UsageSummary | null }) {
+  const { t } = useI18n();
   const cards = [
-    ["Total Tokens", formatNumber(summary?.total_tokens)],
-    ["Input Tokens", formatNumber(summary?.input_tokens)],
-    ["Output Tokens", formatNumber(summary?.output_tokens)],
-    ["Cached Tokens", formatNumber(summary?.cached_tokens)],
-    ["Requests", formatNumber(summary?.requests)],
-    ["Estimated Cost", formatCost(summary)]
+    [t("usage.totalTokens"), formatNumber(summary?.total_tokens)],
+    [t("usage.inputTokens"), formatNumber(summary?.input_tokens)],
+    [t("usage.outputTokens"), formatNumber(summary?.output_tokens)],
+    [t("usage.cachedTokens"), formatNumber(summary?.cached_tokens)],
+    [t("usage.requests"), formatNumber(summary?.requests)],
+    [t("usage.estimatedCost"), formatCost(summary)]
   ];
 
   return (

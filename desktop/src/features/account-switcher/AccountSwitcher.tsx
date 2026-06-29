@@ -5,6 +5,7 @@ import {
   type ConnectionState,
   type EntrypointStatusMap
 } from "./accountTypes";
+import { useI18n } from "../../i18n/i18n";
 import "./accountSwitcher.css";
 
 type AccountSwitcherProps = {
@@ -32,6 +33,7 @@ export function AccountSwitcher({
   onSelectAccount,
   onAlreadyActive
 }: AccountSwitcherProps) {
+  const { t } = useI18n();
   const disconnected = connection === "disconnected";
   const activeName = activeAliasName ?? activeAlias?.name;
   const entrypointEntries = Object.entries(entrypoints);
@@ -53,13 +55,13 @@ export function AccountSwitcher({
     <section className="switcher-page">
       <section className="switcher-hero">
         <div>
-          <span className="switcher-kicker">Account Switcher</span>
-          <h2>{activeName ? formatAliasTitle(activeName) : "No Active Account"}</h2>
-          <p>Choose which alias profile ModelGate should route local requests through.</p>
+          <span className="switcher-kicker">{t("switcher.title")}</span>
+          <h2>{activeName ? formatAliasTitle(activeName) : t("switcher.noActive")}</h2>
+          <p>{t("switcher.description")}</p>
         </div>
         <div className="switcher-status">
           <span className={`status-dot ${connection}`} />
-          <strong>{connection === "connected" ? "Connected" : connection === "checking" ? "Checking" : "Server is not running"}</strong>
+          <strong>{connection === "connected" ? t("app.connected") : connection === "checking" ? t("app.checking") : t("switcher.serverNotRunning")}</strong>
           <span>{endpoint}/v1</span>
         </div>
       </section>
@@ -67,27 +69,27 @@ export function AccountSwitcher({
       <section className="switcher-current">
         <dl>
           <div>
-            <dt>Current Account</dt>
+            <dt>{t("switcher.currentAccount")}</dt>
             <dd>{activeName ?? "-"}</dd>
           </div>
           <div>
-            <dt>Provider</dt>
+            <dt>{t("common.provider")}</dt>
             <dd>{activeAlias?.provider ?? "-"}</dd>
           </div>
           <div>
-            <dt>Model</dt>
+            <dt>{t("common.model")}</dt>
             <dd>{activeAlias?.model ?? "-"}</dd>
           </div>
           <div>
-            <dt>Status</dt>
-            <dd>{connection === "connected" ? "Connected" : "Disconnected"}</dd>
+            <dt>{t("common.status")}</dt>
+            <dd>{connection === "connected" ? t("app.connected") : t("app.disconnected")}</dd>
           </div>
         </dl>
       </section>
 
       {disconnected && (
         <section className="switcher-notice">
-          Connect to ModelGate server to switch accounts.
+          {t("switcher.connectToSwitch")}
         </section>
       )}
 
@@ -104,24 +106,24 @@ export function AccountSwitcher({
             />
           ))
         ) : (
-          <p className="muted">No accounts are configured yet.</p>
+          <p className="muted">{t("switcher.noAccounts")}</p>
         )}
       </section>
 
       <section className="switcher-footnotes">
         <div>
-          <strong>Codex should use</strong>
-          <span>Base URL: {endpoint}/v1</span>
-          <span>Model: codex-main</span>
+          <strong>{t("switcher.codexShouldUse")}</strong>
+          <span>{t("switcher.baseUrl")}: {endpoint}/v1</span>
+          <span>{t("common.model")}: codex-main</span>
         </div>
         <div>
-          <strong>Entrypoints</strong>
+          <strong>{t("switcher.entrypoints")}</strong>
           {entrypointEntries.length > 0 ? (
             entrypointEntries.map(([name, entrypoint]) => (
               <span key={name}>{`${name} -> ${entrypoint.use} -> ${entrypoint.resolved}`}</span>
             ))
           ) : (
-            <span>No public entrypoints reported.</span>
+            <span>{t("switcher.noEntrypoints")}</span>
           )}
         </div>
       </section>
