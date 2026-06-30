@@ -660,14 +660,17 @@ The import flow is aimed at Codex OpenAI-compatible provider settings. When impo
 
 ### Import From CC Switch
 
-The desktop Home page and Configuration -> Integrations both include **Import from CC Switch**. Clicking it starts the new simplified import flow:
+The desktop Home page and Configuration -> Integrations both include **Import from CC Switch**. Clicking either button opens the same import modal instead of navigating away from the current page.
+
+The modal keeps the default flow short:
 
 1. ModelGate auto-scans the default local CC Switch database.
 2. Only Codex app provider/model configs are read.
-3. Importable Codex models are shown as a simple selectable list.
-4. Select the models to import.
-5. Click **Import Selected Models**.
-6. ModelGate writes its own providers / aliases, validates the config, saves, and reloads.
+3. Importable Codex models are shown as a compact selectable list with only checkbox, name, description, and an edit action.
+4. Use **Edit** only when you need to review or change alias name, description, model, provider, Base URL, or API key environment variable name.
+5. Select the models to import.
+6. Click **Import Selected Models**.
+7. ModelGate writes its own providers / aliases, validates the config, saves, and reloads.
 
 ModelGate scans CC Switch data without modifying it:
 
@@ -680,9 +683,17 @@ ModelGate scans CC Switch data without modifying it:
 
 The scanner is based on the current CC Switch SQLite schema. It first looks for the real `providers` / `provider_endpoints` schema, reads Codex rows from `providers.settings_config`, and extracts the OpenAI-compatible base URL, model, masked API key preview, and description. Claude, Gemini, OpenCode, OpenClaw, Hermes, and other app configs are not shown in this import list.
 
-Model order is preserved from CC Switch as closely as possible. The current schema uses `sort_index`, then `created_at`, then `id`; ModelGate writes imported aliases in that order so the Account Switcher follows the same order.
+Model order is preserved from CC Switch as closely as possible. The current schema uses `sort_index`, `sort_order`, `position`, `order`, `created_at`, then `id`; ModelGate writes imported aliases in that order so the Account Switcher follows the same order.
 
 Descriptions are copied from CC Switch fields such as `description`, `desc`, `notes`, `note`, `remark`, `remarks`, `comment`, `comments`, and `memo`, including matching JSON fields. ModelGate does not translate these descriptions. Long descriptions may be truncated in the UI, but the full value is saved in YAML as optional `description` on providers and aliases.
+
+OpenAI Official configs are recognized when the CC Switch provider name or id looks like `OpenAI Official`, `openai-official`, `openai_official`, `official-openai`, or `openai`, and the model looks like `gpt-*`, `o1*`, `o3*`, or `o4*`. If CC Switch does not store an explicit Base URL for that config, ModelGate fills in:
+
+```text
+https://api.openai.com/v1
+```
+
+The suggested API key environment variable for OpenAI Official is `OPENAI_API_KEY`. Missing API keys do not make the item unimportable; the saved YAML still uses an environment variable reference such as `${OPENAI_API_KEY}`.
 
 The desktop app first looks for:
 
@@ -696,13 +707,13 @@ On Windows this resolves to:
 C:\Users\<User>\.cc-switch\cc-switch.db
 ```
 
-If the default database is not found, ModelGate shows:
+If the default database is not found, ModelGate shows the manual selection action in the modal:
 
 ```text
 CC Switch database was not found. Select cc-switch.db manually.
 ```
 
-Then use **Select Database** to choose `cc-switch.db` manually. The scanner opens SQLite in read-only mode. Advanced scan details remain available in a collapsed **Show scan details** section for debugging, but parser/table details are not part of the normal import flow.
+Then use **Select Database** to choose `cc-switch.db` manually. The scanner opens SQLite in read-only mode. Parser tables and scan-report details are not shown in the main import list; warning details are available from each item's edit view.
 
 API keys are never imported as plaintext. If a key or token is detected, ModelGate only shows a masked preview and suggests an environment variable name. The saved ModelGate YAML uses this form:
 
@@ -724,11 +735,13 @@ npm run dev
 Import flow:
 
 1. Click **Import from CC Switch**
-2. Review the detected Codex model configs
-3. Keep or clear the model checkboxes
-4. Keep **Generate new names on conflicts** enabled unless you want conflicts to stop the import
-5. Click **Import Selected Models**
-6. ModelGate validates and saves its own YAML config, then reloads
+2. Wait for the modal to auto-scan the default database
+3. Review the compact Codex model list
+4. Click **Edit** only for items that need detail changes
+5. Keep or clear the model checkboxes
+6. Keep **Generate new names on conflicts** enabled unless you want conflicts to stop the import
+7. Click **Import Selected Models**
+8. ModelGate validates and saves its own YAML config, then reloads
 
 If no Codex model config is found, common causes are:
 

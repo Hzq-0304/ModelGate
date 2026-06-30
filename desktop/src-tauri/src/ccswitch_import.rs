@@ -87,7 +87,17 @@ struct TableScanResult {
 const NAME_KEYS: &[&str] = &["name", "label", "display_name", "title", "provider_name"];
 const APP_KEYS: &[&str] = &["app", "app_type", "source", "target_app", "application", "codex_session"];
 const BASE_URL_KEYS: &[&str] = &["base_url", "baseurl", "api_base", "apibase", "endpoint", "url", "base"];
-const API_KEY_KEYS: &[&str] = &["api_key", "apikey", "key", "token", "auth_token", "openai_api_key"];
+const API_KEY_KEYS: &[&str] = &[
+    "api_key",
+    "apikey",
+    "apiKey",
+    "key",
+    "token",
+    "auth_token",
+    "authorization",
+    "openai_api_key",
+    "OPENAI_API_KEY",
+];
 const NOTES_KEYS: &[&str] = &[
     "description",
     "desc",
@@ -110,6 +120,7 @@ const MODEL_KEYS: &[&str] = &[
     "models",
 ];
 const TYPE_KEYS: &[&str] = &["type", "api_type", "protocol", "kind", "api_format"];
+const OPENAI_OFFICIAL_BASE_URL: &str = "https://api.openai.com/v1";
 
 #[tauri::command]
 pub fn detect_ccswitch_database() -> CcSwitchDatabaseDetection {
@@ -259,13 +270,14 @@ fn has_current_ccswitch_schema(tables: &[CcSwitchTableInfo]) -> bool {
 
 fn scan_current_schema(connection: &Connection, show_managed: bool) -> Result<TableScanResult, String> {
     let endpoints = load_provider_endpoints(connection).unwrap_or_default();
+    let order_clause = provider_order_clause(connection);
     let mut statement = connection
-        .prepare(
+        .prepare(&format!(
             "SELECT id, app_type, name, settings_config, notes, category, meta
              FROM providers
              WHERE lower(app_type) LIKE '%codex%'
-             ORDER BY COALESCE(sort_index, 999999), created_at ASC, id ASC",
-        )
+             ORDER BY {order_clause}",
+        ))
         .map_err(|error| error.to_string())?;
 
     let rows = statement
@@ -299,6 +311,10 @@ fn scan_current_schema(connection: &Connection, show_managed: bool) -> Result<Ta
             .unwrap_or_default();
         let candidate = candidate_from_current_schema(&row, urls);
 
+        if candidate.model.is_none() {
+            continue;
+        }
+
         if !show_managed && candidate.modelgate_managed {
             skipped_modelgate_managed += 1;
             continue;
@@ -311,6 +327,25 @@ fn scan_current_schema(connection: &Connection, show_managed: bool) -> Result<Ta
         candidates,
         skipped_modelgate_managed,
     })
+}
+
+fn provider_order_clause(connection: &Connection) -> String {
+    let columns = table_columns(connection, "providers").unwrap_or_default();
+    let has_column = |name: &str| columns.iter().any(|column| column == name);
+    let mut parts = Vec::new();
+
+    for column in ["sort_index", "sort_order", "position", "order"] {
+        if has_column(column) {
+            parts.push(format!("COALESCE({}, 999999)", quote_identifier(column)));
+        }
+    }
+
+    if has_column("created_at") {
+        parts.push("created_at ASC".to_string());
+    }
+
+    parts.push("id ASC".to_string());
+    parts.join(", ")
 }
 
 fn load_provider_endpoints(connection: &Connection) -> Result<HashMap<(String, String), Vec<String>>, String> {
@@ -341,15 +376,24 @@ fn load_provider_endpoints(connection: &Connection) -> Result<HashMap<(String, S
 
 fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String>) -> CcSwitchImportCandidate {
     let (base_url, api_key, models, provider_type_hint) = extract_current_provider_fields(row);
-    let base_url = base_url.or_else(|| endpoints.first().cloned());
     let model = models.first().cloned();
-    let provider_name = infer_name_from_url(base_url.as_deref()).unwrap_or_else(|| row.name.clone());
+    let openai_official = is_openai_official_row(row, model.as_deref());
+    let base_url = base_url
+        .or_else(|| endpoints.first().cloned())
+        .or_else(|| openai_official.then(|| OPENAI_OFFICIAL_BASE_URL.to_string()));
+    let provider_name = row.name.clone();
     let safe_provider = safe_name(&provider_name);
     let alias_name = safe_name(&row.name);
     let env_name = api_key
         .as_deref()
         .and_then(extract_env_name)
-        .unwrap_or_else(|| suggested_env_name(&safe_provider));
+        .unwrap_or_else(|| {
+            if openai_official {
+                "OPENAI_API_KEY".to_string()
+            } else {
+                suggested_env_name(&safe_provider)
+            }
+        });
     let description = extract_current_description(row);
     let modelgate_managed = is_current_schema_modelgate_managed(row, base_url.as_deref(), model.as_deref(), api_key.as_deref());
     let provider_type = if current_provider_looks_openai_compatible(row, base_url.as_deref(), provider_type_hint.as_deref()) {
@@ -374,7 +418,7 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
     if modelgate_managed {
         warnings.push("ModelGate-managed CC Switch provider.".to_string());
     }
-    if row.category.as_deref() == Some("official") {
+    if row.category.as_deref() == Some("official") && !openai_official {
         warnings.push("Official/default provider; review before importing.".to_string());
     }
 
@@ -1007,6 +1051,39 @@ fn type_looks_openai(value: Option<&str>) -> bool {
             value.contains("openai") || value.contains("compatible")
         })
         .unwrap_or(false)
+}
+
+fn is_openai_official_row(row: &SchemaCandidateRow, model: Option<&str>) -> bool {
+    if !model.map(model_looks_openai_official).unwrap_or(false) {
+        return false;
+    }
+
+    [row.name.as_str(), row.id.as_str(), row.category.as_deref().unwrap_or_default()]
+        .iter()
+        .any(|value| provider_looks_openai_official(value))
+}
+
+fn model_looks_openai_official(model: &str) -> bool {
+    let model = model.trim().to_ascii_lowercase();
+    model.starts_with("gpt-")
+        || model.starts_with("o1")
+        || model.starts_with("o3")
+        || model.starts_with("o4")
+}
+
+fn provider_looks_openai_official(value: &str) -> bool {
+    let normalized = value
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['-', ' ', '.'], "_");
+    matches!(
+        normalized.as_str(),
+        "openai"
+            | "openai_official"
+            | "official_openai"
+            | "codex_official"
+            | "official"
+    )
 }
 
 fn infer_name_from_url(value: Option<&str>) -> Option<String> {

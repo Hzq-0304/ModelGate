@@ -42,7 +42,7 @@ import { PageHeader } from "./components/PageHeader";
 import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
 import type { ConnectionState } from "./features/account-switcher/accountTypes";
 import { CcSwitchExportPanel, type CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
-import { CcSwitchImportPanel } from "./features/ccswitch/CcSwitchImportPanel";
+import { CcSwitchImportModal } from "./features/ccswitch-import/CcSwitchImportModal";
 import { QuickStart } from "./features/quick-start/QuickStart";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
 import { useI18n } from "./i18n/i18n";
@@ -281,11 +281,16 @@ export function App() {
   function goToConfigurationIntegrations() {
     setActiveTab("configuration");
     setConfigSection("integrations");
+    if (!editableConfig) {
+      void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
+    }
+  }
+
+  function openCcSwitchImportModal() {
     setShowCcSwitchImportGuide(true);
     if (!editableConfig) {
       void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
     }
-    scrollToElement("ccswitch-import-guide");
     void handleScanAutoCcSwitch();
   }
 
@@ -1128,7 +1133,7 @@ export function App() {
             <p className="muted">{t("ccswitch.import.description")}</p>
             <p className="muted">{t("ccswitch.import.safety")}</p>
             <div className="server-actions">
-              <button type="button" onClick={goToConfigurationIntegrations} disabled={busyAction !== null}>
+              <button type="button" onClick={openCcSwitchImportModal} disabled={busyAction !== null}>
                 {t("ccswitch.import.start")}
               </button>
             </div>
@@ -1273,7 +1278,7 @@ export function App() {
             onConfigureProviders={goToConfigurationProviders}
             onCopyCodexConfig={() => void handleCopyCodexImportConfig()}
             onCopyDeepLink={() => void handleCopyCodexDeepLink()}
-            onImportFromCcSwitch={goToConfigurationIntegrations}
+            onImportFromCcSwitch={openCcSwitchImportModal}
             onImportToCodex={openCodexImportPanel}
             onOpenInCcSwitch={() => void handleOpenCodexInCcSwitch()}
             onStartServer={goToAdvancedServerControl}
@@ -1288,7 +1293,7 @@ export function App() {
             message={message}
             switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
             onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
-            onGoToIntegrations={goToConfigurationIntegrations}
+            onGoToIntegrations={openCcSwitchImportModal}
             onSelectAccount={(alias) => void handleSwitch(alias)}
           />
           <UsageOverview disconnected={disconnected} />
@@ -1641,24 +1646,6 @@ export function App() {
           {configSection === "integrations" && (
           <>
           {renderCcSwitchIntegration()}
-          {showCcSwitchImportGuide && (
-            <div id="ccswitch-import-guide">
-            <CcSwitchImportPanel
-              busyAction={busyAction}
-              configLoaded={Boolean(editableConfig)}
-              drafts={importDrafts}
-              generateNewNames={generateImportNames}
-              message={ccSwitchMessage}
-              report={ccSwitchReport}
-              onCancel={() => setShowCcSwitchImportGuide(false)}
-              onGenerateNewNamesChange={setGenerateImportNames}
-              onImport={() => void handleImportCcSwitch()}
-              onScanAuto={() => void handleScanAutoCcSwitch()}
-              onSelectDatabase={() => void handleSelectCcSwitch()}
-              onUpdateDraft={updateImportDraft}
-            />
-            </div>
-          )}
           </>
           )}
 
@@ -1881,6 +1868,21 @@ export function App() {
           </section>
         </section>
       )}
+      <CcSwitchImportModal
+        busyAction={busyAction}
+        configLoaded={Boolean(editableConfig)}
+        drafts={importDrafts}
+        generateNewNames={generateImportNames}
+        message={ccSwitchMessage}
+        open={showCcSwitchImportGuide}
+        report={ccSwitchReport}
+        onClose={() => setShowCcSwitchImportGuide(false)}
+        onGenerateNewNamesChange={setGenerateImportNames}
+        onImport={() => void handleImportCcSwitch()}
+        onScanAuto={() => void handleScanAutoCcSwitch()}
+        onSelectDatabase={() => void handleSelectCcSwitch()}
+        onUpdateDraft={updateImportDraft}
+      />
     </main>
   );
 }
