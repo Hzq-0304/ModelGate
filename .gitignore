@@ -1,6 +1,7 @@
 node_modules/
 dist/
 desktop/dist/
+desktop/src-tauri/resources/modelgate-server/
 desktop/src-tauri/target/
 release/
 .reference/

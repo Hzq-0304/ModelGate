@@ -10,6 +10,7 @@ if (!version) {
 
 const releaseRoot = resolve("release", `modelgate-v${version}`);
 const artifactsDir = join(releaseRoot, "artifacts");
+const serverRuntimeDir = join(releaseRoot, "modelgate-server");
 const desktopReleaseDir = resolve("desktop", "src-tauri", "target", "release");
 const nsisDir = join(desktopReleaseDir, "bundle", "nsis");
 
@@ -69,6 +70,8 @@ copyRequired(resolve("README.md"), join(releaseRoot, "README.md"));
 copyRequired(resolve("RELEASE_NOTES.md"), join(releaseRoot, "RELEASE_NOTES.md"));
 copyOptional(resolve("LICENSE"), join(releaseRoot, "LICENSE"));
 
+copyRequired(resolve("desktop", "src-tauri", "resources", "modelgate-server"), serverRuntimeDir);
+
 const artifacts = copyDesktopArtifacts();
 
 console.log(`Prepared ModelGate v${version} release at ${releaseRoot}`);
@@ -79,6 +82,7 @@ console.log("  package.json");
 console.log("  package-lock.json");
 console.log("  README.md");
 console.log("  RELEASE_NOTES.md");
+console.log("  modelgate-server/");
 console.log("Included desktop artifacts:");
 console.log(`  ${join("artifacts", basename(artifacts.desktopExe))}`);
 for (const installer of artifacts.installers) {

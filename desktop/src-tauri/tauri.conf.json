@@ -25,6 +25,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"]
+    "targets": ["nsis"],
+    "resources": {
+      "resources/modelgate-server": "modelgate-server"
+    }
   }
 }

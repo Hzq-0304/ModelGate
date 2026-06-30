@@ -297,7 +297,7 @@ Desktop supports English / Simplified Chinese, and the language selection is sav
 
 桌面端支持 English / 简体中文，语言选择会保存在本地。
 
-The desktop app can manage a local ModelGate server process when it is running from a local repository environment. It still does not bundle a Node.js runtime into the desktop app.
+The desktop app can manage a local ModelGate server process from development builds, installed builds, and local release packages. Packaged desktop builds include the ModelGate server runtime as an app resource, but this release still requires Node.js to be installed and available in `PATH`.
 
 Development option 1, start the server yourself:
 
@@ -330,19 +330,21 @@ ModelGate server is not running.
 Start it with: npm run dev
 ```
 
-The Server Control panel can start the server for local development. It prefers:
+The Server Control panel can start the server from the bundled or side-by-side `modelgate-server` runtime. It prefers:
 
 ```text
 Start Server -> node dist/index.js
 ```
 
-If `dist/index.js` does not exist, it falls back to:
+For local development only, if `dist/index.js` does not exist, it falls back to:
 
 ```text
 Start Server -> npm run dev
 ```
 
-If the desktop app cannot find the repository root, set `MODEL_GATE_ROOT` before starting it:
+On first managed startup, the desktop app copies `examples/modelgate.config.yaml` from the server runtime into the user-writable app config directory as `modelgate.config.yaml`, then starts the server with `MODELGATE_CONFIG` pointing at that file. It does not write into the bundled resource directory.
+
+`MODEL_GATE_ROOT` is still available as an advanced override for development or custom portable layouts:
 
 ```powershell
 $env:MODEL_GATE_ROOT="E:\Hzq Program\ModelGate"
@@ -399,9 +401,8 @@ release/modelgate-v0.1.5/
 To run the Node server from that release directory:
 
 ```bash
-cd release/modelgate-v0.1.5
-npm install --omit=dev
-npm run start
+cd release/modelgate-v0.1.5/modelgate-server
+node dist/index.js
 ```
 
 Desktop artifacts are collected under:
@@ -426,7 +427,7 @@ Desktop app features:
 - view usage overview with tokens, requests, estimated cost, trends, and recent usage
 - copy Codex configuration
 
-The desktop app now uses a lighter desktop-management layout with clearer page hierarchy. It opens on **Home** by default. In the UI, an **Account** is a ModelGate alias profile such as `mock-main`, `deepseek-main`, or `qwen-main`. Home keeps Account Switcher and Usage Overview as separate sections, and disconnected server state now points users to **Advanced -> Server Control** or `npm run dev`.
+The desktop app now uses a lighter desktop-management layout with clearer page hierarchy. It opens on **Home** by default. In the UI, an **Account** is a ModelGate alias profile such as `mock-main`, `deepseek-main`, or `qwen-main`. Home keeps Account Switcher and Usage Overview as separate sections, and disconnected server state now points users to **Advanced -> Server Control**. Developers can also start the server manually with `npm run dev`.
 
 Main navigation:
 
@@ -439,12 +440,11 @@ The account switcher and usage overview are implemented as separate desktop feat
 
 Current desktop limitations:
 
-- The current desktop app does not bundle a Node.js runtime.
-- The desktop Server Control requires Node.js/npm and a ModelGate project or release directory.
-- managed server startup is intended for local repository development
+- The current desktop app bundles the ModelGate server files, but it does not bundle a Node.js runtime.
+- The desktop Server Control requires Node.js to be installed and available in `PATH`.
+- Packaged builds start the bundled or side-by-side `modelgate-server` runtime with `node dist/index.js`.
+- `MODEL_GATE_ROOT` is only an advanced override for development or custom portable layouts.
 - provider API keys are not shown or managed in the desktop UI
-
-当前桌面端暂未内置 Node.js runtime。桌面端 Server Control 依赖本机 Node.js/npm，以及 ModelGate 项目或发布目录。
 
 ### Desktop Configuration Management
 
@@ -819,9 +819,11 @@ The default Windows installer target is NSIS. If the release executable is built
 
 Tauri desktop apps on Windows depend on Microsoft Edge WebView2 Runtime. Most Windows 10/11 systems already include it or can install it automatically. If the desktop app fails to run because WebView2 is missing, install Microsoft Edge WebView2 Runtime and try again.
 
-### Server Control cannot find the repository
+### Server Control cannot start the server
 
-Server Control searches for a directory containing `package.json` and `src/index.ts`. If it cannot find ModelGate, set `MODEL_GATE_ROOT` to the repository root before launching the desktop app.
+Packaged desktop builds include a `modelgate-server` runtime and should not require the repository root. If Server Control reports missing bundled server files, reinstall ModelGate or set `MODEL_GATE_ROOT` to a valid ModelGate project or server runtime directory.
+
+If Server Control reports that Node.js is missing, install Node.js and make sure the `node` command is available in `PATH`. This release bundles ModelGate server files, but it does not bundle the Node.js runtime.
 
 ## Verify
 
