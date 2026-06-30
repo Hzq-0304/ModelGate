@@ -321,7 +321,8 @@ dd {
 .config-page,
 .logs-page,
 .config-card,
-.ccswitch-flow {
+.ccswitch-flow,
+.ccswitch-integration {
   display: grid;
   gap: 14px;
 }
@@ -436,9 +437,26 @@ code {
 }
 
 .ccswitch-export-card .muted,
+.integration-action-card .muted,
 .preset-card .muted,
 .import-card .muted {
   line-height: 1.5;
+}
+
+.integration-card-grid {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.integration-action-card {
+  min-height: 100%;
+}
+
+.switcher-empty {
+  align-items: start;
+  justify-items: start;
 }
 
 .ccswitch-export-form,
@@ -712,6 +730,7 @@ select:disabled {
 
 @media (max-width: 980px) {
   .ccswitch-export-form,
+  .integration-card-grid,
   .preset-form,
   .config-summary,
   .config-form,

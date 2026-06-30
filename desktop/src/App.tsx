@@ -96,6 +96,7 @@ export function App() {
   const [ccSwitchPath, setCcSwitchPath] = useState("");
   const [ccSwitchMessage, setCcSwitchMessage] = useState("CC Switch import not scanned");
   const [ccSwitchReport, setCcSwitchReport] = useState<CcSwitchImportReport | null>(null);
+  const [showCcSwitchImportGuide, setShowCcSwitchImportGuide] = useState(false);
   const [showManagedCcSwitch, setShowManagedCcSwitch] = useState(false);
   const [ccSwitchExportDraft, setCcSwitchExportDraft] = useState<CcSwitchExportDraft>({
     name: "ModelGate Local",
@@ -369,6 +370,7 @@ export function App() {
   }
 
   async function handleDetectCcSwitch() {
+    setShowCcSwitchImportGuide(true);
     setBusyAction("ccswitch:detect");
     try {
       const detection = await detectCcSwitchDatabase();
@@ -395,6 +397,7 @@ export function App() {
   }
 
   async function handleScanAutoCcSwitch() {
+    setShowCcSwitchImportGuide(true);
     setBusyAction("ccswitch:scan");
     try {
       await applyCcSwitchScan(await scanCcSwitchDatabase(showManagedCcSwitch));
@@ -406,6 +409,7 @@ export function App() {
   }
 
   async function handleSelectCcSwitch() {
+    setShowCcSwitchImportGuide(true);
     setBusyAction("ccswitch:select");
     try {
       const scan = await selectAndScanCcSwitchDatabase(showManagedCcSwitch);
@@ -1038,19 +1042,51 @@ export function App() {
     const deepLink = buildCcSwitchDeepLink();
 
     return (
-      <CcSwitchExportPanel
-        appLabels={ccSwitchAppLabels}
-        busyAction={busyAction}
-        deepLink={deepLink}
-        disconnected={disconnected}
-        draft={ccSwitchExportDraft}
-        message={ccSwitchExportMessage}
-        onCopy={() => void handleCopyCcSwitchLink()}
-        onDraftChange={setCcSwitchExportDraft}
-        onGenerateDefaults={loadCcSwitchLink}
-        onGenerateMessage={setCcSwitchExportMessage}
-        onOpen={() => void handleOpenCcSwitch()}
-      />
+      <section className="ccswitch-integration">
+        <section className="card config-card integration-heading-card">
+          <div className="card-heading">
+            <span>{t("ccswitch.integration.title")}</span>
+            <strong>{t("config.section.integrations")}</strong>
+          </div>
+          <p className="muted">{t("ccswitch.integration.description")}</p>
+        </section>
+
+        <section className="integration-card-grid">
+          <section className="card config-card integration-action-card">
+            <div className="card-heading">
+              <span>{t("ccswitch.import.title")}</span>
+              <strong>{t("config.import")}</strong>
+            </div>
+            <p className="muted">{t("ccswitch.import.description")}</p>
+            <p className="muted">{t("ccswitch.import.safety")}</p>
+            <div className="server-actions">
+              <button type="button" onClick={() => setShowCcSwitchImportGuide(true)}>
+                {t("ccswitch.import.start")}
+              </button>
+              <button className="secondary" type="button" onClick={() => void handleDetectCcSwitch()} disabled={busyAction !== null}>
+                {busyAction === "ccswitch:detect" ? t("config.detecting") : t("ccswitch.import.autoDetect")}
+              </button>
+              <button className="secondary" type="button" onClick={() => void handleSelectCcSwitch()} disabled={busyAction !== null}>
+                {busyAction === "ccswitch:select" ? t("config.selecting") : t("ccswitch.import.selectDatabase")}
+              </button>
+            </div>
+          </section>
+
+          <CcSwitchExportPanel
+            appLabels={ccSwitchAppLabels}
+            busyAction={busyAction}
+            deepLink={deepLink}
+            disconnected={disconnected}
+            draft={ccSwitchExportDraft}
+            message={ccSwitchExportMessage}
+            onCopy={() => void handleCopyCcSwitchLink()}
+            onDraftChange={setCcSwitchExportDraft}
+            onGenerateDefaults={loadCcSwitchLink}
+            onGenerateMessage={setCcSwitchExportMessage}
+            onOpen={() => void handleOpenCcSwitch()}
+          />
+        </section>
+      </section>
     );
   }
 
@@ -1175,6 +1211,14 @@ export function App() {
             message={message}
             switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
             onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
+            onGoToIntegrations={() => {
+              setActiveTab("configuration");
+              setConfigSection("integrations");
+              setShowCcSwitchImportGuide(true);
+              if (!editableConfig) {
+                void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
+              }
+            }}
             onSelectAccount={(alias) => void handleSwitch(alias)}
           />
           <UsageOverview disconnected={disconnected} />
@@ -1527,27 +1571,29 @@ export function App() {
           {configSection === "integrations" && (
           <>
           {renderCcSwitchIntegration()}
-          <CcSwitchImportPanel
-            busyAction={busyAction}
-            configLoaded={Boolean(editableConfig)}
-            drafts={importDrafts}
-            message={ccSwitchMessage}
-            overwriteAliases={overwriteAliases}
-            overwriteProviders={overwriteProviders}
-            path={ccSwitchPath}
-            report={ccSwitchReport}
-            setImportedActive={setImportedActive}
-            showManaged={showManagedCcSwitch}
-            onDetect={() => void handleDetectCcSwitch()}
-            onImport={() => void handleImportCcSwitch()}
-            onOverwriteAliasesChange={setOverwriteAliases}
-            onOverwriteProvidersChange={setOverwriteProviders}
-            onScanAuto={() => void handleScanAutoCcSwitch()}
-            onSelectDatabase={() => void handleSelectCcSwitch()}
-            onSetImportedActiveChange={setSetImportedActive}
-            onShowManagedChange={setShowManagedCcSwitch}
-            onUpdateDraft={updateImportDraft}
-          />
+          {showCcSwitchImportGuide && (
+            <CcSwitchImportPanel
+              busyAction={busyAction}
+              configLoaded={Boolean(editableConfig)}
+              drafts={importDrafts}
+              message={ccSwitchMessage}
+              overwriteAliases={overwriteAliases}
+              overwriteProviders={overwriteProviders}
+              path={ccSwitchPath}
+              report={ccSwitchReport}
+              setImportedActive={setImportedActive}
+              showManaged={showManagedCcSwitch}
+              onDetect={() => void handleDetectCcSwitch()}
+              onImport={() => void handleImportCcSwitch()}
+              onOverwriteAliasesChange={setOverwriteAliases}
+              onOverwriteProvidersChange={setOverwriteProviders}
+              onScanAuto={() => void handleScanAutoCcSwitch()}
+              onSelectDatabase={() => void handleSelectCcSwitch()}
+              onSetImportedActiveChange={setSetImportedActive}
+              onShowManagedChange={setShowManagedCcSwitch}
+              onUpdateDraft={updateImportDraft}
+            />
+          )}
           </>
           )}
 

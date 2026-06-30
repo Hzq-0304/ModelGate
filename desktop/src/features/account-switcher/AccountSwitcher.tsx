@@ -17,6 +17,7 @@ type AccountSwitcherProps = {
   entrypoints: EntrypointStatusMap;
   message: string;
   switchingAlias?: string | null;
+  onGoToIntegrations?: () => void;
   onSelectAccount: (alias: string) => void;
   onAlreadyActive: () => void;
 };
@@ -30,6 +31,7 @@ export function AccountSwitcher({
   entrypoints,
   message,
   switchingAlias,
+  onGoToIntegrations,
   onSelectAccount,
   onAlreadyActive
 }: AccountSwitcherProps) {
@@ -106,7 +108,17 @@ export function AccountSwitcher({
             />
           ))
         ) : (
-          <p className="muted">{t("switcher.noAccounts")}</p>
+          <div className="empty-state switcher-empty">
+            <strong>{t("switcher.noAccounts")}</strong>
+            {connection === "connected" && onGoToIntegrations && (
+              <>
+                <p>{t("empty.noAccounts.goToIntegrations")}</p>
+                <button className="secondary" onClick={onGoToIntegrations} type="button">
+                  {t("empty.noAccounts.integrationsLink")}
+                </button>
+              </>
+            )}
+          </div>
         )}
       </section>
 

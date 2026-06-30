@@ -1,3 +1,17 @@
+# ModelGate v0.1.2
+
+## Fixes
+
+- Made CC Switch import/export easier to find under Configuration -> Integrations.
+- Added clearer CC Switch integration cards.
+- Improved empty-state guidance for importing providers.
+- Hid the extra Windows console window when launching the managed server from the desktop app.
+
+## Notes
+
+- ModelGate still does not modify the CC Switch database.
+- ModelGate still does not store plaintext provider API keys.
+
 # ModelGate v0.1.1
 
 ## Highlights

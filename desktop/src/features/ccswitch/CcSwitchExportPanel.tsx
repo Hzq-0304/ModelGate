@@ -41,7 +41,7 @@ export function CcSwitchExportPanel({
   return (
     <section className="card config-card ccswitch-export-card">
       <div className="card-heading">
-        <span>{t("config.exportToCcSwitch")}</span>
+        <span>{t("ccswitch.export.title")}</span>
         <button
           className="secondary"
           onClick={() => void onGenerateDefaults(draft.app).catch((error) => onGenerateMessage(`Generate failed: ${error instanceof Error ? error.message : String(error)}`))}
@@ -50,9 +50,7 @@ export function CcSwitchExportPanel({
           {t("config.generateDefaults")}
         </button>
       </div>
-      <p className="muted">
-        Export ModelGate as a local provider through a CC Switch deep link. The link uses the local placeholder API key only.
-      </p>
+      <p className="muted">{t("ccswitch.export.description")}</p>
       <div className="ccswitch-export-form">
         <label>
           {t("config.providerName")}
@@ -104,10 +102,10 @@ export function CcSwitchExportPanel({
       <pre className="deep-link-preview">{deepLink}</pre>
       <div className="server-actions">
         <button onClick={onOpen} disabled={busyAction !== null}>
-          {busyAction === "ccswitch:open" ? t("config.opening") : t("config.openInCcSwitch")}
+          {busyAction === "ccswitch:open" ? t("config.opening") : t("ccswitch.export.open")}
         </button>
         <button className="secondary" onClick={onCopy} disabled={busyAction !== null}>
-          {t("config.copyDeepLink")}
+          {t("ccswitch.export.copyLink")}
         </button>
         <span className={message.startsWith("Open failed") || message.startsWith("Generate failed") ? "action-message bad" : "action-message"}>
           {message}
