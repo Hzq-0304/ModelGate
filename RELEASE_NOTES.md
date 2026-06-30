@@ -1,3 +1,21 @@
+# ModelGate v0.1.5
+
+## Improvements
+
+- Changed CC Switch import into a modal workflow.
+- Home page `Import from CC Switch` now opens the import modal directly instead of navigating away.
+- Simplified the import list to show only name, description, checkbox, and edit action.
+- Added an edit dialog for import details, including alias, model, provider, base URL, environment variable name, and description.
+- Improved OpenAI Official detection from CC Switch.
+- OpenAI Official now defaults to `https://api.openai.com/v1` when CC Switch does not provide an explicit base URL.
+- OpenAI Official now defaults to `${OPENAI_API_KEY}`.
+
+## Safety
+
+- CC Switch database is still opened read-only.
+- ModelGate still does not modify CC Switch settings.
+- Plaintext API keys are not saved.
+
 # ModelGate v0.1.4
 
 ## Highlights
