@@ -1,3 +1,23 @@
+# ModelGate v0.1.3
+
+## Fixes
+
+- Added a visible Quick Start section to the desktop Home page.
+- Added direct Home page actions for:
+  - Start ModelGate Server
+  - Import from CC Switch
+  - Import to Codex
+  - Configure Providers
+- Made Import to Codex clearer by showing the local endpoint, local API key, model name, copy actions, and CC Switch deep link action.
+- Kept CC Switch import/export available under Configuration -> Integrations with clearer labels.
+- Confirmed the Windows desktop app no longer opens an extra console window.
+
+## Notes
+
+- This release supersedes v0.1.2 for desktop usability.
+- ModelGate still does not modify the CC Switch database.
+- ModelGate still does not store plaintext provider API keys.
+
 # ModelGate v0.1.2
 
 ## Fixes

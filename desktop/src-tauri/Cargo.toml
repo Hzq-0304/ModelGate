@@ -1,6 +1,6 @@
 [package]
 name = "modelgate-desktop"
-version = "0.1.2"
+version = "0.1.3"
 description = "ModelGate desktop management interface"
 authors = ["Hzq-0304"]
 edition = "2021"
