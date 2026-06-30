@@ -41,7 +41,7 @@ export function CcSwitchExportPanel({
   return (
     <section className="card config-card ccswitch-export-card">
       <div className="card-heading">
-        <span>{t("ccswitch.export.title")}</span>
+        <span>{t("config.integrations.importModelGateToCodex")}</span>
         <button
           className="secondary"
           onClick={() => void onGenerateDefaults(draft.app).catch((error) => onGenerateMessage(`Generate failed: ${error instanceof Error ? error.message : String(error)}`))}

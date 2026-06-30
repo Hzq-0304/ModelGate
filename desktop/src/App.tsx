@@ -44,6 +44,7 @@ import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
 import type { ConnectionState } from "./features/account-switcher/accountTypes";
 import { CcSwitchExportPanel, type CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
 import { CcSwitchImportPanel } from "./features/ccswitch/CcSwitchImportPanel";
+import { QuickStart } from "./features/quick-start/QuickStart";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
 import { useI18n } from "./i18n/i18n";
 
@@ -97,6 +98,7 @@ export function App() {
   const [ccSwitchMessage, setCcSwitchMessage] = useState("CC Switch import not scanned");
   const [ccSwitchReport, setCcSwitchReport] = useState<CcSwitchImportReport | null>(null);
   const [showCcSwitchImportGuide, setShowCcSwitchImportGuide] = useState(false);
+  const [showCodexImportPanel, setShowCodexImportPanel] = useState(false);
   const [showManagedCcSwitch, setShowManagedCcSwitch] = useState(false);
   const [ccSwitchExportDraft, setCcSwitchExportDraft] = useState<CcSwitchExportDraft>({
     name: "ModelGate Local",
@@ -121,6 +123,7 @@ export function App() {
   const [logsMessage, setLogsMessage] = useState(t("usage.notLoaded"));
   const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
   const [diagnosticMessage, setDiagnosticMessage] = useState("Diagnostics not run");
+  const [codexImportMessage, setCodexImportMessage] = useState(t("codexImport.notStarted"));
   const [providerForm, setProviderForm] = useState({
     editingName: "",
     name: "",
@@ -244,10 +247,10 @@ export function App() {
     return link;
   }
 
-  function buildCcSwitchDeepLink() {
+  function buildCcSwitchDeepLink(app = ccSwitchExportDraft.app) {
     const params = new URLSearchParams({
       resource: "provider",
-      app: ccSwitchExportDraft.app,
+      app,
       name: ccSwitchExportDraft.name,
       endpoint: ccSwitchExportDraft.endpoint,
       apiKey: "modelgate-local",
@@ -257,6 +260,72 @@ export function App() {
     });
 
     return `ccswitch://v1/import?${params.toString()}`;
+  }
+
+  function scrollToElement(id: string) {
+    window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
+  function goToAdvancedServerControl() {
+    setActiveTab("advanced");
+    scrollToElement("server-control");
+  }
+
+  function goToConfigurationProviders() {
+    setActiveTab("configuration");
+    setConfigSection("providers");
+    if (!editableConfig) {
+      void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
+    }
+    scrollToElement("configuration-providers");
+  }
+
+  function goToConfigurationIntegrations() {
+    setActiveTab("configuration");
+    setConfigSection("integrations");
+    setShowCcSwitchImportGuide(true);
+    if (!editableConfig) {
+      void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
+    }
+    scrollToElement("ccswitch-import-guide");
+  }
+
+  function openCodexImportPanel() {
+    setShowCodexImportPanel(true);
+    setCodexImportMessage(t("codexImport.review"));
+    scrollToElement("codex-import-panel");
+  }
+
+  async function handleCopyCodexImportConfig() {
+    try {
+      await navigator.clipboard.writeText(codexConfig);
+      setCodexImportMessage(t("codexImport.configCopied"));
+    } catch {
+      setCodexImportMessage(t("codexImport.configCopyFailed"));
+    }
+  }
+
+  async function handleCopyCodexDeepLink() {
+    try {
+      await navigator.clipboard.writeText(buildCcSwitchDeepLink("codex"));
+      setCodexImportMessage(t("codexImport.deepLinkCopied"));
+    } catch {
+      setCodexImportMessage(t("codexImport.deepLinkCopyFailed"));
+    }
+  }
+
+  async function handleOpenCodexInCcSwitch() {
+    setBusyAction("codex-import:open");
+    try {
+      await openCcSwitchDeepLink(buildCcSwitchDeepLink("codex"));
+      setCodexImportMessage(t("codexImport.opened"));
+    } catch (error) {
+      setCodexImportMessage(t("codexImport.openFailed", { message: getErrorMessage(error) }));
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   async function handleCopyCcSwitchLink() {
@@ -1054,7 +1123,7 @@ export function App() {
         <section className="integration-card-grid">
           <section className="card config-card integration-action-card">
             <div className="card-heading">
-              <span>{t("ccswitch.import.title")}</span>
+              <span>{t("config.integrations.importProvidersFromCcSwitch")}</span>
               <strong>{t("config.import")}</strong>
             </div>
             <p className="muted">{t("ccswitch.import.description")}</p>
@@ -1141,6 +1210,7 @@ export function App() {
       preset.suggested_alias
     ].some((value) => value.toLowerCase().includes(normalizedPresetSearch));
   });
+  const codexDeepLink = buildCcSwitchDeepLink("codex");
 
   return (
     <main className="shell">
@@ -1196,11 +1266,25 @@ export function App() {
                 <strong>{t("home.serverNotRunning")}</strong>
                 <span>{t("home.serverGuidance")}</span>
               </div>
-              <button className="secondary" onClick={() => setActiveTab("advanced")}>
+              <button className="secondary" onClick={goToAdvancedServerControl}>
                 {t("home.goToServerControl")}
               </button>
             </section>
           )}
+          <QuickStart
+            busyAction={busyAction}
+            codexConfig={codexConfig}
+            codexImportMessage={codexImportMessage}
+            deepLink={codexDeepLink}
+            showCodexImport={showCodexImportPanel}
+            onConfigureProviders={goToConfigurationProviders}
+            onCopyCodexConfig={() => void handleCopyCodexImportConfig()}
+            onCopyDeepLink={() => void handleCopyCodexDeepLink()}
+            onImportFromCcSwitch={goToConfigurationIntegrations}
+            onImportToCodex={openCodexImportPanel}
+            onOpenInCcSwitch={() => void handleOpenCodexInCcSwitch()}
+            onStartServer={goToAdvancedServerControl}
+          />
           <AccountSwitcher
             accounts={aliasesList}
             activeAlias={activeAlias}
@@ -1211,14 +1295,7 @@ export function App() {
             message={message}
             switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
             onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
-            onGoToIntegrations={() => {
-              setActiveTab("configuration");
-              setConfigSection("integrations");
-              setShowCcSwitchImportGuide(true);
-              if (!editableConfig) {
-                void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
-              }
-            }}
+            onGoToIntegrations={goToConfigurationIntegrations}
             onSelectAccount={(alias) => void handleSwitch(alias)}
           />
           <UsageOverview disconnected={disconnected} />
@@ -1245,7 +1322,7 @@ export function App() {
         </span>
       </section>
 
-      <section className="card server-card">
+      <section className="card server-card" id="server-control">
         <div className="card-heading">
           <span>{t("advanced.serverControl")}</span>
           <strong>{serverStatusText}</strong>
@@ -1420,7 +1497,7 @@ export function App() {
 
           {configSection === "providers" && (
           <>
-          <section className="card config-card preset-card">
+          <section className="card config-card preset-card" id="configuration-providers">
             <div className="card-heading">
               <span>{t("config.providerPresets")}</span>
               <button className="secondary" onClick={() => void handleTogglePresetPanel()} disabled={busyAction !== null}>
@@ -1572,6 +1649,7 @@ export function App() {
           <>
           {renderCcSwitchIntegration()}
           {showCcSwitchImportGuide && (
+            <div id="ccswitch-import-guide">
             <CcSwitchImportPanel
               busyAction={busyAction}
               configLoaded={Boolean(editableConfig)}
@@ -1593,6 +1671,7 @@ export function App() {
               onShowManagedChange={setShowManagedCcSwitch}
               onUpdateDraft={updateImportDraft}
             />
+            </div>
           )}
           </>
           )}
