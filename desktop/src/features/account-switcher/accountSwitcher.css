@@ -150,26 +150,6 @@
   white-space: nowrap;
 }
 
-.switcher-footnotes {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 1fr 1fr;
-}
-
-.switcher-footnotes div {
-  background: #ffffff;
-  border: 1px solid #e4e9f2;
-  border-radius: 8px;
-  display: grid;
-  gap: 6px;
-  padding: 14px;
-}
-
-.switcher-footnotes strong {
-  color: #101828;
-}
-
-.switcher-footnotes span,
 .switcher-message {
   color: #667085;
   font-size: 14px;
@@ -185,7 +165,6 @@
     flex-direction: column;
   }
 
-  .switcher-footnotes,
   .switcher-current dl {
     grid-template-columns: 1fr;
   }

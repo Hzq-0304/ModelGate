@@ -28,7 +28,7 @@
 .quick-start-actions {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 180px));
 }
 
 .quick-start-actions button {
@@ -36,27 +36,8 @@
   white-space: normal;
 }
 
-.codex-import-panel {
-  background: #f8fafc;
-  border: 1px solid #dbe4f0;
-  border-radius: 8px;
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-}
-
-.codex-import-panel pre {
-  background: #0f172a;
-  border: 1px solid #1e293b;
-  border-radius: 7px;
-  color: #e2e8f0;
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  line-height: 1.55;
-  margin: 0;
-  overflow: auto;
-  padding: 13px;
-  user-select: text;
-  white-space: pre-wrap;
+.quick-start-hint {
+  color: #667085;
 }
 
 @media (max-width: 980px) {

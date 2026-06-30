@@ -47,7 +47,7 @@ import { QuickStart } from "./features/quick-start/QuickStart";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
 import { useI18n } from "./i18n/i18n";
 
-type ActiveTab = "switcher" | "configuration" | "logs" | "advanced";
+type ActiveTab = "switcher" | "settings" | "logs" | "advanced";
 type ConfigSection = "providers" | "aliases" | "entrypoints" | "integrations" | "pricing";
 
 type ImportDraft = CcSwitchImportCandidate & {
@@ -97,7 +97,6 @@ export function App() {
   const [ccSwitchMessage, setCcSwitchMessage] = useState("CC Switch import not scanned");
   const [ccSwitchReport, setCcSwitchReport] = useState<CcSwitchImportReport | null>(null);
   const [showCcSwitchImportGuide, setShowCcSwitchImportGuide] = useState(false);
-  const [showCodexImportPanel, setShowCodexImportPanel] = useState(false);
   const [generateImportNames, setGenerateImportNames] = useState(true);
   const [ccSwitchExportDraft, setCcSwitchExportDraft] = useState<CcSwitchExportDraft>({
     name: "ModelGate Local",
@@ -264,25 +263,18 @@ export function App() {
     }, 0);
   }
 
-  function goToAdvancedServerControl() {
-    setActiveTab("advanced");
-    scrollToElement("server-control");
-  }
-
-  function goToConfigurationProviders() {
-    setActiveTab("configuration");
-    setConfigSection("providers");
+  function openSettings(section: ConfigSection = "integrations") {
+    setActiveTab("settings");
+    setConfigSection(section);
     if (!editableConfig) {
       void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
     }
-    scrollToElement("configuration-providers");
   }
 
-  function goToConfigurationIntegrations() {
-    setActiveTab("configuration");
-    setConfigSection("integrations");
-    if (!editableConfig) {
-      void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
+  function openSettingsSection(section: ConfigSection, targetId?: string) {
+    openSettings(section);
+    if (targetId) {
+      scrollToElement(targetId);
     }
   }
 
@@ -295,9 +287,13 @@ export function App() {
   }
 
   function openCodexImportPanel() {
-    setShowCodexImportPanel(true);
+    openSettingsSection("integrations", "codex-import-panel");
     setCodexImportMessage(t("codexImport.review"));
-    scrollToElement("codex-import-panel");
+  }
+
+  function openLogsPage() {
+    setActiveTab("logs");
+    void loadLogs().catch((error) => setLogsMessage(`Failed to load logs: ${getErrorMessage(error)}`));
   }
 
   async function handleCopyCodexImportConfig() {
@@ -1121,20 +1117,18 @@ export function App() {
             <span>{t("ccswitch.integration.title")}</span>
             <strong>{t("config.section.integrations")}</strong>
           </div>
-          <p className="muted">{t("ccswitch.integration.description")}</p>
         </section>
 
         <section className="integration-card-grid">
           <section className="card config-card integration-action-card">
             <div className="card-heading">
-              <span>{t("config.integrations.importProvidersFromCcSwitch")}</span>
+              <span>{t("settings.importFromCcSwitch")}</span>
               <strong>{t("config.import")}</strong>
             </div>
-            <p className="muted">{t("ccswitch.import.description")}</p>
-            <p className="muted">{t("ccswitch.import.safety")}</p>
+            <p className="muted">{t("ccswitchImport.shortDescription")}</p>
             <div className="server-actions">
               <button type="button" onClick={openCcSwitchImportModal} disabled={busyAction !== null}>
-                {t("ccswitch.import.start")}
+                {t("settings.importFromCcSwitch")}
               </button>
             </div>
           </section>
@@ -1152,6 +1146,29 @@ export function App() {
             onGenerateMessage={setCcSwitchExportMessage}
             onOpen={() => void handleOpenCcSwitch()}
           />
+        </section>
+
+        <section className="card config-card codex-import-panel" id="codex-import-panel">
+          <div className="card-heading">
+            <span>{t("settings.importToCodex")}</span>
+            <strong>codex-main</strong>
+          </div>
+          <pre>{codexConfig}</pre>
+          <div className="server-actions">
+            <button type="button" onClick={() => void handleOpenCodexInCcSwitch()} disabled={busyAction !== null}>
+              {busyAction === "codex-import:open" ? t("config.opening") : t("codexImport.openInCcSwitch")}
+            </button>
+            <button className="secondary" type="button" onClick={() => void handleCopyCodexImportConfig()} disabled={busyAction !== null}>
+              {t("codexImport.copyCodexConfig")}
+            </button>
+            <button className="secondary" type="button" onClick={() => void handleCopyCodexDeepLink()} disabled={busyAction !== null}>
+              {t("codexImport.copyDeepLink")}
+            </button>
+            <span className={codexImportMessage.startsWith("Failed") ? "action-message bad" : "action-message"}>
+              {codexImportMessage}
+            </span>
+          </div>
+          <pre className="deep-link-preview">{deepLink}</pre>
         </section>
       </section>
     );
@@ -1219,6 +1236,15 @@ export function App() {
         </div>
         <div className="topbar-tools">
           <LanguageSelector />
+          <button
+            aria-label={t("settings.title")}
+            className={activeTab === "settings" ? "settings-button active" : "settings-button"}
+            onClick={() => openSettings()}
+            title={t("settings.title")}
+            type="button"
+          >
+            <span aria-hidden="true" className="settings-button-icon" />
+          </button>
           <div className="connection">
             <span className={`status-dot ${connection}`} />
             <strong>{connection === "connected" ? t("app.connected") : connection === "checking" ? t("app.checking") : t("app.disconnected")}</strong>
@@ -1232,22 +1258,8 @@ export function App() {
           {t("nav.switcher")}
         </button>
         <button
-          className={activeTab === "configuration" ? "tab active" : "tab"}
-          onClick={() => {
-            setActiveTab("configuration");
-            if (!editableConfig) {
-              void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
-            }
-          }}
-        >
-          {t("nav.configuration")}
-        </button>
-        <button
           className={activeTab === "logs" ? "tab active" : "tab"}
-          onClick={() => {
-            setActiveTab("logs");
-            void loadLogs().catch((error) => setLogsMessage(`Failed to load logs: ${getErrorMessage(error)}`));
-          }}
+          onClick={openLogsPage}
         >
           {t("nav.logs")}
         </button>
@@ -1264,38 +1276,30 @@ export function App() {
                 <strong>{t("home.serverNotRunning")}</strong>
                 <span>{t("home.serverGuidance")}</span>
               </div>
-              <button className="secondary" onClick={goToAdvancedServerControl}>
-                {t("home.goToServerControl")}
-              </button>
             </section>
           )}
           <QuickStart
             busyAction={busyAction}
-            codexConfig={codexConfig}
-            codexImportMessage={codexImportMessage}
-            deepLink={codexDeepLink}
-            showCodexImport={showCodexImportPanel}
-            onConfigureProviders={goToConfigurationProviders}
-            onCopyCodexConfig={() => void handleCopyCodexImportConfig()}
-            onCopyDeepLink={() => void handleCopyCodexDeepLink()}
-            onImportFromCcSwitch={openCcSwitchImportModal}
-            onImportToCodex={openCodexImportPanel}
-            onOpenInCcSwitch={() => void handleOpenCodexInCcSwitch()}
-            onStartServer={goToAdvancedServerControl}
+            hasAccounts={aliasesList.length > 0}
+            serverRunning={Boolean(serverProcess?.running)}
+            onOpenSettings={() => openSettings()}
+            onStartServer={() => void handleStartServer()}
+            onSwitchAccount={() => scrollToElement("account-switcher")}
           />
-          <AccountSwitcher
-            accounts={aliasesList}
-            activeAlias={activeAlias}
-            activeAliasName={status?.active}
-            connection={connection}
-            endpoint={serverUrl}
-            entrypoints={status?.entrypoints ?? {}}
-            message={message}
-            switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
-            onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
-            onGoToIntegrations={openCcSwitchImportModal}
-            onSelectAccount={(alias) => void handleSwitch(alias)}
-          />
+          <section id="account-switcher">
+            <AccountSwitcher
+              accounts={aliasesList}
+              activeAlias={activeAlias}
+              activeAliasName={status?.active}
+              connection={connection}
+              endpoint={serverUrl}
+              message={message}
+              switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
+              onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
+              onGoToIntegrations={() => openSettings("integrations")}
+              onSelectAccount={(alias) => void handleSwitch(alias)}
+            />
+          </section>
           <UsageOverview disconnected={disconnected} />
         </section>
       ) : activeTab === "advanced" ? (
@@ -1445,11 +1449,11 @@ export function App() {
         <pre>{codexConfig}</pre>
       </section>
         </>
-      ) : activeTab === "configuration" ? (
+      ) : activeTab === "settings" ? (
         <section className="config-page">
           <PageHeader
-            title={t("config.title")}
-            subtitle={t("config.subtitle")}
+            title={t("settings.title")}
+            subtitle={t("settings.subtitle")}
             actions={(
               <span className={configMessage.startsWith("Save failed") || configMessage.startsWith("Validation failed") ? "action-message bad" : "action-message"}>
                 {configMessage}
@@ -1479,17 +1483,54 @@ export function App() {
             </div>
           </section>
 
-          <nav className="subtabs">
-            {(["providers", "aliases", "entrypoints", "integrations", "pricing"] as const).map((section) => (
-              <button
-                className={configSection === section ? "subtab active" : "subtab"}
-                key={section}
-                onClick={() => setConfigSection(section)}
-              >
-                {t(`config.section.${section}`)}
-              </button>
-            ))}
-          </nav>
+          <section className="settings-groups">
+            <article className="settings-group-card">
+              <strong>{t("settings.integrations")}</strong>
+              <div>
+                <button className="secondary" type="button" onClick={openCcSwitchImportModal}>
+                  {t("settings.importFromCcSwitch")}
+                </button>
+                <button className="secondary" type="button" onClick={openCodexImportPanel}>
+                  {t("settings.importToCodex")}
+                </button>
+              </div>
+            </article>
+            <article className="settings-group-card">
+              <strong>{t("settings.modelRouting")}</strong>
+              <div>
+                <button className={configSection === "providers" ? "secondary active" : "secondary"} type="button" onClick={() => setConfigSection("providers")}>
+                  {t("settings.providers")}
+                </button>
+                <button className={configSection === "aliases" ? "secondary active" : "secondary"} type="button" onClick={() => setConfigSection("aliases")}>
+                  {t("settings.aliases")}
+                </button>
+                <button className={configSection === "entrypoints" ? "secondary active" : "secondary"} type="button" onClick={() => setConfigSection("entrypoints")}>
+                  {t("settings.entrypoints")}
+                </button>
+              </div>
+            </article>
+            <article className="settings-group-card">
+              <strong>{t("settings.billingUsage")}</strong>
+              <div>
+                <button className={configSection === "pricing" ? "secondary active" : "secondary"} type="button" onClick={() => setConfigSection("pricing")}>
+                  {t("settings.pricing")}
+                </button>
+                <button className="secondary" type="button" onClick={openLogsPage}>
+                  {t("settings.usageRecords")}
+                </button>
+              </div>
+            </article>
+            <article className="settings-group-card">
+              <strong>{t("settings.application")}</strong>
+              <div>
+                <LanguageSelector />
+                <button className="secondary" type="button" onClick={() => void handleReload()} disabled={busyAction !== null || disconnected}>
+                  {busyAction === "reload" ? t("config.reloading") : t("settings.reloadConfig")}
+                </button>
+              </div>
+              <span>{configPath || t("config.notLoaded")}</span>
+            </article>
+          </section>
 
           {renderDiagnosticResult()}
 

@@ -85,6 +85,25 @@
   font-size: 13px;
 }
 
+.ccswitch-import-safety {
+  background: #ffffff;
+  border: 1px solid #e4e9f2;
+  border-radius: 8px;
+  color: #475467;
+  padding: 9px 12px;
+}
+
+.ccswitch-import-safety summary {
+  color: #344054;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.ccswitch-import-safety p {
+  color: #667085;
+  margin-top: 8px;
+}
+
 .ccswitch-import-conflicts {
   background: #ffffff;
   border: 1px solid #e4e9f2;

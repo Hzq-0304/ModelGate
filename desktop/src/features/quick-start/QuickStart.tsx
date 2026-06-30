@@ -3,32 +3,20 @@ import "./quickStart.css";
 
 type QuickStartProps = {
   busyAction: string | null;
-  codexConfig: string;
-  codexImportMessage: string;
-  deepLink: string;
-  showCodexImport: boolean;
-  onConfigureProviders: () => void;
-  onCopyCodexConfig: () => void;
-  onCopyDeepLink: () => void;
-  onImportFromCcSwitch: () => void;
-  onImportToCodex: () => void;
-  onOpenInCcSwitch: () => void;
+  hasAccounts: boolean;
+  serverRunning: boolean;
+  onOpenSettings: () => void;
   onStartServer: () => void;
+  onSwitchAccount: () => void;
 };
 
 export function QuickStart({
   busyAction,
-  codexConfig,
-  codexImportMessage,
-  deepLink,
-  showCodexImport,
-  onConfigureProviders,
-  onCopyCodexConfig,
-  onCopyDeepLink,
-  onImportFromCcSwitch,
-  onImportToCodex,
-  onOpenInCcSwitch,
-  onStartServer
+  hasAccounts,
+  serverRunning,
+  onOpenSettings,
+  onStartServer,
+  onSwitchAccount
 }: QuickStartProps) {
   const { t } = useI18n();
 
@@ -42,44 +30,29 @@ export function QuickStart({
       </div>
 
       <div className="quick-start-actions" aria-label={t("quickStart.title")}>
-        <button type="button" onClick={onStartServer}>
-          {t("quickStart.startServer")}
-        </button>
-        <button type="button" onClick={onImportFromCcSwitch}>
-          {t("quickStart.importFromCcSwitch")}
-        </button>
-        <button type="button" onClick={onImportToCodex}>
-          {t("quickStart.importToCodex")}
-        </button>
-        <button className="secondary" type="button" onClick={onConfigureProviders}>
-          {t("quickStart.configureProviders")}
-        </button>
+        {serverRunning ? (
+          <>
+            <button disabled type="button">
+              {t("home.serverRunning")}
+            </button>
+            <button className="secondary" type="button" onClick={onSwitchAccount}>
+              {t("home.switchAccount")}
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={onStartServer} disabled={busyAction !== null}>
+              {busyAction === "server:start" ? t("advanced.starting") : t("home.startServer")}
+            </button>
+            <button className="secondary" type="button" onClick={onOpenSettings}>
+              {t("home.openSettings")}
+            </button>
+          </>
+        )}
       </div>
 
-      {showCodexImport && (
-        <section className="codex-import-panel" id="codex-import-panel">
-          <div className="card-heading">
-            <span>{t("codexImport.title")}</span>
-            <strong>codex-main</strong>
-          </div>
-          <p className="muted">{t("codexImport.description")}</p>
-          <pre>{codexConfig}</pre>
-          <div className="server-actions">
-            <button type="button" onClick={onOpenInCcSwitch} disabled={busyAction !== null}>
-              {busyAction === "codex-import:open" ? t("config.opening") : t("codexImport.openInCcSwitch")}
-            </button>
-            <button className="secondary" type="button" onClick={onCopyCodexConfig} disabled={busyAction !== null}>
-              {t("codexImport.copyCodexConfig")}
-            </button>
-            <button className="secondary" type="button" onClick={onCopyDeepLink} disabled={busyAction !== null}>
-              {t("codexImport.copyDeepLink")}
-            </button>
-            <span className={codexImportMessage.startsWith("Failed") ? "action-message bad" : "action-message"}>
-              {codexImportMessage}
-            </span>
-          </div>
-          <pre className="deep-link-preview">{deepLink}</pre>
-        </section>
+      {!hasAccounts && (
+        <p className="quick-start-hint">{t("home.noAccountsHint")}</p>
       )}
     </section>
   );

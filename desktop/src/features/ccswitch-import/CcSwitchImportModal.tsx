@@ -140,6 +140,11 @@ export function CcSwitchImportModal({
           )}
         </div>
 
+        <details className="ccswitch-import-safety">
+          <summary>{t("ccswitchImport.safety")}</summary>
+          <p>{t("ccswitchImport.safetyBody")}</p>
+        </details>
+
         <label className="inline-checkbox ccswitch-import-conflicts">
           <input
             type="checkbox"

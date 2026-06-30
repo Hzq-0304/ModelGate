@@ -2,8 +2,7 @@ import { AccountCard } from "./AccountCard";
 import {
   formatAliasTitle,
   type AccountAlias,
-  type ConnectionState,
-  type EntrypointStatusMap
+  type ConnectionState
 } from "./accountTypes";
 import { useI18n } from "../../i18n/i18n";
 import "./accountSwitcher.css";
@@ -14,7 +13,6 @@ type AccountSwitcherProps = {
   activeAliasName?: string;
   activeAlias?: AccountAlias | null;
   accounts: AccountAlias[];
-  entrypoints: EntrypointStatusMap;
   message: string;
   switchingAlias?: string | null;
   onGoToIntegrations?: () => void;
@@ -28,7 +26,6 @@ export function AccountSwitcher({
   activeAliasName,
   activeAlias,
   accounts,
-  entrypoints,
   message,
   switchingAlias,
   onGoToIntegrations,
@@ -38,7 +35,6 @@ export function AccountSwitcher({
   const { t } = useI18n();
   const disconnected = connection === "disconnected";
   const activeName = activeAliasName ?? activeAlias?.name;
-  const entrypointEntries = Object.entries(entrypoints);
 
   function handleSelect(alias: string) {
     if (disconnected) {
@@ -120,24 +116,6 @@ export function AccountSwitcher({
             )}
           </div>
         )}
-      </section>
-
-      <section className="switcher-footnotes">
-        <div>
-          <strong>{t("switcher.codexShouldUse")}</strong>
-          <span>{t("switcher.baseUrl")}: {endpoint}/v1</span>
-          <span>{t("common.model")}: codex-main</span>
-        </div>
-        <div>
-          <strong>{t("switcher.entrypoints")}</strong>
-          {entrypointEntries.length > 0 ? (
-            entrypointEntries.map(([name, entrypoint]) => (
-              <span key={name}>{`${name} -> ${entrypoint.use} -> ${entrypoint.resolved}`}</span>
-            ))
-          ) : (
-            <span>{t("switcher.noEntrypoints")}</span>
-          )}
-        </div>
       </section>
 
       <span className={message.startsWith("Failed") ? "switcher-message bad" : "switcher-message"}>
