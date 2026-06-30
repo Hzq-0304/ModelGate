@@ -1,3 +1,26 @@
+# ModelGate v0.1.4
+
+## Highlights
+
+- Simplified the CC Switch Codex import flow.
+- Home page `Import from CC Switch` now automatically scans the local CC Switch database.
+- Import now focuses only on Codex model configurations.
+- Users can select which Codex models to import.
+- Imported providers and aliases keep the order from CC Switch.
+- Descriptions from CC Switch are copied into ModelGate provider / alias descriptions.
+- ModelGate-managed CC Switch entries are skipped by default.
+
+## Safety
+
+- CC Switch database is opened read-only.
+- ModelGate does not modify CC Switch settings or live tool configs.
+- Plaintext API keys are not saved.
+- API keys are saved as environment variable references such as `${OPENAI_API_KEY}`.
+
+## Notes
+
+- This release supersedes v0.1.3 for CC Switch import usability.
+
 # ModelGate v0.1.3
 
 ## Fixes
