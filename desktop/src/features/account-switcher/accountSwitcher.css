@@ -126,6 +126,16 @@
   color: #667085;
 }
 
+.account-card-description {
+  color: #667085;
+  display: -webkit-box;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .account-card dl {
   gap: 8px;
 }

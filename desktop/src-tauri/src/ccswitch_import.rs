@@ -27,6 +27,7 @@ pub struct CcSwitchImportCandidate {
     provider_name: String,
     provider_type: String,
     base_url: Option<String>,
+    description: Option<String>,
     api_key_env: Option<String>,
     api_key_detected: bool,
     api_key_preview: Option<String>,
@@ -84,9 +85,21 @@ struct TableScanResult {
 }
 
 const NAME_KEYS: &[&str] = &["name", "label", "display_name", "title", "provider_name"];
+const APP_KEYS: &[&str] = &["app", "app_type", "source", "target_app", "application", "codex_session"];
 const BASE_URL_KEYS: &[&str] = &["base_url", "baseurl", "api_base", "apibase", "endpoint", "url", "base"];
 const API_KEY_KEYS: &[&str] = &["api_key", "apikey", "key", "token", "auth_token", "openai_api_key"];
-const NOTES_KEYS: &[&str] = &["notes", "note", "description", "remark", "metadata"];
+const NOTES_KEYS: &[&str] = &[
+    "description",
+    "desc",
+    "notes",
+    "note",
+    "remark",
+    "remarks",
+    "comment",
+    "comments",
+    "memo",
+    "metadata",
+];
 const MODEL_KEYS: &[&str] = &[
     "model",
     "model_name",
@@ -169,8 +182,8 @@ fn scan_database(path: &Path, show_managed: bool) -> Result<CcSwitchScanResult, 
     dedupe_candidates(&mut candidates);
 
     if candidates.is_empty() {
-        warnings.push("Scanned database, but no importable provider candidates were recognized.".to_string());
-        warnings.push("Possible causes: schema changed, provider is not OpenAI-compatible, or base URL/model fields are missing.".to_string());
+        warnings.push("Scanned database, but no importable Codex model configs were recognized.".to_string());
+        warnings.push("Possible causes: schema changed, app_type is not codex, or base URL/model fields are missing.".to_string());
     }
 
     let report = CcSwitchImportReport {
@@ -250,7 +263,8 @@ fn scan_current_schema(connection: &Connection, show_managed: bool) -> Result<Ta
         .prepare(
             "SELECT id, app_type, name, settings_config, notes, category, meta
              FROM providers
-             ORDER BY app_type ASC, COALESCE(sort_index, 999999), created_at ASC, id ASC",
+             WHERE lower(app_type) LIKE '%codex%'
+             ORDER BY COALESCE(sort_index, 999999), created_at ASC, id ASC",
         )
         .map_err(|error| error.to_string())?;
 
@@ -275,6 +289,10 @@ fn scan_current_schema(connection: &Connection, show_managed: bool) -> Result<Ta
 
     for row in rows {
         let row = row.map_err(|error| error.to_string())?;
+        if !looks_like_codex_app(&row.app_type) {
+            continue;
+        }
+
         let urls = endpoints
             .get(&(row.id.clone(), row.app_type.clone()))
             .cloned()
@@ -325,8 +343,14 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
     let (base_url, api_key, models, provider_type_hint) = extract_current_provider_fields(row);
     let base_url = base_url.or_else(|| endpoints.first().cloned());
     let model = models.first().cloned();
-    let safe_provider = safe_name(&row.name);
-    let env_name = suggested_env_name(&safe_provider);
+    let provider_name = infer_name_from_url(base_url.as_deref()).unwrap_or_else(|| row.name.clone());
+    let safe_provider = safe_name(&provider_name);
+    let alias_name = safe_name(&row.name);
+    let env_name = api_key
+        .as_deref()
+        .and_then(extract_env_name)
+        .unwrap_or_else(|| suggested_env_name(&safe_provider));
+    let description = extract_current_description(row);
     let modelgate_managed = is_current_schema_modelgate_managed(row, base_url.as_deref(), model.as_deref(), api_key.as_deref());
     let provider_type = if current_provider_looks_openai_compatible(row, base_url.as_deref(), provider_type_hint.as_deref()) {
         "openai-compatible"
@@ -362,16 +386,17 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
         source_id: Some(row.id.clone()),
         app: row.app_type.clone(),
         name: row.name.clone(),
-        provider_name: row.name.clone(),
+        provider_name,
         provider_type: provider_type.to_string(),
         base_url,
+        description,
         api_key_env: Some(env_name.clone()),
         api_key_detected: api_key.is_some(),
         api_key_preview: api_key.as_deref().map(mask_secret),
         model,
         models,
         suggested_modelgate_provider: safe_provider.clone(),
-        suggested_modelgate_alias: format!("{safe_provider}-main"),
+        suggested_modelgate_alias: alias_name,
         suggested_env_name: env_name,
         complete,
         modelgate_managed,
@@ -380,7 +405,7 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
 }
 
 fn extract_current_provider_fields(row: &SchemaCandidateRow) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
-    match row.app_type.as_str() {
+    match row.app_type.to_ascii_lowercase().as_str() {
         "codex" => extract_codex_fields(&row.settings_config),
         "claude" | "claude-desktop" => extract_claude_fields(&row.settings_config, &row.meta),
         "gemini" => extract_gemini_fields(&row.settings_config),
@@ -403,8 +428,7 @@ fn extract_codex_fields(settings: &Value) -> (Option<String>, Option<String>, Ve
     if let Some(model) = extract_toml_string(config_text, "model") {
         models.push(model);
     }
-    ("codex".to_string().into(), api_key, models, Some("openai-compatible".to_string()))
-        .map_first(base_url)
+    (base_url, api_key, models, Some("openai-compatible".to_string()))
 }
 
 fn extract_claude_fields(settings: &Value, meta: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
@@ -484,16 +508,6 @@ fn extract_generic_json_fields(settings: &Value) -> (Option<String>, Option<Stri
     )
 }
 
-trait TupleFirst {
-    fn map_first(self, first: Option<String>) -> (Option<String>, Option<String>, Vec<String>, Option<String>);
-}
-
-impl TupleFirst for (Option<String>, Option<String>, Vec<String>, Option<String>) {
-    fn map_first(self, first: Option<String>) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
-        (first, self.1, self.2, self.3)
-    }
-}
-
 fn extract_toml_string(config: &str, key: &str) -> Option<String> {
     for line in config.lines() {
         let trimmed = line.trim();
@@ -548,7 +562,7 @@ fn json_strings(value: Option<&Value>, keys: &[&str]) -> Vec<String> {
 }
 
 fn current_provider_looks_openai_compatible(row: &SchemaCandidateRow, base_url: Option<&str>, hint: Option<&str>) -> bool {
-    if matches!(row.app_type.as_str(), "codex" | "opencode" | "openclaw" | "hermes") {
+    if looks_like_codex_app(&row.app_type) {
         return true;
     }
 
@@ -668,6 +682,11 @@ fn scan_table(connection: &Connection, table: &str, show_managed: bool) -> Resul
             continue;
         }
 
+        if !fields_look_codex(&fields) {
+            row_index += 1;
+            continue;
+        }
+
         if let Some(candidate) = candidate_from_fields(table, row_index, &fields) {
             candidates.push(candidate);
         }
@@ -749,13 +768,18 @@ fn candidate_from_fields(
     let api_key = find_first(fields, API_KEY_KEYS);
     let models = find_models(fields);
     let model = models.first().cloned();
+    let description = find_first(fields, NOTES_KEYS);
     let provider_type = if base_url.is_some() || type_looks_openai(find_first(fields, TYPE_KEYS).as_deref()) {
         "openai-compatible"
     } else {
         "unknown"
     };
     let safe_provider = safe_name(&provider_name);
-    let env_name = suggested_env_name(&safe_provider);
+    let alias_name = safe_name(&name);
+    let env_name = api_key
+        .as_deref()
+        .and_then(extract_env_name)
+        .unwrap_or_else(|| suggested_env_name(&safe_provider));
     let modelgate_managed = is_modelgate_managed_provider(fields);
     let mut warnings = Vec::new();
 
@@ -786,13 +810,14 @@ fn candidate_from_fields(
         provider_name,
         provider_type: provider_type.to_string(),
         base_url,
+        description,
         api_key_env: Some(env_name.clone()),
         api_key_detected: api_key.is_some(),
         api_key_preview: api_key.as_deref().map(mask_secret),
         model,
         models,
         suggested_modelgate_provider: safe_provider.clone(),
-        suggested_modelgate_alias: format!("{safe_provider}-main"),
+        suggested_modelgate_alias: alias_name,
         suggested_env_name: env_name,
         complete,
         modelgate_managed,
@@ -809,6 +834,78 @@ fn find_first(fields: &HashMap<String, String>, keys: &[&str]) -> Option<String>
         }
     }
     None
+}
+
+fn looks_like_codex_app(value: &str) -> bool {
+    value.to_ascii_lowercase().contains("codex")
+}
+
+fn fields_look_codex(fields: &HashMap<String, String>) -> bool {
+    find_first(fields, APP_KEYS)
+        .map(|value| looks_like_codex_app(&value))
+        .unwrap_or(false)
+}
+
+fn extract_current_description(row: &SchemaCandidateRow) -> Option<String> {
+    row.notes
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(String::from)
+        .or_else(|| find_description_in_json(&row.settings_config))
+        .or_else(|| find_description_in_json(&row.meta))
+}
+
+fn find_description_in_json(value: &Value) -> Option<String> {
+    match value {
+        Value::Object(map) => {
+            for key in NOTES_KEYS {
+                let direct = map.get(*key);
+                let normalized = direct.or_else(|| {
+                    map.iter()
+                        .find(|(candidate, _)| normalize_key(candidate) == normalize_key(key))
+                        .map(|(_, value)| value)
+                });
+
+                if let Some(value) = normalized.and_then(value_to_description) {
+                    return Some(value);
+                }
+            }
+
+            for value in map.values() {
+                if let Some(description) = find_description_in_json(value) {
+                    return Some(description);
+                }
+            }
+
+            None
+        }
+        Value::Array(items) => {
+            for item in items {
+                if let Some(description) = find_description_in_json(item) {
+                    return Some(description);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn value_to_description(value: &Value) -> Option<String> {
+    let text = match value {
+        Value::String(text) => text.trim().to_string(),
+        Value::Number(number) => number.to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Array(_) | Value::Object(_) => serde_json::to_string(value).ok()?,
+        Value::Null => return None,
+    };
+
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 fn is_modelgate_managed_provider(fields: &HashMap<String, String>) -> bool {
@@ -956,6 +1053,46 @@ fn suggested_env_name(provider: &str) -> String {
     )
 }
 
+fn extract_env_name(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let normalized = trimmed
+        .strip_prefix("env:")
+        .or_else(|| trimmed.strip_prefix("ENV:"))
+        .unwrap_or(trimmed)
+        .trim();
+
+    if let Some(name) = normalized
+        .strip_prefix("${")
+        .and_then(|value| value.strip_suffix('}'))
+        .filter(|name| is_env_name(name))
+    {
+        return Some(name.to_string());
+    }
+
+    if let Some(name) = normalized
+        .strip_prefix('$')
+        .filter(|name| is_env_name(name))
+    {
+        return Some(name.to_string());
+    }
+
+    if is_env_name(normalized) && normalized.ends_with("_API_KEY") {
+        return Some(normalized.to_string());
+    }
+
+    None
+}
+
+fn is_env_name(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+
+    (first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|character| character == '_' || character.is_ascii_alphanumeric())
+}
+
 fn mask_secret(value: &str) -> String {
     let trimmed = value.trim();
 
@@ -980,8 +1117,9 @@ fn dedupe_candidates(candidates: &mut Vec<CcSwitchImportCandidate>) {
     let mut seen = HashSet::new();
     candidates.retain(|candidate| {
         let key = format!(
-            "{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}",
             candidate.app,
+            candidate.name,
             candidate.suggested_modelgate_provider,
             candidate.base_url.clone().unwrap_or_default(),
             candidate.model.clone().unwrap_or_default()

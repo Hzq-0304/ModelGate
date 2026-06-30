@@ -2,6 +2,7 @@ export type ProviderType = "mock" | "openai-compatible";
 
 export type MockProviderConfig = {
   type: "mock";
+  description?: string;
 };
 
 export type OpenAICompatibleProviderConfig = {
@@ -9,6 +10,7 @@ export type OpenAICompatibleProviderConfig = {
   base_url: string;
   api_key: string;
   responses_api?: boolean;
+  description?: string;
 };
 
 export type ProviderConfig = MockProviderConfig | OpenAICompatibleProviderConfig;
@@ -16,6 +18,7 @@ export type ProviderConfig = MockProviderConfig | OpenAICompatibleProviderConfig
 export type ModelAlias = {
   provider: string;
   model: string;
+  description?: string;
 };
 
 export type ResolvedModelRoute = {

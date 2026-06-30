@@ -121,7 +121,8 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
     aliases: Object.entries(runtime.config.aliases).map(([name, alias]) => ({
       name,
       provider: alias.provider,
-      model: alias.model
+      model: alias.model,
+      description: alias.description
     }))
   }));
 

@@ -656,22 +656,33 @@ Admin API:
 curl http://127.0.0.1:11435/admin/ccswitch-link?app=codex
 ```
 
-The first version is mainly aimed at Codex and OpenCode style OpenAI-compatible provider flows. When importing from CC Switch back into ModelGate, ModelGate-managed providers are hidden by default. Enable **Show ModelGate-managed providers** only for debugging.
+The import flow is aimed at Codex OpenAI-compatible provider settings. When importing from CC Switch back into ModelGate, ModelGate-managed providers are skipped by default to avoid import loops.
 
 ### Import From CC Switch
 
-The Configuration tab includes **Import from CC Switch** under **Integrations** for read-only provider import.
+The desktop Home page and Configuration -> Integrations both include **Import from CC Switch**. Clicking it starts the new simplified import flow:
+
+1. ModelGate auto-scans the default local CC Switch database.
+2. Only Codex app provider/model configs are read.
+3. Importable Codex models are shown as a simple selectable list.
+4. Select the models to import.
+5. Click **Import Selected Models**.
+6. ModelGate writes its own providers / aliases, validates the config, saves, and reloads.
 
 ModelGate scans CC Switch data without modifying it:
 
 - does not modify the CC Switch SQLite database
 - does not modify CC Switch settings
 - does not modify Codex, Claude, Gemini, OpenCode, or other live configs
-- imports only provider, endpoint, and model-related data
+- imports only Codex provider, endpoint, model, and description-related data
 - does not import MCP servers, skills, prompts, or usage logs
 - skips ModelGate-managed providers by default to avoid import loops
 
-The scanner is based on the current CC Switch SQLite schema. It first looks for the real `providers` / `provider_endpoints` schema, reads `providers.settings_config` JSON, and extracts app-specific provider fields for Codex, Claude, Gemini, OpenCode, OpenClaw, and Hermes. If that schema is missing or cannot be parsed, it falls back to a heuristic scan and says so in the scan report.
+The scanner is based on the current CC Switch SQLite schema. It first looks for the real `providers` / `provider_endpoints` schema, reads Codex rows from `providers.settings_config`, and extracts the OpenAI-compatible base URL, model, masked API key preview, and description. Claude, Gemini, OpenCode, OpenClaw, Hermes, and other app configs are not shown in this import list.
+
+Model order is preserved from CC Switch as closely as possible. The current schema uses `sort_index`, then `created_at`, then `id`; ModelGate writes imported aliases in that order so the Account Switcher follows the same order.
+
+Descriptions are copied from CC Switch fields such as `description`, `desc`, `notes`, `note`, `remark`, `remarks`, `comment`, `comments`, and `memo`, including matching JSON fields. ModelGate does not translate these descriptions. Long descriptions may be truncated in the UI, but the full value is saved in YAML as optional `description` on providers and aliases.
 
 The desktop app first looks for:
 
@@ -685,15 +696,13 @@ On Windows this resolves to:
 C:\Users\<User>\.cc-switch\cc-switch.db
 ```
 
-You can also choose a database manually with **Select cc-switch.db**. The scanner opens SQLite in read-only mode and shows a scan report even when no candidates are importable.
+If the default database is not found, ModelGate shows:
 
-Scan report includes:
+```text
+CC Switch database was not found. Select cc-switch.db manually.
+```
 
-- parser: `ccswitch-current-schema` or `heuristic`
-- detected tables, columns, and row counts
-- candidates found
-- skipped ModelGate-managed provider count
-- warnings and likely reasons when no provider can be imported
+Then use **Select Database** to choose `cc-switch.db` manually. The scanner opens SQLite in read-only mode. Advanced scan details remain available in a collapsed **Show scan details** section for debugging, but parser/table details are not part of the normal import flow.
 
 API keys are never imported as plaintext. If a key or token is detected, ModelGate only shows a masked preview and suggests an environment variable name. The saved ModelGate YAML uses this form:
 
@@ -714,19 +723,19 @@ npm run dev
 
 Import flow:
 
-1. Auto-detect or select `cc-switch.db`
-2. Review **Scan Report**
-3. Review and edit **Candidates**
-4. Review the provider / alias YAML **Import Preview**
-5. Click **Import Selected**
+1. Click **Import from CC Switch**
+2. Review the detected Codex model configs
+3. Keep or clear the model checkboxes
+4. Keep **Generate new names on conflicts** enabled unless you want conflicts to stop the import
+5. Click **Import Selected Models**
 6. ModelGate validates and saves its own YAML config, then reloads
 
-If no provider is found, check **Scan Report**. Common causes are:
+If no Codex model config is found, common causes are:
 
 - the CC Switch schema changed
-- the provider is not OpenAI-compatible
-- `settings_config` is missing base URL or model information
-- the only matching rows are ModelGate-managed providers hidden by default
+- CC Switch has no Codex app provider configured
+- `settings_config` is missing base URL or model information for Codex
+- the only matching rows are ModelGate-managed providers skipped by default
 
 Future:
 

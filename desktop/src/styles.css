@@ -648,6 +648,16 @@ code {
   padding: 8px 10px;
 }
 
+.warning-list.compact {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.warning-list.compact span {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
 .empty-state {
   color: #475467;
   display: grid;
@@ -662,6 +672,142 @@ code {
 
 .ccswitch-row {
   grid-template-columns: 58px 145px 82px 150px 220px 160px 120px 150px 150px minmax(180px, 1fr);
+}
+
+.ccswitch-simple {
+  display: grid;
+  gap: 14px;
+}
+
+.ccswitch-simple-heading {
+  align-items: start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.ccswitch-simple-heading h3 {
+  color: #101828;
+  font-size: 20px;
+  line-height: 1.2;
+  margin: 4px 0 6px;
+}
+
+.ccswitch-simple-heading strong {
+  background: #eef4ff;
+  border: 1px solid #c7d7fe;
+  border-radius: 999px;
+  color: #1d4ed8;
+  font-size: 13px;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.ccswitch-model-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ccswitch-model-card {
+  align-items: start;
+  background: #f8fafc;
+  border: 1px solid #e4e9f2;
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 90px minmax(180px, 0.65fr) minmax(420px, 1.35fr);
+  padding: 14px;
+}
+
+.ccswitch-model-card.incomplete {
+  border-color: #fecdca;
+}
+
+.ccswitch-model-select {
+  align-items: center;
+  color: #344054;
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 8px;
+}
+
+.ccswitch-model-select input[type="checkbox"] {
+  min-height: auto;
+  width: auto;
+}
+
+.ccswitch-model-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ccswitch-model-main strong {
+  color: #101828;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ccswitch-model-main code,
+.ccswitch-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ccswitch-description {
+  color: #667085;
+  display: -webkit-box;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.ccswitch-model-details {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ccswitch-model-details div {
+  padding: 9px;
+}
+
+.ccswitch-model-details dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ccswitch-model-details div:nth-child(3),
+.ccswitch-model-details div:nth-child(4),
+.ccswitch-model-details div:nth-child(5) {
+  grid-column: 1 / -1;
+}
+
+.ccswitch-import-actions {
+  justify-content: flex-end;
+}
+
+.ccswitch-scan-details {
+  background: #f8fafc;
+  border: 1px solid #e4e9f2;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.ccswitch-scan-details summary {
+  color: #344054;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.scan-details-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .config-form {
@@ -731,6 +877,7 @@ select:disabled {
 @media (max-width: 980px) {
   .ccswitch-export-form,
   .integration-card-grid,
+  .ccswitch-model-card,
   .preset-form,
   .config-summary,
   .config-form,

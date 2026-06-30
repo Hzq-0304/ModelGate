@@ -3,14 +3,16 @@ import { z } from "zod";
 const namePattern = /^[A-Za-z0-9_-]+$/;
 
 export const mockProviderSchema = z.object({
-  type: z.literal("mock")
+  type: z.literal("mock"),
+  description: z.string().optional()
 });
 
 export const openAICompatibleProviderSchema = z.object({
   type: z.literal("openai-compatible"),
   base_url: z.string().url(),
   api_key: z.string().min(1),
-  responses_api: z.boolean().default(false)
+  responses_api: z.boolean().default(false),
+  description: z.string().optional()
 });
 
 export const providerSchema = z.discriminatedUnion("type", [
@@ -20,7 +22,8 @@ export const providerSchema = z.discriminatedUnion("type", [
 
 export const aliasSchema = z.object({
   provider: z.string().min(1),
-  model: z.string().min(1)
+  model: z.string().min(1),
+  description: z.string().optional()
 });
 
 export const entrypointSchema = z.object({

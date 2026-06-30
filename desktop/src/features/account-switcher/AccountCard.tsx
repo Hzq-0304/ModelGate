@@ -22,6 +22,9 @@ export function AccountCard({ account, active, disabled, switching, onSelect }: 
       <span className="account-card-status">{switching ? t("common.switching") : active ? t("common.active") : t("common.available")}</span>
       <strong>{formatAliasTitle(account.name)}</strong>
       <code>{account.name}</code>
+      {account.description && (
+        <p className="account-card-description" title={account.description}>{account.description}</p>
+      )}
       <dl>
         <div>
           <dt>{t("common.provider")}</dt>

@@ -13,7 +13,6 @@ import {
   type ServerProcessStatus,
   type StatusResponse,
   clearRequestLogs,
-  detectCcSwitchDatabase,
   getAliases,
   getAdminConfig,
   getBaseUrl,
@@ -99,7 +98,7 @@ export function App() {
   const [ccSwitchReport, setCcSwitchReport] = useState<CcSwitchImportReport | null>(null);
   const [showCcSwitchImportGuide, setShowCcSwitchImportGuide] = useState(false);
   const [showCodexImportPanel, setShowCodexImportPanel] = useState(false);
-  const [showManagedCcSwitch, setShowManagedCcSwitch] = useState(false);
+  const [generateImportNames, setGenerateImportNames] = useState(true);
   const [ccSwitchExportDraft, setCcSwitchExportDraft] = useState<CcSwitchExportDraft>({
     name: "ModelGate Local",
     app: "codex",
@@ -109,9 +108,6 @@ export function App() {
   });
   const [ccSwitchExportMessage, setCcSwitchExportMessage] = useState("CC Switch link not generated");
   const [importDrafts, setImportDrafts] = useState<ImportDraft[]>([]);
-  const [overwriteProviders, setOverwriteProviders] = useState(false);
-  const [overwriteAliases, setOverwriteAliases] = useState(false);
-  const [setImportedActive, setSetImportedActive] = useState(false);
   const [showPresetPanel, setShowPresetPanel] = useState(false);
   const [providerPresets, setProviderPresets] = useState<ProviderPreset[]>([]);
   const [presetSearch, setPresetSearch] = useState("");
@@ -163,7 +159,7 @@ export function App() {
       selected: candidate.complete,
       providerName: candidate.suggested_modelgate_provider,
       baseUrl: candidate.base_url ?? "",
-      envName: candidate.suggested_env_name,
+      envName: candidate.api_key_env ?? candidate.suggested_env_name,
       modelValue: candidate.model ?? candidate.models[0] ?? "",
       aliasName: candidate.suggested_modelgate_alias
     };
@@ -290,6 +286,7 @@ export function App() {
       void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
     }
     scrollToElement("ccswitch-import-guide");
+    void handleScanAutoCcSwitch();
   }
 
   function openCodexImportPanel() {
@@ -438,40 +435,36 @@ export function App() {
     }
   }
 
-  async function handleDetectCcSwitch() {
-    setShowCcSwitchImportGuide(true);
-    setBusyAction("ccswitch:detect");
-    try {
-      const detection = await detectCcSwitchDatabase();
-      setCcSwitchPath(detection.path ?? "");
-      setCcSwitchMessage(detection.found
-        ? `Auto-detected: ${detection.path}`
-        : detection.message ?? "CC Switch database was not found automatically.");
-    } catch (error) {
-      setCcSwitchMessage(`Detection failed: ${getErrorMessage(error)}`);
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
   async function applyCcSwitchScan(scan: Awaited<ReturnType<typeof scanCcSwitchDatabase>>) {
     setCcSwitchPath(scan.path);
     setCcSwitchReport(scan.report);
     setImportDrafts(scan.candidates.map(candidateToDraft));
-    const warning = scan.warnings.length > 0 ? ` Warnings: ${scan.warnings.join(" ")}` : "";
     const skipped = scan.skipped_modelgate_managed > 0
-      ? ` Skipped ${scan.skipped_modelgate_managed} ModelGate-managed CC Switch provider(s).`
+      ? ` ${t("ccswitch.simple.skippedManaged", { count: scan.skipped_modelgate_managed })}`
       : "";
-    setCcSwitchMessage(`Parser: ${scan.report.parser}. Found ${scan.candidates.length} candidate(s).${skipped}${warning}`);
+    setCcSwitchMessage(`${t("ccswitch.simple.found", { count: scan.candidates.length })}.${skipped}`);
+  }
+
+  function formatCcSwitchScanError(error: unknown) {
+    const message = getErrorMessage(error);
+    if (message.toLowerCase().includes("not found")) {
+      return t("ccswitch.simple.notFound");
+    }
+
+    return `Scan failed: ${message}`;
   }
 
   async function handleScanAutoCcSwitch() {
     setShowCcSwitchImportGuide(true);
     setBusyAction("ccswitch:scan");
+    setCcSwitchMessage(t("ccswitch.simple.scanning"));
     try {
-      await applyCcSwitchScan(await scanCcSwitchDatabase(showManagedCcSwitch));
+      await applyCcSwitchScan(await scanCcSwitchDatabase(false));
     } catch (error) {
-      setCcSwitchMessage(`Scan failed: ${getErrorMessage(error)}`);
+      setCcSwitchPath("");
+      setCcSwitchReport(null);
+      setImportDrafts([]);
+      setCcSwitchMessage(formatCcSwitchScanError(error));
     } finally {
       setBusyAction(null);
     }
@@ -481,14 +474,14 @@ export function App() {
     setShowCcSwitchImportGuide(true);
     setBusyAction("ccswitch:select");
     try {
-      const scan = await selectAndScanCcSwitchDatabase(showManagedCcSwitch);
+      const scan = await selectAndScanCcSwitchDatabase(false);
       if (!scan) {
-        setCcSwitchMessage("No database selected.");
+        setCcSwitchMessage(t("ccswitch.simple.noDatabaseSelected"));
         return;
       }
       await applyCcSwitchScan(scan);
     } catch (error) {
-      setCcSwitchMessage(`Scan failed: ${getErrorMessage(error)}`);
+      setCcSwitchMessage(formatCcSwitchScanError(error));
     } finally {
       setBusyAction(null);
     }
@@ -882,42 +875,48 @@ export function App() {
       const aliases = { ...editableConfig.aliases };
       const providerNames = new Set(Object.keys(providers));
       const aliasNames = new Set(Object.keys(aliases));
-      let firstAlias: string | null = null;
 
       for (const draft of selected) {
         if (!draft.providerName || !draft.baseUrl || !draft.envName || !draft.modelValue || !draft.aliasName) {
           throw new Error(`Candidate ${draft.name} is incomplete.`);
         }
 
-        const providerName = overwriteProviders
-          ? draft.providerName
-          : makeUniqueName(draft.providerName, providerNames);
-        if (overwriteProviders) {
-          providerNames.add(providerName);
-        }
+        let providerName = draft.providerName.trim();
+        let aliasName = draft.aliasName.trim();
 
-        const aliasName = overwriteAliases
-          ? draft.aliasName
-          : makeUniqueName(draft.aliasName, aliasNames);
-        if (overwriteAliases) {
+        if (generateImportNames) {
+          providerName = makeNumberedName(providerName, providerNames);
+          providerNames.add(providerName);
+          aliasName = makeNumberedName(aliasName, aliasNames);
+          aliasNames.add(aliasName);
+        } else {
+          if (providerNames.has(providerName)) {
+            throw new Error(`Provider "${providerName}" already exists. Enable generated names or rename the source.`);
+          }
+          if (aliasNames.has(aliasName)) {
+            throw new Error(`Alias "${aliasName}" already exists. Enable generated names or rename the source.`);
+          }
+          providerNames.add(providerName);
           aliasNames.add(aliasName);
         }
 
+        const description = draft.description?.trim();
+
         providers[providerName] = {
           type: "openai-compatible",
-          base_url: draft.baseUrl,
-          api_key: `\${${draft.envName}}`
+          base_url: draft.baseUrl.trim(),
+          api_key: `\${${draft.envName.trim()}}`,
+          ...(description ? { description } : {})
         };
         aliases[aliasName] = {
           provider: providerName,
-          model: draft.modelValue
+          model: draft.modelValue.trim(),
+          ...(description ? { description } : {})
         };
-        firstAlias ??= aliasName;
       }
 
       const nextConfig = {
         ...editableConfig,
-        active: setImportedActive && firstAlias ? firstAlias : editableConfig.active,
         providers,
         aliases
       };
@@ -929,7 +928,7 @@ export function App() {
 
       await saveAdminConfig(nextConfig);
       setEditableConfig(nextConfig);
-      setCcSwitchMessage(`Imported ${selected.length} candidate(s). Set the suggested environment variables before using them.`);
+      setCcSwitchMessage(t("ccswitch.simple.imported", { count: selected.length }));
       await refresh();
     } catch (error) {
       setCcSwitchMessage(`Import failed: ${getErrorMessage(error)}`);
@@ -1129,14 +1128,8 @@ export function App() {
             <p className="muted">{t("ccswitch.import.description")}</p>
             <p className="muted">{t("ccswitch.import.safety")}</p>
             <div className="server-actions">
-              <button type="button" onClick={() => setShowCcSwitchImportGuide(true)}>
+              <button type="button" onClick={goToConfigurationIntegrations} disabled={busyAction !== null}>
                 {t("ccswitch.import.start")}
-              </button>
-              <button className="secondary" type="button" onClick={() => void handleDetectCcSwitch()} disabled={busyAction !== null}>
-                {busyAction === "ccswitch:detect" ? t("config.detecting") : t("ccswitch.import.autoDetect")}
-              </button>
-              <button className="secondary" type="button" onClick={() => void handleSelectCcSwitch()} disabled={busyAction !== null}>
-                {busyAction === "ccswitch:select" ? t("config.selecting") : t("ccswitch.import.selectDatabase")}
               </button>
             </div>
           </section>
@@ -1654,21 +1647,14 @@ export function App() {
               busyAction={busyAction}
               configLoaded={Boolean(editableConfig)}
               drafts={importDrafts}
+              generateNewNames={generateImportNames}
               message={ccSwitchMessage}
-              overwriteAliases={overwriteAliases}
-              overwriteProviders={overwriteProviders}
-              path={ccSwitchPath}
               report={ccSwitchReport}
-              setImportedActive={setImportedActive}
-              showManaged={showManagedCcSwitch}
-              onDetect={() => void handleDetectCcSwitch()}
+              onCancel={() => setShowCcSwitchImportGuide(false)}
+              onGenerateNewNamesChange={setGenerateImportNames}
               onImport={() => void handleImportCcSwitch()}
-              onOverwriteAliasesChange={setOverwriteAliases}
-              onOverwriteProvidersChange={setOverwriteProviders}
               onScanAuto={() => void handleScanAutoCcSwitch()}
               onSelectDatabase={() => void handleSelectCcSwitch()}
-              onSetImportedActiveChange={setSetImportedActive}
-              onShowManagedChange={setShowManagedCcSwitch}
               onUpdateDraft={updateImportDraft}
             />
             </div>

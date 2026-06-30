@@ -5,8 +5,10 @@ export type CcSwitchImportDraft = {
   id: string;
   app: string;
   name: string;
+  provider_name: string;
   provider_type: "openai-compatible" | "unknown";
   base_url?: string;
+  description?: string;
   api_key_detected: boolean;
   api_key_preview?: string;
   suggested_env_name: string;
@@ -23,106 +25,158 @@ export type CcSwitchImportDraft = {
 };
 
 type CcSwitchImportPanelProps = {
-  path: string;
   message: string;
   report: CcSwitchImportReport | null;
   drafts: CcSwitchImportDraft[];
-  showManaged: boolean;
-  overwriteProviders: boolean;
-  overwriteAliases: boolean;
-  setImportedActive: boolean;
+  generateNewNames: boolean;
   busyAction: string | null;
   configLoaded: boolean;
-  onDetect: () => void;
+  onCancel: () => void;
+  onGenerateNewNamesChange: (value: boolean) => void;
+  onImport: () => void;
   onScanAuto: () => void;
   onSelectDatabase: () => void;
-  onShowManagedChange: (value: boolean) => void;
-  onOverwriteProvidersChange: (value: boolean) => void;
-  onOverwriteAliasesChange: (value: boolean) => void;
-  onSetImportedActiveChange: (value: boolean) => void;
   onUpdateDraft: (id: string, patch: Partial<CcSwitchImportDraft>) => void;
-  onImport: () => void;
 };
 
-function selectedPreview(drafts: CcSwitchImportDraft[]) {
-  const selected = drafts.filter((draft) => draft.selected);
-  if (selected.length === 0) {
-    return "providers: {}\naliases: {}";
-  }
-
-  const providerLines = selected.flatMap((draft) => [
-    `  ${draft.providerName}:`,
-    "    type: openai-compatible",
-    `    base_url: ${draft.baseUrl || "<missing>"}`,
-    `    api_key: \${${draft.envName || "ENV_NAME"}}`
-  ]);
-  const aliasLines = selected.flatMap((draft) => [
-    `  ${draft.aliasName}:`,
-    `    provider: ${draft.providerName || "<missing>"}`,
-    `    model: ${draft.modelValue || "<missing>"}`
-  ]);
-
-  return ["providers:", ...providerLines, "", "aliases:", ...aliasLines].join("\n");
+function isProblemMessage(message: string) {
+  return message.startsWith("Import failed")
+    || message.startsWith("Scan failed")
+    || message.startsWith("CC Switch database was not found");
 }
 
 export function CcSwitchImportPanel({
-  path,
   message,
   report,
   drafts,
-  showManaged,
-  overwriteProviders,
-  overwriteAliases,
-  setImportedActive,
+  generateNewNames,
   busyAction,
   configLoaded,
-  onDetect,
+  onCancel,
+  onGenerateNewNamesChange,
+  onImport,
   onScanAuto,
   onSelectDatabase,
-  onShowManagedChange,
-  onOverwriteProvidersChange,
-  onOverwriteAliasesChange,
-  onSetImportedActiveChange,
-  onUpdateDraft,
-  onImport
+  onUpdateDraft
 }: CcSwitchImportPanelProps) {
   const { t } = useI18n();
-  const messageIsBad = message.startsWith("Import failed") || message.startsWith("Scan failed") || message.startsWith("Detection failed");
   const selectedCount = drafts.filter((draft) => draft.selected).length;
+  const scanning = busyAction === "ccswitch:scan";
+  const selecting = busyAction === "ccswitch:select";
+  const importing = busyAction === "ccswitch:import";
 
   return (
-    <section className="ccswitch-flow">
-      <section className="card config-card">
-        <div className="card-heading">
-          <span>{t("ccswitch.stepSource")}</span>
-          <strong>{path ? t("common.ok") : t("config.notLoaded")}</strong>
+    <section className="ccswitch-simple card config-card">
+      <div className="ccswitch-simple-heading">
+        <div>
+          <span className="field-label">{t("ccswitch.simple.kicker")}</span>
+          <h3>{t("ccswitch.simple.title")}</h3>
+          <p className="muted">{t("ccswitch.simple.subtitle")}</p>
         </div>
-        <p className="muted">{t("ccswitch.safety")}</p>
-        <div className="import-source">
-          <span className="field-label">{t("ccswitch.autoDetectedDatabase")}</span>
-          <code>{path || "C:\\Users\\<User>\\.cc-switch\\cc-switch.db"}</code>
-          <span className={messageIsBad ? "action-message bad" : "action-message"}>{message}</span>
-        </div>
-        <div className="server-actions">
-          <button onClick={onDetect} disabled={busyAction !== null}>
-            {busyAction === "ccswitch:detect" ? t("config.detecting") : t("config.autoDetect")}
-          </button>
-          <button onClick={onScanAuto} disabled={busyAction !== null || !path}>
-            {busyAction === "ccswitch:scan" ? t("config.scanning") : t("config.scanAuto")}
-          </button>
-          <button className="secondary" onClick={onSelectDatabase} disabled={busyAction !== null}>
-            {busyAction === "ccswitch:select" ? t("config.selecting") : t("config.selectDb")}
-          </button>
-        </div>
-      </section>
+        <strong>{t("ccswitch.simple.found", { count: drafts.length })}</strong>
+      </div>
 
-      <section className="card config-card">
-        <div className="card-heading">
-          <span>{t("ccswitch.stepReport")}</span>
-          <strong>{report?.parser ?? "-"}</strong>
+      <div className="server-actions">
+        <button type="button" onClick={onScanAuto} disabled={busyAction !== null}>
+          {scanning ? t("config.scanning") : t("ccswitch.simple.rescan")}
+        </button>
+        <button className="secondary" type="button" onClick={onSelectDatabase} disabled={busyAction !== null}>
+          {selecting ? t("config.selecting") : t("ccswitch.simple.selectDatabase")}
+        </button>
+        <button className="secondary" type="button" onClick={onCancel} disabled={busyAction !== null}>
+          {t("ccswitch.simple.cancel")}
+        </button>
+        <span className={isProblemMessage(message) ? "action-message bad" : "action-message"}>{message}</span>
+      </div>
+
+      <label className="inline-checkbox">
+        <input
+          type="checkbox"
+          checked={generateNewNames}
+          onChange={(event) => onGenerateNewNamesChange(event.target.checked)}
+        />
+        {t("ccswitch.simple.generateNames")}
+      </label>
+
+      {drafts.length > 0 ? (
+        <div className="ccswitch-model-list">
+          {drafts.map((draft) => (
+            <article className={draft.complete ? "ccswitch-model-card" : "ccswitch-model-card incomplete"} key={draft.id}>
+              <label className="ccswitch-model-select">
+                <input
+                  type="checkbox"
+                  checked={draft.selected}
+                  onChange={(event) => onUpdateDraft(draft.id, { selected: event.target.checked })}
+                />
+                <span>{t("config.import")}</span>
+              </label>
+
+              <div className="ccswitch-model-main">
+                <strong>{draft.name}</strong>
+                <code>{draft.aliasName}</code>
+                {draft.description && (
+                  <p className="ccswitch-description" title={draft.description}>{draft.description}</p>
+                )}
+              </div>
+
+              <dl className="ccswitch-model-details">
+                <div>
+                  <dt>{t("common.model")}</dt>
+                  <dd>{draft.modelValue || "-"}</dd>
+                </div>
+                <div>
+                  <dt>{t("common.provider")}</dt>
+                  <dd>{draft.provider_name || draft.providerName}</dd>
+                </div>
+                <div>
+                  <dt>{t("config.baseUrl")}</dt>
+                  <dd title={draft.baseUrl}>{draft.baseUrl || "-"}</dd>
+                </div>
+                <div>
+                  <dt>{t("ccswitch.simple.description")}</dt>
+                  <dd title={draft.description}>{draft.description || "-"}</dd>
+                </div>
+                <div>
+                  <dt>{t("config.apiKey")}</dt>
+                  <dd>
+                    {draft.api_key_detected
+                      ? t("ccswitch.simple.apiKeyDetected", {
+                        preview: draft.api_key_preview ?? "****",
+                        env: draft.envName
+                      })
+                      : t("ccswitch.simple.apiKeyMissing", { env: draft.envName })}
+                  </dd>
+                </div>
+              </dl>
+
+              {draft.warnings.length > 0 && (
+                <div className="warning-list compact">
+                  {draft.warnings.map((warning) => (
+                    <span key={warning}>{warning}</span>
+                  ))}
+                </div>
+              )}
+            </article>
+          ))}
         </div>
+      ) : (
+        <div className="empty-state">
+          <strong>{t("ccswitch.simple.empty")}</strong>
+          <p>{t("ccswitch.simple.emptyHint")}</p>
+        </div>
+      )}
+
+      <div className="server-actions ccswitch-import-actions">
+        <button onClick={onImport} disabled={!configLoaded || busyAction !== null || selectedCount === 0}>
+          {importing ? t("config.importing") : t("ccswitch.simple.importSelected")}
+        </button>
+        <span className="action-message">{t("ccswitch.simple.selected", { count: selectedCount })}</span>
+      </div>
+
+      <details className="ccswitch-scan-details">
+        <summary>{t("ccswitch.simple.showDetails")}</summary>
         {report ? (
-          <>
+          <div className="scan-details-body">
             <dl className="scan-report-summary">
               <div>
                 <dt>{t("ccswitch.parser")}</dt>
@@ -134,18 +188,9 @@ export function CcSwitchImportPanel({
               </div>
               <div>
                 <dt>{t("ccswitch.skippedManaged")}</dt>
-                <dd>{report.skippedModelGateManaged}</dd>
+                <dd>{t("ccswitch.simple.skippedManaged", { count: report.skippedModelGateManaged })}</dd>
               </div>
             </dl>
-            <div className="scan-table-list">
-              {report.tables.map((table) => (
-                <div key={table.name}>
-                  <strong>{table.name}</strong>
-                  <span>{table.rowCount ?? "-"} rows</span>
-                  <code>{table.columns.join(", ") || "-"}</code>
-                </div>
-              ))}
-            </div>
             {report.warnings.length > 0 && (
               <div className="warning-list">
                 {report.warnings.map((warning) => (
@@ -153,110 +198,11 @@ export function CcSwitchImportPanel({
                 ))}
               </div>
             )}
-          </>
+          </div>
         ) : (
           <p className="muted">{t("ccswitch.scanFirst")}</p>
         )}
-      </section>
-
-      <section className="card config-card">
-        <div className="card-heading">
-          <span>{t("ccswitch.stepCandidates")}</span>
-          <strong>{drafts.length}</strong>
-        </div>
-        <div className="import-options">
-          <label>
-            <input type="checkbox" checked={showManaged} onChange={(event) => onShowManagedChange(event.target.checked)} />
-            {t("ccswitch.showManaged")}
-          </label>
-        </div>
-        {drafts.length > 0 ? (
-          <div className="ccswitch-table">
-            <div className="ccswitch-row ccswitch-head">
-              <span>{t("config.import")}</span>
-              <span>{t("common.name")}</span>
-              <span>{t("ccswitch.app")}</span>
-              <span>{t("common.type")}</span>
-              <span>{t("config.baseUrl")}</span>
-              <span>{t("common.model")}</span>
-              <span>{t("config.detectedKey")}</span>
-              <span>{t("config.envNameShort")}</span>
-              <span>{t("common.alias")}</span>
-              <span>{t("config.warnings")}</span>
-            </div>
-            {drafts.map((draft) => (
-              <div className={draft.complete ? "ccswitch-row" : "ccswitch-row incomplete"} key={draft.id}>
-                <span>
-                  <input
-                    type="checkbox"
-                    checked={draft.selected}
-                    onChange={(event) => onUpdateDraft(draft.id, { selected: event.target.checked })}
-                  />
-                </span>
-                <input value={draft.providerName} onChange={(event) => onUpdateDraft(draft.id, { providerName: event.target.value })} />
-                <span>{draft.app}</span>
-                <span>{draft.provider_type}</span>
-                <input value={draft.baseUrl} onChange={(event) => onUpdateDraft(draft.id, { baseUrl: event.target.value })} />
-                {draft.models.length > 1 ? (
-                  <select value={draft.modelValue} onChange={(event) => onUpdateDraft(draft.id, { modelValue: event.target.value })}>
-                    {draft.models.map((model) => (
-                      <option key={model} value={model}>{model}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input value={draft.modelValue} onChange={(event) => onUpdateDraft(draft.id, { modelValue: event.target.value })} />
-                )}
-                <span>{draft.api_key_detected ? draft.api_key_preview ?? t("ccswitch.detected") : t("ccswitch.notDetected")}</span>
-                <input value={draft.envName} onChange={(event) => onUpdateDraft(draft.id, { envName: event.target.value })} />
-                <input value={draft.aliasName} onChange={(event) => onUpdateDraft(draft.id, { aliasName: event.target.value })} />
-                <span>{draft.warnings.join(" ")}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state">
-            <strong>{t("ccswitch.noCandidatesTitle")}</strong>
-            <p>{t("ccswitch.noCandidatesBody")}</p>
-            {report && (
-              <ul>
-                {report.tables
-                  .filter((table) => table.name === "providers" || table.name === "provider_endpoints")
-                  .map((table) => (
-                    <li key={table.name}>{table.name} ({table.columns.join(", ") || "-"})</li>
-                  ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </section>
-
-      <section className="card config-card">
-        <div className="card-heading">
-          <span>{t("ccswitch.stepPreview")}</span>
-          <strong>{selectedCount}</strong>
-        </div>
-        <div className="import-options">
-          <label>
-            <input type="checkbox" checked={overwriteProviders} onChange={(event) => onOverwriteProvidersChange(event.target.checked)} />
-            {t("ccswitch.overwriteProviders")}
-          </label>
-          <label>
-            <input type="checkbox" checked={overwriteAliases} onChange={(event) => onOverwriteAliasesChange(event.target.checked)} />
-            {t("ccswitch.overwriteAliases")}
-          </label>
-          <label>
-            <input type="checkbox" checked={setImportedActive} onChange={(event) => onSetImportedActiveChange(event.target.checked)} />
-            {t("ccswitch.setImportedActive")}
-          </label>
-        </div>
-        <pre className="yaml-preview">{selectedPreview(drafts)}</pre>
-        <div className="server-actions">
-          <button onClick={onImport} disabled={!configLoaded || busyAction !== null || selectedCount === 0}>
-            {busyAction === "ccswitch:import" ? t("config.importing") : t("config.importSelected")}
-          </button>
-          <span className={messageIsBad ? "action-message bad" : "action-message"}>{message}</span>
-        </div>
-      </section>
+      </details>
     </section>
   );
 }

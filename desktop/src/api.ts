@@ -27,6 +27,7 @@ export type AliasesResponse = {
     name: string;
     provider: string;
     model: string;
+    description?: string;
   }>;
 };
 
@@ -48,6 +49,7 @@ export type ServerProcessStatus = {
 export type ProviderConfig =
   | {
     type: "mock";
+    description?: string;
   }
   | {
     type: "openai-compatible";
@@ -55,6 +57,7 @@ export type ProviderConfig =
     api_key: string;
     responses_api?: boolean;
     api_key_resolved?: boolean;
+    description?: string;
   };
 
 export type EditableConfig = {
@@ -69,6 +72,7 @@ export type EditableConfig = {
   aliases: Record<string, {
     provider: string;
     model: string;
+    description?: string;
   }>;
   providers: Record<string, ProviderConfig>;
   pricing?: Record<string, {
@@ -237,6 +241,7 @@ export type CcSwitchImportCandidate = {
   provider_name: string;
   provider_type: "openai-compatible" | "unknown";
   base_url?: string;
+  description?: string;
   api_key_env?: string;
   api_key_detected: boolean;
   api_key_preview?: string;
