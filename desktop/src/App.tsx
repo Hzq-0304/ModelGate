@@ -41,7 +41,7 @@ import { LanguageSelector } from "./components/LanguageSelector";
 import { PageHeader } from "./components/PageHeader";
 import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
 import type { ConnectionState } from "./features/account-switcher/accountTypes";
-import { CcSwitchExportPanel, type CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
+import type { CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
 import { CcSwitchImportModal } from "./features/ccswitch-import/CcSwitchImportModal";
 import { QuickStart } from "./features/quick-start/QuickStart";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
@@ -70,14 +70,6 @@ type PresetDraft = {
 };
 
 const serverUrl = getBaseUrl();
-const ccSwitchAppLabels: Record<string, string> = {
-  codex: "Codex",
-  claude: "Claude Code",
-  gemini: "Gemini",
-  opencode: "OpenCode",
-  openclaw: "OpenClaw"
-};
-
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -92,7 +84,7 @@ export function App() {
   const [serverProcess, setServerProcess] = useState<ServerProcessStatus | null>(null);
   const [configPath, setConfigPath] = useState("");
   const [editableConfig, setEditableConfig] = useState<EditableConfig | null>(null);
-  const [configMessage, setConfigMessage] = useState(t("usage.notLoaded"));
+  const [configMessage, setConfigMessage] = useState(t("config.notLoaded"));
   const [ccSwitchPath, setCcSwitchPath] = useState("");
   const [ccSwitchMessage, setCcSwitchMessage] = useState("CC Switch import not scanned");
   const [ccSwitchReport, setCcSwitchReport] = useState<CcSwitchImportReport | null>(null);
@@ -105,7 +97,6 @@ export function App() {
     apiKey: "modelgate-local",
     model: "codex-main"
   });
-  const [ccSwitchExportMessage, setCcSwitchExportMessage] = useState("CC Switch link not generated");
   const [importDrafts, setImportDrafts] = useState<ImportDraft[]>([]);
   const [showPresetPanel, setShowPresetPanel] = useState(false);
   const [providerPresets, setProviderPresets] = useState<ProviderPreset[]>([]);
@@ -119,6 +110,7 @@ export function App() {
   const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
   const [diagnosticMessage, setDiagnosticMessage] = useState("Diagnostics not run");
   const [codexImportMessage, setCodexImportMessage] = useState(t("codexImport.notStarted"));
+  const [showCodexImportPanel, setShowCodexImportPanel] = useState(false);
   const [providerForm, setProviderForm] = useState({
     editingName: "",
     name: "",
@@ -233,7 +225,6 @@ export function App() {
       apiKey: link.provider.api_key,
       model: link.provider.model
     });
-    setCcSwitchExportMessage("CC Switch link generated");
   }
 
   async function loadCcSwitchLink(app = ccSwitchExportDraft.app) {
@@ -287,6 +278,7 @@ export function App() {
   }
 
   function openCodexImportPanel() {
+    setShowCodexImportPanel(true);
     openSettingsSection("integrations", "codex-import-panel");
     setCodexImportMessage(t("codexImport.review"));
   }
@@ -321,27 +313,6 @@ export function App() {
       setCodexImportMessage(t("codexImport.opened"));
     } catch (error) {
       setCodexImportMessage(t("codexImport.openFailed", { message: getErrorMessage(error) }));
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
-  async function handleCopyCcSwitchLink() {
-    try {
-      await navigator.clipboard.writeText(buildCcSwitchDeepLink());
-      setCcSwitchExportMessage("Deep link copied");
-    } catch {
-      setCcSwitchExportMessage("Copy failed. Select the deep link manually.");
-    }
-  }
-
-  async function handleOpenCcSwitch() {
-    setBusyAction("ccswitch:open");
-    try {
-      await openCcSwitchDeepLink(buildCcSwitchDeepLink());
-      setCcSwitchExportMessage("Opened CC Switch import link");
-    } catch (error) {
-      setCcSwitchExportMessage(`Open failed: ${getErrorMessage(error)}`);
     } finally {
       setBusyAction(null);
     }
@@ -1112,13 +1083,6 @@ export function App() {
 
     return (
       <section className="ccswitch-integration">
-        <section className="card config-card integration-heading-card">
-          <div className="card-heading">
-            <span>{t("ccswitch.integration.title")}</span>
-            <strong>{t("config.section.integrations")}</strong>
-          </div>
-        </section>
-
         <section className="integration-card-grid">
           <section className="card config-card integration-action-card">
             <div className="card-heading">
@@ -1133,43 +1097,46 @@ export function App() {
             </div>
           </section>
 
-          <CcSwitchExportPanel
-            appLabels={ccSwitchAppLabels}
-            busyAction={busyAction}
-            deepLink={deepLink}
-            disconnected={disconnected}
-            draft={ccSwitchExportDraft}
-            message={ccSwitchExportMessage}
-            onCopy={() => void handleCopyCcSwitchLink()}
-            onDraftChange={setCcSwitchExportDraft}
-            onGenerateDefaults={loadCcSwitchLink}
-            onGenerateMessage={setCcSwitchExportMessage}
-            onOpen={() => void handleOpenCcSwitch()}
-          />
+          <section className="card config-card integration-action-card">
+            <div className="card-heading">
+              <span>{t("settings.importToCodex")}</span>
+              <strong>Codex</strong>
+            </div>
+            <p className="muted">{t("codexImport.description")}</p>
+            <div className="server-actions">
+              <button type="button" onClick={openCodexImportPanel} disabled={busyAction !== null}>
+                {t("settings.importToCodex")}
+              </button>
+            </div>
+          </section>
         </section>
 
-        <section className="card config-card codex-import-panel" id="codex-import-panel">
-          <div className="card-heading">
-            <span>{t("settings.importToCodex")}</span>
-            <strong>codex-main</strong>
-          </div>
-          <pre>{codexConfig}</pre>
-          <div className="server-actions">
-            <button type="button" onClick={() => void handleOpenCodexInCcSwitch()} disabled={busyAction !== null}>
-              {busyAction === "codex-import:open" ? t("config.opening") : t("codexImport.openInCcSwitch")}
-            </button>
-            <button className="secondary" type="button" onClick={() => void handleCopyCodexImportConfig()} disabled={busyAction !== null}>
-              {t("codexImport.copyCodexConfig")}
-            </button>
-            <button className="secondary" type="button" onClick={() => void handleCopyCodexDeepLink()} disabled={busyAction !== null}>
-              {t("codexImport.copyDeepLink")}
-            </button>
-            <span className={codexImportMessage.startsWith("Failed") ? "action-message bad" : "action-message"}>
-              {codexImportMessage}
-            </span>
-          </div>
-          <pre className="deep-link-preview">{deepLink}</pre>
-        </section>
+        {showCodexImportPanel && (
+          <section className="card config-card codex-import-panel" id="codex-import-panel">
+            <div className="card-heading">
+              <span>{t("settings.importToCodex")}</span>
+              <button className="secondary" type="button" onClick={() => setShowCodexImportPanel(false)}>
+                {t("common.close")}
+              </button>
+            </div>
+            <pre>{codexConfig}</pre>
+            <div className="server-actions">
+              <button type="button" onClick={() => void handleOpenCodexInCcSwitch()} disabled={busyAction !== null}>
+                {busyAction === "codex-import:open" ? t("config.opening") : t("codexImport.openInCcSwitch")}
+              </button>
+              <button className="secondary" type="button" onClick={() => void handleCopyCodexImportConfig()} disabled={busyAction !== null}>
+                {t("codexImport.copyCodexConfig")}
+              </button>
+              <button className="secondary" type="button" onClick={() => void handleCopyCodexDeepLink()} disabled={busyAction !== null}>
+                {t("codexImport.copyDeepLink")}
+              </button>
+              <span className={codexImportMessage.startsWith("Failed") ? "action-message bad" : "action-message"}>
+                {codexImportMessage}
+              </span>
+            </div>
+            <pre className="deep-link-preview">{deepLink}</pre>
+          </section>
+        )}
       </section>
     );
   }
@@ -1234,6 +1201,20 @@ export function App() {
           <h1>{t("app.title")}</h1>
           <p>{t("app.subtitle")}</p>
         </div>
+        <nav className="tabs primary-tabs" aria-label="Primary">
+          <button className={activeTab === "switcher" ? "tab active" : "tab"} onClick={() => setActiveTab("switcher")}>
+            {t("nav.switcher")}
+          </button>
+          <button
+            className={activeTab === "logs" ? "tab active" : "tab"}
+            onClick={openLogsPage}
+          >
+            {t("nav.logs")}
+          </button>
+          <button className={activeTab === "advanced" ? "tab active" : "tab"} onClick={() => setActiveTab("advanced")}>
+            {t("nav.advanced")}
+          </button>
+        </nav>
         <div className="topbar-tools">
           <LanguageSelector />
           <button
@@ -1252,21 +1233,6 @@ export function App() {
           </div>
         </div>
       </header>
-
-      <nav className="tabs">
-        <button className={activeTab === "switcher" ? "tab active" : "tab"} onClick={() => setActiveTab("switcher")}>
-          {t("nav.switcher")}
-        </button>
-        <button
-          className={activeTab === "logs" ? "tab active" : "tab"}
-          onClick={openLogsPage}
-        >
-          {t("nav.logs")}
-        </button>
-        <button className={activeTab === "advanced" ? "tab active" : "tab"} onClick={() => setActiveTab("advanced")}>
-          {t("nav.advanced")}
-        </button>
-      </nav>
 
       {activeTab === "switcher" ? (
         <section className="switcher-page">

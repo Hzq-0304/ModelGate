@@ -64,26 +64,28 @@ export function AccountSwitcher({
         </div>
       </section>
 
-      <section className="switcher-current">
-        <dl>
-          <div>
-            <dt>{t("switcher.currentAccount")}</dt>
-            <dd>{activeName ?? "-"}</dd>
-          </div>
-          <div>
-            <dt>{t("common.provider")}</dt>
-            <dd>{activeAlias?.provider ?? "-"}</dd>
-          </div>
-          <div>
-            <dt>{t("common.model")}</dt>
-            <dd>{activeAlias?.model ?? "-"}</dd>
-          </div>
-          <div>
-            <dt>{t("common.status")}</dt>
-            <dd>{connection === "connected" ? t("app.connected") : t("app.disconnected")}</dd>
-          </div>
-        </dl>
-      </section>
+      {activeName && (
+        <section className="switcher-current">
+          <dl>
+            <div>
+              <dt>{t("switcher.currentAccount")}</dt>
+              <dd>{activeName}</dd>
+            </div>
+            <div>
+              <dt>{t("common.provider")}</dt>
+              <dd>{activeAlias?.provider ?? "-"}</dd>
+            </div>
+            <div>
+              <dt>{t("common.model")}</dt>
+              <dd>{activeAlias?.model ?? "-"}</dd>
+            </div>
+            <div>
+              <dt>{t("common.status")}</dt>
+              <dd>{connection === "connected" ? t("app.connected") : t("app.disconnected")}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
 
       {disconnected && (
         <section className="switcher-notice">

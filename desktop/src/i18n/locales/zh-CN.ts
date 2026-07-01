@@ -50,6 +50,7 @@ export const zhCN: typeof en = {
   "common.refreshing": "刷新中...",
   "common.copy": "复制",
   "common.copied": "已复制",
+  "common.close": "关闭",
   "common.edit": "编辑",
   "common.delete": "删除",
   "common.actions": "操作",

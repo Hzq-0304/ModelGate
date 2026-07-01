@@ -48,6 +48,7 @@ export const en = {
   "common.refreshing": "Refreshing...",
   "common.copy": "Copy",
   "common.copied": "Copied",
+  "common.close": "Close",
   "common.edit": "Edit",
   "common.delete": "Delete",
   "common.actions": "Actions",
