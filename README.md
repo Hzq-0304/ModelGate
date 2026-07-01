@@ -335,21 +335,21 @@ Start it with: npm run dev
 The Server Control panel can start the server from the bundled or side-by-side `modelgate-server` runtime. It prefers:
 
 ```text
-Start Server -> node dist/index.js
+Start Server -> node modelgate-server.cjs
 ```
 
-For local development only, if `dist/index.js` does not exist, it falls back to:
+For local development and compatibility layouts, it can fall back to:
 
 ```text
-Start Server -> npm run dev
+Start Server -> node dist/index.js
 ```
 
 On first managed startup, the desktop app copies `examples/modelgate.config.yaml` from the server runtime into the user-writable app config directory as `modelgate.config.yaml`, then starts the server with `MODELGATE_CONFIG` pointing at that file. It does not write into the bundled resource directory.
 
-`MODEL_GATE_ROOT` is still available as an advanced override for development or custom portable layouts:
+`MODELGATE_ROOT` is still available as an advanced override for development or custom portable layouts. The older `MODEL_GATE_ROOT` spelling is also accepted for compatibility:
 
 ```powershell
-$env:MODEL_GATE_ROOT="E:\Hzq Program\ModelGate"
+$env:MODELGATE_ROOT="E:\Hzq Program\ModelGate"
 npm run dev:desktop
 ```
 
@@ -404,7 +404,7 @@ To run the Node server from that release directory:
 
 ```bash
 cd release/modelgate-v0.1.6/modelgate-server
-node dist/index.js
+node modelgate-server.cjs
 ```
 
 Desktop artifacts are collected under:
@@ -448,10 +448,10 @@ The account switcher and usage overview are implemented as separate desktop feat
 
 Current desktop limitations:
 
-- The current desktop app bundles the ModelGate server files, but it does not bundle a Node.js runtime.
+- The current desktop app bundles the ModelGate server as `modelgate-server.cjs`, but it does not bundle a Node.js runtime.
 - The desktop Server Control requires Node.js to be installed and available in `PATH`.
-- Packaged builds start the bundled or side-by-side `modelgate-server` runtime with `node dist/index.js`.
-- `MODEL_GATE_ROOT` is only an advanced override for development or custom portable layouts.
+- Packaged builds start the bundled or side-by-side `modelgate-server` runtime with `node modelgate-server.cjs`.
+- `MODELGATE_ROOT` is only an advanced override for development or custom portable layouts. `MODEL_GATE_ROOT` is still accepted for compatibility.
 - provider API keys are not shown or managed in the desktop UI
 
 ### Desktop Configuration Management
@@ -829,7 +829,7 @@ Tauri desktop apps on Windows depend on Microsoft Edge WebView2 Runtime. Most Wi
 
 ### Server Control cannot start the server
 
-Packaged desktop builds include a `modelgate-server` runtime and should not require the repository root. If Server Control reports missing bundled server files, reinstall ModelGate or set `MODEL_GATE_ROOT` to a valid ModelGate project or server runtime directory.
+Packaged desktop builds include a `modelgate-server` runtime and should not require the repository root. If Server Control reports missing bundled server files, reinstall ModelGate or set `MODELGATE_ROOT` to a valid ModelGate project or server runtime directory.
 
 If Server Control reports that Node.js is missing, install Node.js and make sure the `node` command is available in `PATH`. This release bundles ModelGate server files, but it does not bundle the Node.js runtime.
 

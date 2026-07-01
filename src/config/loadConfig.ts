@@ -6,7 +6,11 @@ import { modelGateConfigSchema, type ModelGateConfig } from "./schema.js";
 export const defaultConfigPath = "examples/modelgate.config.yaml";
 const envPattern = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
-export function resolveConfigPath(configPath = process.env.MODELGATE_CONFIG) {
+export function getConfigPathFromEnv() {
+  return process.env.MODELGATE_CONFIG ?? process.env.MODEL_GATE_CONFIG;
+}
+
+export function resolveConfigPath(configPath = getConfigPathFromEnv()) {
   return resolve(process.cwd(), configPath ?? defaultConfigPath);
 }
 
@@ -36,7 +40,7 @@ export function expandEnv(value: unknown, path = "config"): unknown {
   return value;
 }
 
-export async function loadConfig(configPath = process.env.MODELGATE_CONFIG): Promise<ModelGateConfig> {
+export async function loadConfig(configPath = getConfigPathFromEnv()): Promise<ModelGateConfig> {
   const resolvedPath = resolveConfigPath(configPath);
 
   if (!existsSync(resolvedPath)) {

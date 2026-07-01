@@ -1,10 +1,10 @@
 use serde::Serialize;
 use std::{
     env, fs,
-    io::{Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, ChildStderr, Command, ExitStatus, Stdio},
     sync::Mutex,
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -14,12 +14,15 @@ use tauri::{AppHandle, Manager, State};
 const ENDPOINT: &str = "http://127.0.0.1:11435";
 const HOST: &str = "127.0.0.1:11435";
 const SERVER_RESOURCE_DIR: &str = "modelgate-server";
+const SERVER_BUNDLE_FILE: &str = "modelgate-server.cjs";
 const USER_CONFIG_FILE: &str = "modelgate.config.yaml";
 const HEALTH_TIMEOUT: Duration = Duration::from_millis(800);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const NODE_CHECK_TIMEOUT: Duration = Duration::from_millis(1500);
 const STARTUP_LOG_LIMIT: usize = 32;
+const STDERR_LOG_LIMIT: usize = 100;
+const NODE_MISSING_ERROR: &str = "Failed to start ModelGate server: this release requires Node.js to be installed and available in PATH.";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ServerLifecycle {
@@ -66,8 +69,11 @@ struct ServerProcessInner {
     started_at: Option<String>,
     last_error: Option<String>,
     startup_log: Vec<String>,
+    recent_stderr: Vec<String>,
     root: Option<PathBuf>,
     config_path: Option<PathBuf>,
+    command: Option<String>,
+    exit_code: Option<String>,
 }
 
 #[derive(Default)]
@@ -89,8 +95,11 @@ pub struct ServerProcessStatus {
     started_at: Option<String>,
     last_error: Option<String>,
     startup_log: Vec<String>,
+    recent_stderr: Vec<String>,
     root: Option<String>,
     config_path: Option<String>,
+    command: Option<String>,
+    exit_code: Option<String>,
 }
 
 impl ServerProcessState {
@@ -138,6 +147,11 @@ impl ServerProcessState {
         inner.started_at = Some(now_string());
         inner.last_error = None;
         inner.startup_log.clear();
+        inner.recent_stderr.clear();
+        inner.root = None;
+        inner.config_path = None;
+        inner.command = None;
+        inner.exit_code = None;
         push_log_locked(&mut inner, message);
         Ok(())
     }
@@ -161,6 +175,8 @@ impl ServerProcessState {
         inner.started_at = Some(now_string());
         inner.root = Some(root.clone());
         inner.config_path = Some(config_path.clone());
+        inner.command = Some(command_line.clone());
+        inner.exit_code = None;
         inner.last_error = None;
         push_log_locked(&mut inner, format!("Node.js detected: {node_version}"));
         push_log_locked(&mut inner, format!("Server root: {}", root.display()));
@@ -179,6 +195,7 @@ impl ServerProcessState {
             if inner.pid == Some(pid) && inner.child.is_some() {
                 inner.status = ServerLifecycle::Running;
                 inner.last_error = None;
+                inner.exit_code = None;
                 push_log_locked(&mut inner, "Health check passed. Server is running.");
             }
         }
@@ -193,7 +210,13 @@ impl ServerProcessState {
         }
     }
 
-    fn mark_failed_if_pid(&self, pid: u32, error: String, kill_child: bool) {
+    fn mark_failed_if_pid(
+        &self,
+        pid: u32,
+        error: String,
+        kill_child: bool,
+        exit_code: Option<String>,
+    ) {
         let child = {
             let Ok(mut inner) = self.inner.lock() else {
                 return;
@@ -205,6 +228,9 @@ impl ServerProcessState {
 
             inner.status = ServerLifecycle::Failed;
             inner.last_error = Some(error.clone());
+            if exit_code.is_some() {
+                inner.exit_code = exit_code.clone();
+            }
             push_log_locked(&mut inner, error);
 
             if kill_child {
@@ -220,7 +246,7 @@ impl ServerProcessState {
 
             if let Ok(mut inner) = self.inner.lock() {
                 if inner.pid == Some(pid) && inner.child.is_none() {
-                    inner.pid = None;
+                    inner.pid = Some(pid);
                 }
             }
         }
@@ -254,6 +280,7 @@ impl ServerProcessState {
                 inner.status = ServerLifecycle::Stopped;
                 inner.pid = None;
                 inner.child = None;
+                inner.exit_code = None;
                 push_log_locked(&mut inner, message);
             }
         }
@@ -268,6 +295,17 @@ impl ServerProcessState {
             && inner.child.is_some()
             && matches!(inner.status, ServerLifecycle::Starting)
     }
+
+    fn append_stderr_if_pid(&self, pid: u32, line: String) {
+        if let Ok(mut inner) = self.inner.lock() {
+            if inner.pid != Some(pid) {
+                return;
+            }
+
+            inner.recent_stderr.push(line);
+            trim_lines(&mut inner.recent_stderr, STDERR_LOG_LIMIT);
+        }
+    }
 }
 
 fn cleanup_exited_child_locked(inner: &mut ServerProcessInner) {
@@ -275,16 +313,23 @@ fn cleanup_exited_child_locked(inner: &mut ServerProcessInner) {
 
     match wait_result {
         Some(Ok(Some(status))) => {
+            let previous_pid = inner.pid;
             inner.child = None;
-            inner.pid = None;
+            let exit_code = exit_status_to_string(status);
+            inner.exit_code = Some(exit_code.clone());
             match inner.status {
                 ServerLifecycle::Stopping => {
+                    inner.pid = None;
                     inner.status = ServerLifecycle::Stopped;
-                    push_log_locked(inner, format!("Server process stopped: {status}."));
+                    push_log_locked(inner, format!("Server process stopped: {exit_code}."));
                 }
                 ServerLifecycle::Starting | ServerLifecycle::Running => {
+                    inner.pid = previous_pid;
                     inner.status = ServerLifecycle::Failed;
-                    let error = format!("Server process exited unexpectedly: {status}.");
+                    let stderr = summarize_recent_stderr(&inner.recent_stderr);
+                    let error = format!(
+                        "Server process exited unexpectedly: {exit_code}.{stderr}"
+                    );
                     inner.last_error = Some(error.clone());
                     push_log_locked(inner, error);
                 }
@@ -338,16 +383,38 @@ fn status_from_locked(
         started_at: inner.started_at.clone(),
         last_error: inner.last_error.clone(),
         startup_log: inner.startup_log.clone(),
+        recent_stderr: inner.recent_stderr.clone(),
         root: inner.root.as_ref().map(path_to_string),
         config_path: inner.config_path.as_ref().map(path_to_string),
+        command: inner.command.clone(),
+        exit_code: inner.exit_code.clone(),
     }
 }
 
 fn push_log_locked(inner: &mut ServerProcessInner, message: impl Into<String>) {
     inner.startup_log.push(message.into());
-    if inner.startup_log.len() > STARTUP_LOG_LIMIT {
-        let overflow = inner.startup_log.len() - STARTUP_LOG_LIMIT;
-        inner.startup_log.drain(0..overflow);
+    trim_lines(&mut inner.startup_log, STARTUP_LOG_LIMIT);
+}
+
+fn trim_lines(lines: &mut Vec<String>, limit: usize) {
+    if lines.len() > limit {
+        let overflow = lines.len() - limit;
+        lines.drain(0..overflow);
+    }
+}
+
+fn exit_status_to_string(status: ExitStatus) -> String {
+    status
+        .code()
+        .map(|code| format!("exit code {code}"))
+        .unwrap_or_else(|| status.to_string())
+}
+
+fn summarize_recent_stderr(lines: &[String]) -> String {
+    if lines.is_empty() {
+        String::new()
+    } else {
+        format!(" Recent stderr: {}", lines.join(" | "))
     }
 }
 
@@ -397,8 +464,17 @@ fn is_development_root(path: &Path) -> bool {
     path.join("package.json").is_file() && path.join("src").join("index.ts").is_file()
 }
 
+fn has_server_bundle(path: &Path) -> bool {
+    path.join(SERVER_BUNDLE_FILE).is_file()
+        || path
+            .join("dist-server")
+            .join(SERVER_BUNDLE_FILE)
+            .is_file()
+}
+
 fn is_server_runtime_root(path: &Path) -> bool {
-    path.join("package.json").is_file() && path.join("dist").join("index.js").is_file()
+    path.join("package.json").is_file()
+        && (has_server_bundle(path) || path.join("dist").join("index.js").is_file())
 }
 
 fn find_development_root_from(start: &Path) -> Option<PathBuf> {
@@ -416,10 +492,12 @@ fn find_development_root_from(start: &Path) -> Option<PathBuf> {
 }
 
 fn find_server_runtime_root(app: &AppHandle) -> Result<PathBuf, String> {
-    if let Ok(root) = env::var("MODEL_GATE_ROOT") {
-        let root_path = PathBuf::from(root);
-        if is_server_runtime_root(&root_path) || is_development_root(&root_path) {
-            return Ok(root_path);
+    for env_name in ["MODELGATE_ROOT", "MODEL_GATE_ROOT"] {
+        if let Ok(root) = env::var(env_name) {
+            let root_path = PathBuf::from(root);
+            if is_server_runtime_root(&root_path) || is_development_root(&root_path) {
+                return Ok(root_path);
+            }
         }
     }
 
@@ -465,7 +543,7 @@ fn find_server_runtime_root(app: &AppHandle) -> Result<PathBuf, String> {
         }
     }
 
-    Err("Failed to start ModelGate server: bundled server files were not found. Please reinstall ModelGate or set MODEL_GATE_ROOT to the ModelGate project root.".to_string())
+    Err("Failed to start ModelGate server: bundled server files were not found. Please reinstall ModelGate or set MODELGATE_ROOT to the ModelGate project root or server runtime directory.".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -487,9 +565,9 @@ fn ensure_node_available() -> Result<String, String> {
         .stderr(Stdio::piped());
     hide_console(&mut command);
 
-    let mut child = command.spawn().map_err(|_| {
-        "Failed to start server: Node.js is required and must be available in PATH.".to_string()
-    })?;
+    let mut child = command
+        .spawn()
+        .map_err(|_| NODE_MISSING_ERROR.to_string())?;
     let started = Instant::now();
 
     loop {
@@ -509,8 +587,7 @@ fn ensure_node_available() -> Result<String, String> {
 
                 let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
                 return Err(if stderr.is_empty() {
-                    "Failed to start server: Node.js is required and must be available in PATH."
-                        .to_string()
+                    NODE_MISSING_ERROR.to_string()
                 } else {
                     format!("Failed to start server: node --version failed: {stderr}")
                 });
@@ -519,7 +596,7 @@ fn ensure_node_available() -> Result<String, String> {
                 if started.elapsed() >= NODE_CHECK_TIMEOUT {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Err("Failed to start server: Node.js is required and must be available in PATH.".to_string());
+                    return Err(NODE_MISSING_ERROR.to_string());
                 }
                 thread::sleep(Duration::from_millis(50));
             }
@@ -548,7 +625,7 @@ fn ensure_user_config(app: &AppHandle, root: &Path) -> Result<PathBuf, String> {
 
     let sample_config = root.join("examples").join(USER_CONFIG_FILE);
     if !sample_config.is_file() {
-        return Err("Failed to start ModelGate server: bundled default config was not found. Please reinstall ModelGate or set MODEL_GATE_ROOT to the ModelGate project root.".to_string());
+        return Err("Failed to start ModelGate server: bundled default config was not found. Please reinstall ModelGate or set MODELGATE_ROOT to the ModelGate project root.".to_string());
     }
 
     fs::copy(&sample_config, &config_path)
@@ -558,9 +635,19 @@ fn ensure_user_config(app: &AppHandle, root: &Path) -> Result<PathBuf, String> {
 }
 
 fn build_start_command(root: &Path) -> (Command, String) {
+    let bundle_entry = root.join(SERVER_BUNDLE_FILE);
+    let dev_bundle_entry = root.join("dist-server").join(SERVER_BUNDLE_FILE);
     let dist_entry = root.join("dist").join("index.js");
 
-    if dist_entry.is_file() {
+    if bundle_entry.is_file() {
+        let mut command = Command::new("node");
+        command.arg(SERVER_BUNDLE_FILE);
+        (command, format!("node {SERVER_BUNDLE_FILE}"))
+    } else if dev_bundle_entry.is_file() {
+        let mut command = Command::new("node");
+        command.arg(format!("dist-server/{SERVER_BUNDLE_FILE}"));
+        (command, format!("node dist-server/{SERVER_BUNDLE_FILE}"))
+    } else if dist_entry.is_file() {
         let mut command = Command::new("node");
         command.arg("dist/index.js");
         (command, "node dist/index.js".to_string())
@@ -632,12 +719,13 @@ fn begin_start(
     command
         .current_dir(&root)
         .env("MODELGATE_CONFIG", &config_path)
+        .env("MODEL_GATE_CONFIG", &config_path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     hide_console(&mut command);
 
-    let child = match command.spawn() {
+    let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
             let error = format!("Failed to spawn ModelGate server: {error}");
@@ -646,9 +734,32 @@ fn begin_start(
         }
     };
 
+    let stderr = child.stderr.take();
     let pid = state.mark_starting(child, root, config_path, command_line, node_version)?;
+    if let Some(stderr) = stderr {
+        spawn_stderr_reader(app.clone(), pid, stderr);
+    }
     spawn_startup_monitor(app.clone(), pid);
     state.current_status(Some("Server is starting.".to_string()))
+}
+
+fn spawn_stderr_reader(app: AppHandle, pid: u32, stderr: ChildStderr) {
+    thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    let state = app.state::<ServerProcessState>();
+                    state.append_stderr_if_pid(pid, line);
+                }
+                Err(error) => {
+                    let state = app.state::<ServerProcessState>();
+                    state.append_stderr_if_pid(pid, format!("Failed to read stderr: {error}"));
+                    return;
+                }
+            }
+        }
+    });
 }
 
 fn spawn_startup_monitor(app: AppHandle, pid: u32) {
@@ -679,6 +790,7 @@ fn spawn_startup_monitor(app: AppHandle, pid: u32) {
                         last_health_error = health_error
                     ),
                     true,
+                    Some("startup timeout".to_string()),
                 );
                 return;
             }

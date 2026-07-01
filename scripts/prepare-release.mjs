@@ -83,6 +83,7 @@ console.log("  package-lock.json");
 console.log("  README.md");
 console.log("  RELEASE_NOTES.md");
 console.log("  modelgate-server/");
+console.log("  modelgate-server/modelgate-server.cjs");
 console.log("Included desktop artifacts:");
 console.log(`  ${join("artifacts", basename(artifacts.desktopExe))}`);
 for (const installer of artifacts.installers) {

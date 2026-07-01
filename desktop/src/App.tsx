@@ -45,11 +45,16 @@ import type { ConnectionState } from "./features/account-switcher/accountTypes";
 import type { CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
 import { CcSwitchImportModal } from "./features/ccswitch-import/CcSwitchImportModal";
 import { QuickStart } from "./features/quick-start/QuickStart";
+import { ServerControl } from "./features/server-control/ServerControl";
+import { SettingsPanel } from "./features/settings/SettingsPanel";
+import type { SettingsSectionId } from "./features/settings/settingsRoutes";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
 import { useI18n } from "./i18n/i18n";
+import type { AppRouteId } from "./routes/routeTypes";
+import { primaryRoutes } from "./routes/routes";
 
-type ActiveTab = "switcher" | "settings" | "logs" | "advanced";
-type ConfigSection = "providers" | "aliases" | "entrypoints" | "integrations" | "pricing";
+type ActiveTab = AppRouteId;
+type ConfigSection = SettingsSectionId;
 
 type ImportDraft = CcSwitchImportCandidate & {
   selected: boolean;
@@ -1327,36 +1332,8 @@ export function App() {
   const aliasesList = aliases?.aliases ?? [];
   const disconnected = connection === "disconnected";
   const serverLifecycle = serverProcess?.status ?? (connection === "connected" ? "external-running" : "stopped");
-  const serverStatusText = serverLifecycle === "running" || serverLifecycle === "external-running"
-    ? t("advanced.running")
-    : serverLifecycle === "starting"
-      ? t("advanced.starting")
-      : serverLifecycle === "stopping"
-        ? t("advanced.stopping")
-        : serverLifecycle === "failed"
-          ? t("advanced.failed")
-          : serverLifecycle === "stopped"
-            ? t("advanced.stopped")
-            : t("advanced.unknown");
-  const launchModeText = serverLifecycle === "external-running"
-    ? t("advanced.external")
-    : serverLifecycle === "running" || serverLifecycle === "starting" || serverLifecycle === "stopping"
-      ? t("advanced.managed")
-      : serverLifecycle === "failed"
-        ? t("advanced.failed")
-        : serverLifecycle === "stopped"
-          ? t("advanced.notRunning")
-          : t("advanced.unknown");
   const isServerStarting = serverLifecycle === "starting";
-  const isServerStopping = serverLifecycle === "stopping";
-  const serverBusy = (busyAction?.startsWith("server:") ?? false) || isServerStarting || isServerStopping;
-  const isExternalServer = serverLifecycle === "external-running";
-  const hasManagedChild = serverProcess?.managed ?? false;
-  const isStoppedServer = serverLifecycle === "stopped" || serverLifecycle === "failed";
   const quickStartBusyAction = isServerStarting ? "server:start" : busyAction;
-  const serverRoot = serverProcess?.root;
-  const serverConfigPath = serverProcess?.configPath;
-  const serverStartupLog = serverProcess?.startupLog ?? [];
   const providerEntries = editableConfig ? Object.entries(editableConfig.providers) : [];
   const aliasEntries = editableConfig ? Object.entries(editableConfig.aliases) : [];
   const entrypointEntries = editableConfig ? Object.entries(editableConfig.entrypoints) : [];
@@ -1390,18 +1367,15 @@ export function App() {
           <p>{t("app.subtitle")}</p>
         </div>
         <nav className="tabs primary-tabs" aria-label="Primary">
-          <button className={activeTab === "switcher" ? "tab active" : "tab"} onClick={() => setActiveTab("switcher")}>
-            {t("nav.switcher")}
-          </button>
-          <button
-            className={activeTab === "logs" ? "tab active" : "tab"}
-            onClick={openLogsPage}
-          >
-            {t("nav.logs")}
-          </button>
-          <button className={activeTab === "advanced" ? "tab active" : "tab"} onClick={() => setActiveTab("advanced")}>
-            {t("nav.advanced")}
-          </button>
+          {primaryRoutes.map((route) => (
+            <button
+              className={activeTab === route.id ? "tab active" : "tab"}
+              key={route.id}
+              onClick={route.id === "logs" ? openLogsPage : () => setActiveTab(route.id)}
+            >
+              {t(route.i18nKey)}
+            </button>
+          ))}
         </nav>
         <div className="topbar-tools">
           <LanguageSelector />
@@ -1478,77 +1452,15 @@ export function App() {
         </span>
       </section>
 
-      <section className="card server-card" id="server-control">
-        <div className="card-heading">
-          <span>{t("advanced.serverControl")}</span>
-          <strong>{serverStatusText}</strong>
-        </div>
-        <dl className="server-details">
-          <div>
-            <dt>{t("common.status")}</dt>
-            <dd>{serverStatusText}</dd>
-          </div>
-          <div>
-            <dt>{t("advanced.launchMode")}</dt>
-            <dd>{launchModeText}</dd>
-          </div>
-          <div>
-            <dt>{t("config.endpoint")}</dt>
-            <dd>{serverProcess?.endpoint ?? serverUrl}</dd>
-          </div>
-          <div>
-            <dt>{t("advanced.pid")}</dt>
-            <dd>{serverProcess?.pid ?? t("advanced.none")}</dd>
-          </div>
-        </dl>
-        {isExternalServer && (
-          <p className="server-hint">
-            Server is running externally. Stop it from the terminal or process manager.
-          </p>
-        )}
-        {(serverProcess?.lastError || serverProcess?.message) && (
-          <p className="server-hint">{serverProcess.lastError ?? serverProcess.message}</p>
-        )}
-        {(serverRoot || serverConfigPath || serverStartupLog.length > 0) && (
-          <details className="server-startup-details">
-            <summary>{t("advanced.startupDetails")}</summary>
-            {serverRoot && <p>{t("advanced.root")}: {serverRoot}</p>}
-            {serverConfigPath && <p>{t("advanced.configPath")}: {serverConfigPath}</p>}
-            {serverStartupLog.length > 0 && (
-              <ul>
-                {serverStartupLog.map((line, index) => (
-                  <li key={`${index}-${line}`}>{line}</li>
-                ))}
-              </ul>
-            )}
-          </details>
-        )}
-        <div className="server-actions">
-          <button
-            onClick={() => void handleStartServer()}
-            disabled={busyAction !== null || !isStoppedServer}
-          >
-            {busyAction === "server:start" ? t("advanced.starting") : t("advanced.startServer")}
-          </button>
-          <button
-            className="secondary"
-            onClick={() => void handleStopServer()}
-            disabled={busyAction !== null || !hasManagedChild || isServerStopping}
-          >
-            {busyAction === "server:stop" || isServerStopping ? t("advanced.stopping") : t("advanced.stopServer")}
-          </button>
-          <button
-            className="secondary"
-            onClick={() => void handleRestartServer()}
-            disabled={busyAction !== null || !hasManagedChild || isServerStarting || isServerStopping}
-          >
-            {busyAction === "server:restart" ? t("advanced.restarting") : t("advanced.restartServer")}
-          </button>
-          <button className="secondary" onClick={() => void refresh()} disabled={busyAction !== null || serverBusy}>
-            {t("common.refresh")}
-          </button>
-        </div>
-      </section>
+      <ServerControl
+        busyAction={busyAction}
+        serverProcess={serverProcess}
+        serverUrl={serverUrl}
+        onRefresh={() => void refresh()}
+        onRestart={() => void handleRestartServer()}
+        onStart={() => void handleStartServer()}
+        onStop={() => void handleStopServer()}
+      />
 
       <section className="grid">
         <article className="card active-card">
@@ -1651,54 +1563,17 @@ export function App() {
             </div>
           </section>
 
-          <section className="settings-groups">
-            <article className="settings-group-card">
-              <strong>{t("settings.integrations")}</strong>
-              <div>
-                <button className="secondary" type="button" onClick={openCcSwitchImportModal}>
-                  {t("settings.importFromCcSwitch")}
-                </button>
-                <button className="secondary" type="button" onClick={openCodexImportPanel}>
-                  {t("settings.importToCodex")}
-                </button>
-              </div>
-            </article>
-            <article className="settings-group-card">
-              <strong>{t("settings.modelRouting")}</strong>
-              <div>
-                <button className={configSection === "providers" ? "secondary active" : "secondary"} type="button" onClick={() => setConfigSection("providers")}>
-                  {t("settings.providers")}
-                </button>
-                <button className={configSection === "aliases" ? "secondary active" : "secondary"} type="button" onClick={() => setConfigSection("aliases")}>
-                  {t("settings.aliases")}
-                </button>
-                <button className={configSection === "entrypoints" ? "secondary active" : "secondary"} type="button" onClick={() => setConfigSection("entrypoints")}>
-                  {t("settings.entrypoints")}
-                </button>
-              </div>
-            </article>
-            <article className="settings-group-card">
-              <strong>{t("settings.billingUsage")}</strong>
-              <div>
-                <button className={configSection === "pricing" ? "secondary active" : "secondary"} type="button" onClick={() => setConfigSection("pricing")}>
-                  {t("settings.pricing")}
-                </button>
-                <button className="secondary" type="button" onClick={openLogsPage}>
-                  {t("settings.usageRecords")}
-                </button>
-              </div>
-            </article>
-            <article className="settings-group-card">
-              <strong>{t("settings.application")}</strong>
-              <div>
-                <LanguageSelector />
-                <button className="secondary" type="button" onClick={() => void handleReload()} disabled={busyAction !== null || disconnected}>
-                  {busyAction === "reload" ? t("config.reloading") : t("settings.reloadConfig")}
-                </button>
-              </div>
-              <span>{configPath || t("config.notLoaded")}</span>
-            </article>
-          </section>
+          <SettingsPanel
+            activeSection={configSection}
+            busyAction={busyAction}
+            configPath={configPath}
+            disconnected={disconnected}
+            onOpenCcSwitchImport={openCcSwitchImportModal}
+            onOpenCodexImport={openCodexImportPanel}
+            onOpenLogs={openLogsPage}
+            onReload={() => void handleReload()}
+            onSelectSection={setConfigSection}
+          />
 
           {renderDiagnosticResult()}
 

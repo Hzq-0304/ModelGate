@@ -21,8 +21,8 @@ rmSync(serverRoot, { recursive: true, force: true });
 mkdirSync(serverRoot, { recursive: true });
 
 copyRequired(resolve("dist"), join(serverRoot, "dist"));
+copyRequired(resolve("dist-server", "modelgate-server.cjs"), join(serverRoot, "modelgate-server.cjs"));
 copyRequired(resolve("examples"), join(serverRoot, "examples"));
-copyRequired(resolve("node_modules"), join(serverRoot, "node_modules"));
 copyRequired(resolve("package.json"), join(serverRoot, "package.json"));
 copyRequired(resolve("package-lock.json"), join(serverRoot, "package-lock.json"));
 copyRequired(resolve("README.md"), join(serverRoot, "README.md"));

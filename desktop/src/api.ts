@@ -48,8 +48,11 @@ export type ServerProcessStatus = {
   startedAt?: string;
   lastError?: string;
   startupLog?: string[];
+  recentStderr?: string[];
   root?: string;
   configPath?: string;
+  command?: string;
+  exitCode?: string;
 };
 
 export type ProviderConfig =

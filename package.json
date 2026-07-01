@@ -12,9 +12,10 @@
     "cli": "tsx src/cli.ts",
     "dev:desktop": "npm --prefix desktop run tauri -- dev",
     "prepare:desktop-server": "node scripts/prepare-desktop-server.mjs",
-    "build:desktop": "npm run build && npm run prepare:desktop-server && npm --prefix desktop run tauri -- build",
-    "build:desktop:nsis": "npm run build && npm run prepare:desktop-server && npm --prefix desktop run tauri -- build --bundles nsis",
-    "build:desktop:debug": "npm run build && npm run prepare:desktop-server && npm --prefix desktop run tauri -- build --debug",
+    "build:server-bundle": "esbuild src/index.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist-server/modelgate-server.cjs",
+    "build:desktop": "npm run build && npm run build:server-bundle && npm run prepare:desktop-server && npm --prefix desktop run tauri -- build",
+    "build:desktop:nsis": "npm run build && npm run build:server-bundle && npm run prepare:desktop-server && npm --prefix desktop run tauri -- build --bundles nsis",
+    "build:desktop:debug": "npm run build && npm run build:server-bundle && npm run prepare:desktop-server && npm --prefix desktop run tauri -- build --debug",
     "dev:desktop-ui": "npm --prefix desktop run dev",
     "build:desktop-ui": "npm --prefix desktop run build",
     "build": "tsc",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.1",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   }
