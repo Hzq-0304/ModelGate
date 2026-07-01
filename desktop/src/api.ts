@@ -289,18 +289,60 @@ export type CcSwitchProviderLink = {
   };
 };
 
-type ErrorResponse = {
-  error?: {
-    message?: string;
-  };
-};
+function errorDetailFromJson(json: unknown): string | null {
+  if (!json || typeof json !== "object") {
+    return null;
+  }
+
+  const record = json as Record<string, unknown>;
+  const nestedError = record.error;
+  if (nestedError && typeof nestedError === "object") {
+    const message = (nestedError as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
+  } else if (typeof nestedError === "string" && nestedError.trim()) {
+    return nestedError.trim();
+  }
+
+  for (const key of ["message", "error_description"] as const) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  for (const key of ["errors", "issues", "details"] as const) {
+    const value = record[key];
+    if (Array.isArray(value) && value.length > 0) {
+      return value
+        .map((item) => typeof item === "string" ? item : JSON.stringify(item))
+        .join(" ");
+    }
+  }
+
+  try {
+    return JSON.stringify(json);
+  } catch {
+    return null;
+  }
+}
 
 async function parseJson<T>(response: Response): Promise<T> {
-  const json = await response.json().catch(() => null) as T | ErrorResponse | null;
+  const text = await response.text();
+  let json: unknown = null;
+  if (text) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = null;
+    }
+  }
 
   if (!response.ok) {
-    const message = json && typeof json === "object" && "error" in json && json.error?.message
-      ? json.error.message
+    const detail = errorDetailFromJson(json) ?? text.trim();
+    const message = detail
+      ? `ModelGate returned HTTP ${response.status}: ${detail}`
       : `ModelGate returned HTTP ${response.status}`;
     throw new Error(message);
   }

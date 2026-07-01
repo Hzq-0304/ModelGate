@@ -37,6 +37,7 @@ import {
   testProvider,
   validateAdminConfig
 } from "./api";
+import { SettingsIcon } from "./components/icons/SettingsIcon";
 import { LanguageSelector } from "./components/LanguageSelector";
 import { PageHeader } from "./components/PageHeader";
 import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
@@ -70,8 +71,79 @@ type PresetDraft = {
 };
 
 const serverUrl = getBaseUrl();
+const OPENAI_OFFICIAL_BASE_URL = "https://api.openai.com/v1";
+const envNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const configKeyPattern = /^[A-Za-z0-9_-]+$/;
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeConfigKey(value: string, fallback = "ccswitch-provider") {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return normalized || fallback;
+}
+
+function isPlaceholderValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "" || normalized === "-" || normalized === "none" || normalized === "null" || normalized === "undefined" || normalized === "n/a";
+}
+
+function normalizeImportBaseUrl(value: string | undefined) {
+  if (!value || isPlaceholderValue(value)) {
+    return "";
+  }
+
+  return value.trim().replace(/^['"]|['"]$/g, "");
+}
+
+function isValidHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function normalizeEnvName(value: string | undefined, fallbackKey: string) {
+  const unwrapped = (value ?? "")
+    .trim()
+    .replace(/^env:/i, "")
+    .replace(/^\$\{?/, "")
+    .replace(/\}$/, "")
+    .trim();
+
+  if (envNamePattern.test(unwrapped)) {
+    return unwrapped;
+  }
+
+  const fallback = normalizeConfigKey(fallbackKey)
+    .replace(/-/g, "_")
+    .toUpperCase();
+  return `${fallback || "CCSWITCH_PROVIDER"}_API_KEY`;
+}
+
+function looksLikeOpenAIOfficial(value: string | undefined) {
+  const normalized = normalizeConfigKey(value ?? "");
+  return normalized === "openai"
+    || normalized === "openai-official"
+    || normalized === "official-openai"
+    || normalized === "codex-official"
+    || normalized === "official";
+}
+
+function draftLooksLikeOpenAIOfficial(draft: Pick<ImportDraft, "name" | "providerName" | "aliasName" | "provider_name">) {
+  return looksLikeOpenAIOfficial(draft.name)
+    || looksLikeOpenAIOfficial(draft.providerName)
+    || looksLikeOpenAIOfficial(draft.aliasName)
+    || looksLikeOpenAIOfficial(draft.provider_name);
 }
 
 export function App() {
@@ -145,14 +217,22 @@ export function App() {
   const codexConfig = `Base URL: ${serverUrl}/v1\nAPI Key: modelgate-local\nModel: codex-main`;
 
   function candidateToDraft(candidate: CcSwitchImportCandidate): ImportDraft {
+    const providerName = normalizeConfigKey(candidate.suggested_modelgate_provider || candidate.provider_name || candidate.name);
+    const aliasName = normalizeConfigKey(candidate.suggested_modelgate_alias || candidate.name, providerName);
+    const openaiOfficial = looksLikeOpenAIOfficial(candidate.name) || looksLikeOpenAIOfficial(providerName) || looksLikeOpenAIOfficial(aliasName);
+    const baseUrl = normalizeImportBaseUrl(candidate.base_url) || (openaiOfficial ? OPENAI_OFFICIAL_BASE_URL : "");
+    const envName = normalizeEnvName(candidate.api_key_env ?? candidate.suggested_env_name, openaiOfficial ? "openai" : candidate.name || providerName);
+    const modelValue = candidate.model ?? candidate.models[0] ?? "";
+    const complete = Boolean(providerName && aliasName && baseUrl && modelValue);
+
     return {
       ...candidate,
-      selected: candidate.complete,
-      providerName: candidate.suggested_modelgate_provider,
-      baseUrl: candidate.base_url ?? "",
-      envName: candidate.api_key_env ?? candidate.suggested_env_name,
-      modelValue: candidate.model ?? candidate.models[0] ?? "",
-      aliasName: candidate.suggested_modelgate_alias
+      selected: complete && candidate.provider_type === "openai-compatible",
+      providerName,
+      baseUrl,
+      envName,
+      modelValue,
+      aliasName
     };
   }
 
@@ -841,6 +921,53 @@ export function App() {
       return;
     }
 
+    const normalized = selected.map((draft) => {
+      const openaiOfficial = draftLooksLikeOpenAIOfficial(draft);
+      const providerName = normalizeConfigKey(draft.providerName || draft.provider_name || draft.name);
+      const aliasName = normalizeConfigKey(draft.aliasName || draft.name, providerName);
+      const baseUrl = normalizeImportBaseUrl(draft.baseUrl) || (openaiOfficial ? OPENAI_OFFICIAL_BASE_URL : "");
+      const envName = normalizeEnvName(draft.envName || draft.suggested_env_name, openaiOfficial ? "openai" : draft.name || providerName);
+      const modelValue = draft.modelValue.trim();
+
+      return {
+        draft,
+        providerName,
+        aliasName,
+        baseUrl,
+        envName,
+        modelValue
+      };
+    });
+    const localErrors = normalized.flatMap((item) => {
+      const errors: string[] = [];
+      const label = item.draft.name || item.aliasName || item.providerName;
+
+      if (!configKeyPattern.test(item.providerName)) {
+        errors.push(`Provider "${label}" generated invalid provider key "${item.providerName}".`);
+      }
+      if (!configKeyPattern.test(item.aliasName)) {
+        errors.push(`Provider "${label}" generated invalid alias key "${item.aliasName}".`);
+      }
+      if (!item.modelValue) {
+        errors.push(`Provider "${label}" is missing model.`);
+      }
+      if (!item.baseUrl) {
+        errors.push(`Provider "${label}" is missing base_url. Edit the item before importing.`);
+      } else if (!isValidHttpUrl(item.baseUrl)) {
+        errors.push(`Provider "${label}" has invalid base_url "${item.baseUrl}".`);
+      }
+      if (!envNamePattern.test(item.envName)) {
+        errors.push(`Provider "${label}" generated invalid API key env "${item.envName}".`);
+      }
+
+      return errors;
+    });
+
+    if (localErrors.length > 0) {
+      setCcSwitchMessage(`Import failed: ${localErrors[0]}${localErrors.length > 1 ? ` (${localErrors.length - 1} more)` : ""}`);
+      return;
+    }
+
     setBusyAction("ccswitch:import");
     try {
       const providers = { ...editableConfig.providers };
@@ -848,13 +975,9 @@ export function App() {
       const providerNames = new Set(Object.keys(providers));
       const aliasNames = new Set(Object.keys(aliases));
 
-      for (const draft of selected) {
-        if (!draft.providerName || !draft.baseUrl || !draft.envName || !draft.modelValue || !draft.aliasName) {
-          throw new Error(`Candidate ${draft.name} is incomplete.`);
-        }
-
-        let providerName = draft.providerName.trim();
-        let aliasName = draft.aliasName.trim();
+      for (const item of normalized) {
+        let providerName = item.providerName;
+        let aliasName = item.aliasName;
 
         if (generateImportNames) {
           providerName = makeNumberedName(providerName, providerNames);
@@ -872,17 +995,17 @@ export function App() {
           aliasNames.add(aliasName);
         }
 
-        const description = draft.description?.trim();
+        const description = item.draft.description?.trim();
 
         providers[providerName] = {
           type: "openai-compatible",
-          base_url: draft.baseUrl.trim(),
-          api_key: `\${${draft.envName.trim()}}`,
+          base_url: item.baseUrl,
+          api_key: `\${${item.envName}}`,
           ...(description ? { description } : {})
         };
         aliases[aliasName] = {
           provider: providerName,
-          model: draft.modelValue.trim(),
+          model: item.modelValue,
           ...(description ? { description } : {})
         };
       }
@@ -1224,7 +1347,7 @@ export function App() {
             title={t("settings.title")}
             type="button"
           >
-            <span aria-hidden="true" className="settings-button-icon" />
+            <SettingsIcon className="settings-button-icon" />
           </button>
           <div className="connection">
             <span className={`status-dot ${connection}`} />

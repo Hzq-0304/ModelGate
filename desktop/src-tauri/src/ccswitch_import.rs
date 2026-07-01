@@ -378,12 +378,25 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
     let (base_url, api_key, models, provider_type_hint) = extract_current_provider_fields(row);
     let model = models.first().cloned();
     let openai_official = is_openai_official_row(row, model.as_deref());
+    let provider_key_hint = extract_codex_model_provider(&row.settings_config)
+        .filter(|value| !matches!(value.as_str(), "custom" | "openai" | "openai-official"));
+    let endpoint_base_url = endpoints.into_iter().find_map(clean_base_url);
     let base_url = base_url
-        .or_else(|| endpoints.first().cloned())
+        .and_then(clean_base_url)
+        .or(endpoint_base_url)
         .or_else(|| openai_official.then(|| OPENAI_OFFICIAL_BASE_URL.to_string()));
-    let provider_name = row.name.clone();
+    let provider_name = provider_key_hint.clone().unwrap_or_else(|| row.name.clone());
     let safe_provider = safe_name(&provider_name);
-    let alias_name = safe_name(&row.name);
+    let alias_name = if openai_official {
+        "openai-official".to_string()
+    } else {
+        safe_name(&row.name)
+    };
+    let safe_provider = if openai_official {
+        "openai-official".to_string()
+    } else {
+        safe_provider
+    };
     let env_name = api_key
         .as_deref()
         .and_then(extract_env_name)
@@ -391,7 +404,7 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
             if openai_official {
                 "OPENAI_API_KEY".to_string()
             } else {
-                suggested_env_name(&safe_provider)
+                suggested_env_name(&safe_name(&row.name))
             }
         });
     let description = extract_current_description(row);
@@ -462,7 +475,11 @@ fn extract_current_provider_fields(row: &SchemaCandidateRow) -> (Option<String>,
 
 fn extract_codex_fields(settings: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
     let config_text = settings.get("config").and_then(Value::as_str).unwrap_or_default();
-    let base_url = extract_toml_string(config_text, "base_url");
+    let model_provider = extract_toml_string(config_text, "model_provider");
+    let base_url = model_provider
+        .as_deref()
+        .and_then(|provider| extract_toml_section_string(config_text, &format!("model_providers.{provider}"), "base_url"))
+        .or_else(|| extract_toml_string(config_text, "base_url"));
     let api_key = settings
         .pointer("/auth/OPENAI_API_KEY")
         .and_then(Value::as_str)
@@ -473,6 +490,11 @@ fn extract_codex_fields(settings: &Value) -> (Option<String>, Option<String>, Ve
         models.push(model);
     }
     (base_url, api_key, models, Some("openai-compatible".to_string()))
+}
+
+fn extract_codex_model_provider(settings: &Value) -> Option<String> {
+    let config_text = settings.get("config").and_then(Value::as_str).unwrap_or_default();
+    extract_toml_string(config_text, "model_provider")
 }
 
 fn extract_claude_fields(settings: &Value, meta: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
@@ -574,6 +596,57 @@ fn extract_toml_string(config: &str, key: &str) -> Option<String> {
         .filter(|value| !value.is_empty());
     }
     None
+}
+
+fn extract_toml_section_string(config: &str, section: &str, key: &str) -> Option<String> {
+    let mut in_section = false;
+
+    for line in config.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') || trimmed.is_empty() {
+            continue;
+        }
+
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            let current = trimmed.trim_start_matches('[').trim_end_matches(']').trim();
+            in_section = current == section;
+            continue;
+        }
+
+        if !in_section || !trimmed.starts_with(key) {
+            continue;
+        }
+
+        let Some((left, right)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if left.trim() != key {
+            continue;
+        }
+
+        return Some(
+            right
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string(),
+        )
+        .filter(|value| !value.is_empty());
+    }
+
+    None
+}
+
+fn clean_base_url(value: String) -> Option<String> {
+    let value = value.trim().trim_matches('"').trim_matches('\'').trim();
+    if value.is_empty() {
+        return None;
+    }
+
+    match value.to_ascii_lowercase().as_str() {
+        "-" | "none" | "null" | "undefined" | "n/a" => None,
+        _ => Some(value.to_string()),
+    }
 }
 
 fn json_string_at(value: Option<&Value>, key: &str) -> Option<String> {
@@ -808,7 +881,7 @@ fn candidate_from_fields(
         .or_else(|| infer_name_from_url(find_first(fields, BASE_URL_KEYS).as_deref()))
         .or_else(|| find_first(fields, TYPE_KEYS))?;
     let provider_name = name.clone();
-    let base_url = find_first(fields, BASE_URL_KEYS);
+    let base_url = find_first(fields, BASE_URL_KEYS).and_then(clean_base_url);
     let api_key = find_first(fields, API_KEY_KEYS);
     let models = find_models(fields);
     let model = models.first().cloned();
