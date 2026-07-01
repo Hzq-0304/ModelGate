@@ -500,6 +500,12 @@ code {
   color: #b42318;
 }
 
+.pill.neutral {
+  background: #f2f4f7;
+  border-color: #d0d5dd;
+  color: #475467;
+}
+
 .codex-card pre,
 .deep-link-preview,
 .yaml-preview {

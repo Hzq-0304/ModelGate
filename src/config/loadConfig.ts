@@ -1,10 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import YAML from "yaml";
+import { envPattern } from "./env.js";
 import { modelGateConfigSchema, type ModelGateConfig } from "./schema.js";
 
 export const defaultConfigPath = "examples/modelgate.config.yaml";
-const envPattern = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+export type LoadConfigOptions = {
+  configPath?: string;
+  resolveEnv?: boolean;
+};
 
 export function getConfigPathFromEnv() {
   return process.env.MODELGATE_CONFIG ?? process.env.MODEL_GATE_CONFIG;
@@ -40,8 +45,11 @@ export function expandEnv(value: unknown, path = "config"): unknown {
   return value;
 }
 
-export async function loadConfig(configPath = getConfigPathFromEnv()): Promise<ModelGateConfig> {
-  const resolvedPath = resolveConfigPath(configPath);
+export async function loadConfig(configPathOrOptions: string | LoadConfigOptions | undefined = getConfigPathFromEnv()): Promise<ModelGateConfig> {
+  const options = typeof configPathOrOptions === "object"
+    ? configPathOrOptions
+    : { configPath: configPathOrOptions };
+  const resolvedPath = resolveConfigPath(options.configPath);
 
   if (!existsSync(resolvedPath)) {
     return modelGateConfigSchema.parse({});
@@ -49,7 +57,7 @@ export async function loadConfig(configPath = getConfigPathFromEnv()): Promise<M
 
   const raw = readFileSync(resolvedPath, "utf8");
   const parsed = YAML.parse(raw);
-  const expanded = expandEnv(parsed ?? {});
+  const expanded = options.resolveEnv ? expandEnv(parsed ?? {}) : parsed ?? {};
 
   return modelGateConfigSchema.parse(expanded);
 }

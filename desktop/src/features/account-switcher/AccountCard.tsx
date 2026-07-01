@@ -5,27 +5,46 @@ type AccountCardProps = {
   account: AccountAlias;
   active: boolean;
   disabled: boolean;
+  missingEnv?: string;
+  selected: boolean;
   switching: boolean;
   onSelect: (alias: string) => void;
 };
 
-export function AccountCard({ account, active, disabled, switching, onSelect }: AccountCardProps) {
+export function AccountCard({ account, active, disabled, missingEnv, selected, switching, onSelect }: AccountCardProps) {
   const { t } = useI18n();
+  const statusText = switching
+    ? t("common.switching")
+    : active
+      ? t("common.active")
+      : missingEnv
+        ? t("switcher.missingApiKey")
+        : t("common.available");
 
   return (
     <button
-      className={active ? "account-card active" : "account-card"}
+      className={[
+        "account-card",
+        active ? "active" : "",
+        selected ? "selected" : "",
+        missingEnv ? "warning" : ""
+      ].filter(Boolean).join(" ")}
       disabled={disabled}
       onClick={() => onSelect(account.name)}
       type="button"
     >
-      <span className="account-card-status">{switching ? t("common.switching") : active ? t("common.active") : t("common.available")}</span>
-      <strong>{formatAliasTitle(account.name)}</strong>
-      <code>{account.name}</code>
+      <span className="account-card-topline">
+        <strong>{formatAliasTitle(account.name)}</strong>
+        <span className={missingEnv ? "account-card-status bad" : "account-card-status"}>{statusText}</span>
+      </span>
       {account.description && (
         <p className="account-card-description" title={account.description}>{account.description}</p>
       )}
       <dl>
+        <div>
+          <dt>{t("common.alias")}</dt>
+          <dd>{account.name}</dd>
+        </div>
         <div>
           <dt>{t("common.provider")}</dt>
           <dd>{account.provider}</dd>
@@ -35,6 +54,7 @@ export function AccountCard({ account, active, disabled, switching, onSelect }: 
           <dd>{account.model}</dd>
         </div>
       </dl>
+      {missingEnv && <span className="account-card-warning">{t("switcher.missingApiKeyShort", { env: missingEnv })}</span>}
     </button>
   );
 }

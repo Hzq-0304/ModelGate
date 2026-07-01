@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   getDisplayConfigPath,
+  getConfigWarnings,
   readConfigObject,
   sanitizeConfigForAdmin,
   validateConfigObject,
@@ -113,7 +114,8 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
   server.get("/admin/status", async () => ({
     name: "ModelGate",
     active: runtime.activeAlias,
-    entrypoints: runtime.resolveEntrypoints()
+    entrypoints: runtime.resolveEntrypoints(),
+    config_warnings: getConfigWarnings(runtime.config)
   }));
 
   server.get("/admin/aliases", async () => ({
@@ -181,7 +183,8 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
       const rawConfig = readConfigObject(runtime.configPath);
       return {
         path: getDisplayConfigPath(runtime.configPath),
-        config: sanitizeConfigForAdmin(rawConfig)
+        config: sanitizeConfigForAdmin(rawConfig),
+        config_warnings: getConfigWarnings(runtime.config)
       };
     } catch (error) {
       return reply

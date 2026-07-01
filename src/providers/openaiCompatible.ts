@@ -1,4 +1,5 @@
 import type { FastifyReply } from "fastify";
+import { resolveProviderApiKey, type MissingEnvWarning } from "../config/env.js";
 import type { ModelGateConfig } from "../config/schema.js";
 import type {
   ChatCompletionRequestBody,
@@ -117,20 +118,35 @@ export function createMockResponse(model: string) {
 export function createOpenAICompatibleError(
   message: string,
   type = "invalid_request_error",
-  code: string | null = null
+  code: string | null = null,
+  extra: Partial<OpenAICompatibleError["error"]> = {}
 ): OpenAICompatibleError {
   return {
     error: {
       message,
       type,
-      code
+      code,
+      ...extra
     }
   };
+}
+
+export function createMissingEnvError(warning: MissingEnvWarning): OpenAICompatibleError {
+  return createOpenAICompatibleError(
+    warning.message,
+    "missing_environment_variable",
+    null,
+    {
+      provider: warning.provider,
+      env: warning.envName
+    }
+  );
 }
 
 export async function forwardOpenAICompatibleChatCompletion(
   body: ChatCompletionRequestBody,
   provider: OpenAICompatibleProviderConfig,
+  providerName: string,
   upstreamModel: string
 ): Promise<Response> {
   const upstreamBody = {
@@ -138,11 +154,16 @@ export async function forwardOpenAICompatibleChatCompletion(
     model: upstreamModel
   };
   const baseUrl = provider.base_url.replace(/\/+$/, "");
+  const apiKey = resolveProviderApiKey(providerName, provider);
+
+  if (!apiKey.ok) {
+    throw new MissingProviderEnvironmentError(apiKey.warning);
+  }
 
   return fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${provider.api_key}`,
+      authorization: `Bearer ${apiKey.apiKey}`,
       "content-type": "application/json"
     },
     body: JSON.stringify(upstreamBody)
@@ -152,6 +173,7 @@ export async function forwardOpenAICompatibleChatCompletion(
 export async function forwardOpenAICompatibleResponse(
   body: ResponsesRequestBody,
   provider: OpenAICompatibleProviderConfig,
+  providerName: string,
   upstreamModel: string
 ): Promise<Response> {
   const upstreamBody = {
@@ -159,15 +181,30 @@ export async function forwardOpenAICompatibleResponse(
     model: upstreamModel
   };
   const baseUrl = provider.base_url.replace(/\/+$/, "");
+  const apiKey = resolveProviderApiKey(providerName, provider);
+
+  if (!apiKey.ok) {
+    throw new MissingProviderEnvironmentError(apiKey.warning);
+  }
 
   return fetch(`${baseUrl}/responses`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${provider.api_key}`,
+      authorization: `Bearer ${apiKey.apiKey}`,
       "content-type": "application/json"
     },
     body: JSON.stringify(upstreamBody)
   });
+}
+
+export class MissingProviderEnvironmentError extends Error {
+  readonly warning: MissingEnvWarning;
+
+  constructor(warning: MissingEnvWarning) {
+    super(warning.message);
+    this.name = "MissingProviderEnvironmentError";
+    this.warning = warning;
+  }
 }
 
 export async function readUpstreamError(response: Response): Promise<OpenAICompatibleError> {

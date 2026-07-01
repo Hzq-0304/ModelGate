@@ -11,7 +11,41 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function UsageOverview({ disconnected }: { disconnected: boolean }) {
+function DistributionPanel({
+  title,
+  groups
+}: {
+  title: string;
+  groups?: Record<string, { requests: number; total_tokens: number; estimated_cost_usd?: number; cost_available: boolean }>;
+}) {
+  const entries = Object.entries(groups ?? {})
+    .sort((a, b) => b[1].requests - a[1].requests)
+    .slice(0, 5);
+  const maxRequests = Math.max(...entries.map(([, value]) => value.requests), 1);
+
+  return (
+    <section className="usage-distribution-panel">
+      <div className="usage-section-title">{title}</div>
+      {entries.length > 0 ? (
+        <div className="usage-distribution-list">
+          {entries.map(([name, value]) => (
+            <div className="usage-distribution-row" key={name}>
+              <span>{name}</span>
+              <div>
+                <i style={{ width: `${Math.max(8, (value.requests / maxRequests) * 100)}%` }} />
+              </div>
+              <strong>{value.requests}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="usage-empty compact">N/A</div>
+      )}
+    </section>
+  );
+}
+
+export function UsageOverview({ activeModel, disconnected }: { activeModel?: string; disconnected: boolean }) {
   const { t } = useI18n();
   const [range, setRange] = useState<UsageOverviewRange>("today");
   const [summary, setSummary] = useState<UsageSummary | null>(null);
@@ -99,9 +133,15 @@ export function UsageOverview({ disconnected }: { disconnected: boolean }) {
         <div className="usage-empty">{t("usage.connect")}</div>
       ) : (
         <>
-          <UsageSummaryCards summary={summary} />
+          <UsageSummaryCards activeModel={activeModel} summary={summary} />
           <UsageTrendChart timeline={timeline} />
-          <UsageRecentTable records={records} />
+          <section className="usage-lower-grid">
+            <UsageRecentTable records={records} />
+            <div className="usage-distribution-stack">
+              <DistributionPanel title={t("usage.providerDistribution")} groups={summary?.by_provider} />
+              <DistributionPanel title={t("usage.modelDistribution")} groups={summary?.by_model} />
+            </div>
+          </section>
         </>
       )}
 

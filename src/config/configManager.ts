@@ -5,9 +5,8 @@ import {
   defaultConfigPath,
   resolveConfigPath
 } from "./loadConfig.js";
+import { collectConfigWarnings, envOnlyPattern } from "./env.js";
 import { modelGateConfigSchema, type ModelGateConfig } from "./schema.js";
-
-const envOnlyPattern = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
 export type ConfigValidationResult = {
   ok: boolean;
@@ -50,7 +49,7 @@ function envResolved(value: unknown) {
   }
 
   const match = value.match(envOnlyPattern);
-  return match ? process.env[match[1]] !== undefined : value.length > 0;
+  return match ? Boolean(process.env[match[1]]) : value.length > 0;
 }
 
 function rawProviderApiKey(rawConfig: unknown, name: string, fallback: string) {
@@ -94,6 +93,10 @@ export function sanitizeConfigForAdmin(rawConfig: unknown) {
   };
 }
 
+export function getConfigWarnings(config: ModelGateConfig) {
+  return collectConfigWarnings(config);
+}
+
 export function validateConfigObject(rawConfig: unknown): ConfigValidationResult {
   const warnings: string[] = [];
   const errors: string[] = [];
@@ -129,8 +132,8 @@ export function validateConfigObject(rawConfig: unknown): ConfigValidationResult
         continue;
       }
 
-      if (process.env[match[1]] === undefined) {
-        warnings.push(`Environment variable ${match[1]} is not set.`);
+      if (!process.env[match[1]]) {
+        warnings.push(`Provider "${name}" requires environment variable ${match[1]}, but it is not set.`);
       }
     }
   }

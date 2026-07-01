@@ -19,6 +19,16 @@ export type StatusResponse = {
     use: string;
     resolved: string;
   }>;
+  config_warnings?: ConfigWarning[];
+};
+
+export type ConfigWarning = {
+  type: "missing_env";
+  provider?: string;
+  path: string;
+  env: string;
+  envName?: string;
+  message: string;
 };
 
 export type AliasesResponse = {
@@ -94,6 +104,7 @@ export type EditableConfig = {
 export type AdminConfigResponse = {
   path: string;
   config: EditableConfig;
+  config_warnings?: ConfigWarning[];
 };
 
 export type ConfigValidationResponse = {

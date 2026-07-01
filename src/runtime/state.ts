@@ -1,4 +1,4 @@
-import { loadConfig } from "../config/loadConfig.js";
+import { getConfigPathFromEnv, loadConfig } from "../config/loadConfig.js";
 import type { ModelGateConfig } from "../config/schema.js";
 import { createRequestLogStore } from "./requestLog.js";
 import { createUsageStore } from "./usageStore.js";
@@ -15,7 +15,7 @@ export class RuntimeState {
   readonly usageStore = createUsageStore();
   readonly configPath?: string;
 
-  constructor(config: ModelGateConfig, configPath = process.env.MODELGATE_CONFIG) {
+  constructor(config: ModelGateConfig, configPath = getConfigPathFromEnv()) {
     this.#config = config;
     this.#activeAlias = config.active;
     this.configPath = configPath;
@@ -35,7 +35,7 @@ export class RuntimeState {
   }
 
   async reload() {
-    const nextConfig = await loadConfig(this.configPath);
+    const nextConfig = await loadConfig({ configPath: this.configPath });
     const previousActive = this.#activeAlias;
 
     this.#config = nextConfig;

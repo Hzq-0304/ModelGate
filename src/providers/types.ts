@@ -55,5 +55,7 @@ export type OpenAICompatibleError = {
     message: string;
     type: string;
     code: string | null;
+    provider?: string;
+    env?: string;
   };
 };

@@ -13,15 +13,13 @@ function formatCost(summary: UsageSummary | null) {
   return `$${summary.estimated_cost_usd.toFixed(6)}`;
 }
 
-export function UsageSummaryCards({ summary }: { summary: UsageSummary | null }) {
+export function UsageSummaryCards({ activeModel, summary }: { activeModel?: string; summary: UsageSummary | null }) {
   const { t } = useI18n();
   const cards = [
-    [t("usage.totalTokens"), formatNumber(summary?.total_tokens)],
-    [t("usage.inputTokens"), formatNumber(summary?.input_tokens)],
-    [t("usage.outputTokens"), formatNumber(summary?.output_tokens)],
-    [t("usage.cachedTokens"), formatNumber(summary?.cached_tokens)],
     [t("usage.requests"), formatNumber(summary?.requests)],
-    [t("usage.estimatedCost"), formatCost(summary)]
+    [t("usage.totalTokens"), formatNumber(summary?.total_tokens)],
+    [t("usage.estimatedCost"), formatCost(summary)],
+    [t("usage.currentModel"), activeModel ?? "N/A"]
   ];
 
   return (

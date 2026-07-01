@@ -1420,6 +1420,7 @@ export function App() {
               activeAlias={activeAlias}
               activeAliasName={status?.active}
               connection={connection}
+              configWarnings={status?.config_warnings}
               endpoint={serverUrl}
               message={message}
               switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
@@ -1428,7 +1429,7 @@ export function App() {
               onSelectAccount={(alias) => void handleSwitch(alias)}
             />
           </section>
-          <UsageOverview disconnected={disconnected} />
+          <UsageOverview activeModel={activeAlias?.model} disconnected={disconnected} />
         </section>
       ) : activeTab === "advanced" ? (
         <>

@@ -1,10 +1,9 @@
-import { readConfigObject } from "../config/configManager.js";
+import { resolveProviderApiKey } from "../config/env.js";
 import type { ProviderConfig } from "../config/schema.js";
 import type { RuntimeState } from "./state.js";
 import { estimateUsageCost } from "./usageStore.js";
 
 const diagnosticPrompt = "Reply with exactly: OK";
-const envOnlyPattern = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 const timeoutMs = 30_000;
 const maxSummaryLength = 300;
 
@@ -53,24 +52,7 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function rawProviderApiKey(runtime: RuntimeState, providerName: string) {
-  const rawConfig = readConfigObject(runtime.configPath);
-
-  if (!rawConfig || typeof rawConfig !== "object" || !("providers" in rawConfig)) {
-    return undefined;
-  }
-
-  const providers = (rawConfig as { providers?: Record<string, unknown> }).providers;
-  const provider = providers?.[providerName];
-
-  if (!provider || typeof provider !== "object" || !("api_key" in provider)) {
-    return undefined;
-  }
-
-  return (provider as { api_key?: unknown }).api_key;
-}
-
-function apiKeyCheck(runtime: RuntimeState, providerName: string, provider: ProviderConfig) {
+function apiKeyCheck(_runtime: RuntimeState, providerName: string, provider: ProviderConfig) {
   if (provider.type === "mock") {
     return {
       check: {
@@ -83,65 +65,29 @@ function apiKeyCheck(runtime: RuntimeState, providerName: string, provider: Prov
     };
   }
 
-  const rawKey = rawProviderApiKey(runtime, providerName);
-  if (typeof rawKey === "string") {
-    const match = rawKey.match(envOnlyPattern);
-    if (match) {
-      const envName = match[1];
-      const value = process.env[envName];
-      return value === undefined
-        ? {
-          check: {
-            name: "env_api_key",
-            ok: false,
-            message: `Environment variable ${envName} is not set.`
-          } satisfies DiagnosticCheck,
-          apiKey: undefined,
-          envName
-        }
-        : {
-          check: {
-            name: "env_api_key",
-            ok: true,
-            message: `${envName} is set.`
-          } satisfies DiagnosticCheck,
-          apiKey: value,
-          envName
-        };
-    }
+  const apiKey = resolveProviderApiKey(providerName, provider);
 
-    if (rawKey === "***") {
-      return {
-        check: {
-          name: "env_api_key",
-          ok: false,
-          message: "Provider API key is masked and cannot be used for diagnostics. Save it as an environment variable reference."
-        } satisfies DiagnosticCheck,
-        apiKey: undefined,
-        envName: undefined
-      };
-    }
-  }
-
-  return provider.api_key === "***"
-    ? {
+  if (!apiKey.ok) {
+    return {
       check: {
         name: "env_api_key",
         ok: false,
-        message: "Provider API key is masked and cannot be used for diagnostics. Save it as an environment variable reference."
+        message: apiKey.warning.message
       } satisfies DiagnosticCheck,
       apiKey: undefined,
-      envName: undefined
-    }
-    : {
-      check: {
-        name: "env_api_key",
-        ok: true,
-        message: "Provider API key is configured."
-      } satisfies DiagnosticCheck,
-      apiKey: provider.api_key,
-      envName: undefined
+      envName: apiKey.warning.envName
     };
+  }
+
+  return {
+    check: {
+      name: "env_api_key",
+      ok: true,
+      message: apiKey.envName ? `${apiKey.envName} is set.` : "Provider API key is configured."
+    } satisfies DiagnosticCheck,
+    apiKey: apiKey.apiKey,
+    envName: apiKey.envName
+  };
 }
 
 function validBaseUrlCheck(provider: ProviderConfig): DiagnosticCheck {

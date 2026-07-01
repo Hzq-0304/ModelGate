@@ -168,6 +168,11 @@ export function CcSwitchImportModal({
                 <div className="ccswitch-import-item-main">
                   <strong>{draft.name}</strong>
                   <p title={draft.description}>{draft.description || t("ccswitchImport.item.noDescription")}</p>
+                  {!draft.api_key_detected && (
+                    <span className="ccswitch-import-warning-line">
+                      {t("ccswitchImport.item.missingApiKey", { env: draft.envName })}
+                    </span>
+                  )}
                 </div>
                 {draft.warnings.length > 0 && <span className="ccswitch-import-status" title={draft.warnings.join("\n")} />}
                 <button

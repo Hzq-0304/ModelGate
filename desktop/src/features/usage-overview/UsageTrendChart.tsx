@@ -19,10 +19,16 @@ export function UsageTrendChart({ timeline }: { timeline: UsageTimeline | null }
   const points = timeline?.points ?? [];
   const hasPoints = points.length > 0;
   const hasCost = points.some((point) => point.cost_available);
-  const width = 720;
-  const height = 180;
+  const width = 360;
+  const height = 96;
+  const requests = hasPoints ? points.map((point) => point.requests) : [0];
   const tokens = hasPoints ? points.map((point) => point.total_tokens) : [0];
   const costs = hasCost ? points.map((point) => point.estimated_cost_usd ?? 0) : [];
+  const panels = [
+    { label: t("usage.requestsTrend"), className: "usage-request-line", values: requests, enabled: true },
+    { label: t("usage.tokensTrend"), className: "usage-token-line", values: tokens, enabled: true },
+    { label: t("usage.costTrend"), className: "usage-cost-line", values: costs, enabled: hasCost }
+  ];
 
   return (
     <section className="usage-chart-panel">
@@ -34,11 +40,17 @@ export function UsageTrendChart({ timeline }: { timeline: UsageTimeline | null }
         </div>
       </div>
       {hasPoints ? (
-        <svg className="usage-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t("usage.trend")}>
-          <path className="usage-chart-grid" d={`M 0 ${height - 1} H ${width}`} />
-          <path className="usage-token-line" d={buildPath(tokens, width, height)} />
-          {hasCost && <path className="usage-cost-line" d={buildPath(costs, width, height)} />}
-        </svg>
+        <div className="usage-chart-grid-panel">
+          {panels.filter((panel) => panel.enabled).map((panel) => (
+            <article className="usage-mini-chart" key={panel.label}>
+              <span>{panel.label}</span>
+              <svg className="usage-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={panel.label}>
+                <path className="usage-chart-grid" d={`M 0 ${height - 1} H ${width}`} />
+                <path className={panel.className} d={buildPath(panel.values, width, height)} />
+              </svg>
+            </article>
+          ))}
+        </div>
       ) : (
         <div className="usage-chart-empty">{t("usage.empty")}</div>
       )}
