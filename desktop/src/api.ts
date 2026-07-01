@@ -37,13 +37,19 @@ type SwitchResponse = {
 };
 
 export type ServerProcessStatus = {
+  status: "stopped" | "starting" | "running" | "stopping" | "failed" | "external-running";
   endpoint: string;
   reachable: boolean;
   managed: boolean;
   running: boolean;
   pid?: number;
-  mode: "external" | "managed" | "stopped" | "unknown";
+  mode: "external" | "managed" | "stopped" | "starting" | "stopping" | "failed" | "unknown";
   message?: string;
+  startedAt?: string;
+  lastError?: string;
+  startupLog?: string[];
+  root?: string;
+  configPath?: string;
 };
 
 export type ProviderConfig =
@@ -365,6 +371,7 @@ function unavailableServerProcessStatus(): ServerProcessStatus {
     managed: false,
     running: false,
     mode: "unknown",
+    status: "failed",
     message: "Server process control is only available in the desktop app."
   };
 }

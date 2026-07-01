@@ -401,6 +401,36 @@ dd {
   padding: 10px 12px;
 }
 
+.server-startup-details {
+  background: #f8fafc;
+  border: 1px solid #e4e7ec;
+  border-radius: 7px;
+  color: #475467;
+  padding: 10px 12px;
+}
+
+.server-startup-details summary {
+  color: #344054;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.server-startup-details p,
+.server-startup-details ul {
+  margin: 8px 0 0;
+}
+
+.server-startup-details ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 18px;
+}
+
+.server-startup-details li,
+.server-startup-details p {
+  overflow-wrap: anywhere;
+}
+
 .entrypoints,
 .provider-stats,
 .diagnostic-checks,

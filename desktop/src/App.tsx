@@ -549,20 +549,40 @@ export function App() {
     setLogsMessage("Logs refreshed");
   }
 
-  const refresh = useCallback(async () => {
-    setBusyAction("refresh");
-
+  const syncServerState = useCallback(async (processStatus?: ServerProcessStatus, successMessage = "Status refreshed") => {
+    const nextProcessStatus = processStatus ?? await getServerProcessStatus();
+    setServerProcess(nextProcessStatus);
     try {
-      const nextProcessStatus = await getServerProcessStatus();
-      setServerProcess(nextProcessStatus);
       await getHealth();
       const [nextStatus, nextAliases] = await Promise.all([getStatus(), getAliases()]);
       setStatus(nextStatus);
       setAliases(nextAliases);
       setConnection("connected");
-      setMessage("Status refreshed");
+      setMessage(successMessage);
       await loadConfiguration().catch(() => undefined);
       await loadCcSwitchLink("codex").catch(() => undefined);
+    } catch (error) {
+      setConnection("disconnected");
+      setStatus(null);
+      setAliases(null);
+      const statusMessage = nextProcessStatus.lastError ?? nextProcessStatus.message;
+      if (nextProcessStatus.status === "starting") {
+        setMessage(statusMessage ?? "Server is starting.");
+      } else if (nextProcessStatus.status === "stopping") {
+        setMessage(statusMessage ?? "Server is stopping.");
+      } else if (nextProcessStatus.status === "failed" && statusMessage) {
+        setMessage(`Failed to start server: ${statusMessage}`);
+      } else {
+        setMessage(`ModelGate server is not running. Start it with: npm run dev. ${getErrorMessage(error)}`);
+      }
+    }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    setBusyAction("refresh");
+
+    try {
+      await syncServerState(undefined, "Status refreshed");
     } catch (error) {
       setConnection("disconnected");
       setStatus(null);
@@ -573,11 +593,27 @@ export function App() {
     } finally {
       setBusyAction(null);
     }
-  }, []);
+  }, [syncServerState]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const lifecycle = serverProcess?.status;
+    if (lifecycle !== "starting" && lifecycle !== "stopping") {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void syncServerState(
+        undefined,
+        lifecycle === "starting" ? "Server started" : "Server status refreshed"
+      );
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [serverProcess?.status, syncServerState]);
 
   useEffect(() => {
     if (activeTab !== "logs") {
@@ -627,18 +663,24 @@ export function App() {
     }
   }
 
-  async function refreshAfterServerAction(successMessage: string) {
-    await refresh();
-    setMessage(successMessage);
-  }
-
   async function handleStartServer() {
     setBusyAction("server:start");
 
     try {
       const result = await startServerProcess();
       setServerProcess(result);
-      await refreshAfterServerAction("Server started");
+      if (result.status === "running" || result.status === "external-running" || result.reachable) {
+        await syncServerState(result, "Server started");
+      } else {
+        setConnection("disconnected");
+        setStatus(null);
+        setAliases(null);
+        setMessage(
+          result.status === "failed"
+            ? `Failed to start server: ${result.lastError ?? result.message ?? "Unknown error"}`
+            : result.message ?? "Server is starting."
+        );
+      }
     } catch (error) {
       setMessage(`Failed to start server: ${getErrorMessage(error)}`);
     } finally {
@@ -655,8 +697,7 @@ export function App() {
       setConnection("disconnected");
       setStatus(null);
       setAliases(null);
-      setMessage("Server stopped");
-      await refresh();
+      setMessage(result.message ?? (result.status === "stopped" ? "Server stopped" : "Server is stopping."));
     } catch (error) {
       setMessage(`Failed to stop server: ${getErrorMessage(error)}`);
     } finally {
@@ -670,7 +711,18 @@ export function App() {
     try {
       const result = await restartServerProcess();
       setServerProcess(result);
-      await refreshAfterServerAction("Server restarted");
+      if (result.status === "running" || result.status === "external-running" || result.reachable) {
+        await syncServerState(result, "Server restarted");
+      } else {
+        setConnection("disconnected");
+        setStatus(null);
+        setAliases(null);
+        setMessage(
+          result.status === "failed"
+            ? `Failed to restart server: ${result.lastError ?? result.message ?? "Unknown error"}`
+            : result.message ?? "Server is restarting."
+        );
+      }
     } catch (error) {
       setMessage(`Failed to restart server: ${getErrorMessage(error)}`);
     } finally {
@@ -1274,24 +1326,37 @@ export function App() {
   const entrypoints = status ? Object.entries(status.entrypoints) : [];
   const aliasesList = aliases?.aliases ?? [];
   const disconnected = connection === "disconnected";
-  const serverMode = serverProcess?.mode ?? "unknown";
-  const serverStatusText = serverProcess?.running
+  const serverLifecycle = serverProcess?.status ?? (connection === "connected" ? "external-running" : "stopped");
+  const serverStatusText = serverLifecycle === "running" || serverLifecycle === "external-running"
     ? t("advanced.running")
-    : serverMode === "stopped"
-      ? t("advanced.stopped")
-      : t("advanced.unknown");
-  const launchModeText = serverMode === "managed"
-    ? t("advanced.managed")
-    : serverMode === "external"
-      ? t("advanced.external")
-      : serverMode === "stopped"
-        ? t("advanced.notRunning")
-        : t("advanced.unknown");
-  const serverBusy = busyAction?.startsWith("server:") ?? false;
-  const isExternalServer = serverMode === "external";
-  const isManagedServer = serverMode === "managed";
+    : serverLifecycle === "starting"
+      ? t("advanced.starting")
+      : serverLifecycle === "stopping"
+        ? t("advanced.stopping")
+        : serverLifecycle === "failed"
+          ? t("advanced.failed")
+          : serverLifecycle === "stopped"
+            ? t("advanced.stopped")
+            : t("advanced.unknown");
+  const launchModeText = serverLifecycle === "external-running"
+    ? t("advanced.external")
+    : serverLifecycle === "running" || serverLifecycle === "starting" || serverLifecycle === "stopping"
+      ? t("advanced.managed")
+      : serverLifecycle === "failed"
+        ? t("advanced.failed")
+        : serverLifecycle === "stopped"
+          ? t("advanced.notRunning")
+          : t("advanced.unknown");
+  const isServerStarting = serverLifecycle === "starting";
+  const isServerStopping = serverLifecycle === "stopping";
+  const serverBusy = (busyAction?.startsWith("server:") ?? false) || isServerStarting || isServerStopping;
+  const isExternalServer = serverLifecycle === "external-running";
   const hasManagedChild = serverProcess?.managed ?? false;
-  const isStoppedServer = serverMode === "stopped";
+  const isStoppedServer = serverLifecycle === "stopped" || serverLifecycle === "failed";
+  const quickStartBusyAction = isServerStarting ? "server:start" : busyAction;
+  const serverRoot = serverProcess?.root;
+  const serverConfigPath = serverProcess?.configPath;
+  const serverStartupLog = serverProcess?.startupLog ?? [];
   const providerEntries = editableConfig ? Object.entries(editableConfig.providers) : [];
   const aliasEntries = editableConfig ? Object.entries(editableConfig.aliases) : [];
   const entrypointEntries = editableConfig ? Object.entries(editableConfig.entrypoints) : [];
@@ -1368,9 +1433,9 @@ export function App() {
             </section>
           )}
           <QuickStart
-            busyAction={busyAction}
+            busyAction={quickStartBusyAction}
             hasAccounts={aliasesList.length > 0}
-            serverRunning={Boolean(serverProcess?.running)}
+            serverRunning={serverLifecycle === "running" || serverLifecycle === "external-running"}
             onOpenSettings={() => openSettings()}
             onStartServer={() => void handleStartServer()}
             onSwitchAccount={() => scrollToElement("account-switcher")}
@@ -1441,8 +1506,22 @@ export function App() {
             Server is running externally. Stop it from the terminal or process manager.
           </p>
         )}
-        {serverProcess?.message && serverMode === "unknown" && (
-          <p className="server-hint">{serverProcess.message}</p>
+        {(serverProcess?.lastError || serverProcess?.message) && (
+          <p className="server-hint">{serverProcess.lastError ?? serverProcess.message}</p>
+        )}
+        {(serverRoot || serverConfigPath || serverStartupLog.length > 0) && (
+          <details className="server-startup-details">
+            <summary>{t("advanced.startupDetails")}</summary>
+            {serverRoot && <p>{t("advanced.root")}: {serverRoot}</p>}
+            {serverConfigPath && <p>{t("advanced.configPath")}: {serverConfigPath}</p>}
+            {serverStartupLog.length > 0 && (
+              <ul>
+                {serverStartupLog.map((line, index) => (
+                  <li key={`${index}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            )}
+          </details>
         )}
         <div className="server-actions">
           <button
@@ -1454,14 +1533,14 @@ export function App() {
           <button
             className="secondary"
             onClick={() => void handleStopServer()}
-            disabled={busyAction !== null || !hasManagedChild}
+            disabled={busyAction !== null || !hasManagedChild || isServerStopping}
           >
-            {busyAction === "server:stop" ? t("advanced.stopping") : t("advanced.stopServer")}
+            {busyAction === "server:stop" || isServerStopping ? t("advanced.stopping") : t("advanced.stopServer")}
           </button>
           <button
             className="secondary"
             onClick={() => void handleRestartServer()}
-            disabled={busyAction !== null || !hasManagedChild}
+            disabled={busyAction !== null || !hasManagedChild || isServerStarting || isServerStopping}
           >
             {busyAction === "server:restart" ? t("advanced.restarting") : t("advanced.restartServer")}
           </button>
