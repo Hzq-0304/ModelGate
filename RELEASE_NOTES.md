@@ -1,3 +1,36 @@
+# ModelGate v0.1.6
+
+## Highlights
+
+- Refactored the desktop server startup flow.
+- Start Server no longer blocks or freezes the desktop app.
+- Added explicit server process states: stopped, starting, running, stopping, failed, and external-running.
+- Added startup timeout and health check timeout.
+- Prevented duplicate server launches from repeated clicks.
+- Stop and Restart now run through non-blocking flows.
+- Packaged desktop builds now prefer the bundled `modelgate-server` runtime instead of requiring the repository root.
+- First startup copies the example config into a user-writable app config directory.
+- Improved diagnostics for startup failures.
+
+## Fixes
+
+- Fixed CC Switch import error details so backend validation errors are shown clearly.
+- Fixed invalid placeholder base URLs from CC Switch imports before submitting config.
+- Fixed Settings icon by replacing unstable Unicode/emoji rendering with an SVG icon.
+- Kept OpenAI Official detection with default `https://api.openai.com/v1` and `${OPENAI_API_KEY}`.
+
+## Safety
+
+- Windows builds still avoid extra console windows.
+- CC Switch database is still opened read-only.
+- Plaintext API keys are not saved.
+- ModelGate does not modify CC Switch settings.
+
+## Notes
+
+- This release supersedes v0.1.5 for desktop users.
+- This release still requires Node.js to be installed and available in PATH.
+
 # ModelGate v0.1.5
 
 ## Improvements

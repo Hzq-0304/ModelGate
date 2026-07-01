@@ -1,6 +1,6 @@
 # ModelGate
 
-Current release: `v0.1.5`
+Current release: `v0.1.6`
 
 ModelGate is a local OpenAI-compatible gateway for routing large-model requests and hot-switching upstream providers. Codex can keep using one local model name, while ModelGate decides which real provider and model receive new requests.
 
@@ -23,7 +23,7 @@ The local service listens on `127.0.0.1:11435` by default.
 ModelGate reads config from `examples/modelgate.config.yaml` by default. Override it with `MODELGATE_CONFIG`:
 
 ```bash
-MODEL_GATE_CONFIG=./modelgate.config.yaml npm run dev
+MODELGATE_CONFIG=./modelgate.config.yaml npm run dev
 ```
 
 PowerShell:
@@ -299,6 +299,8 @@ Desktop supports English / Simplified Chinese, and the language selection is sav
 
 The desktop app can manage a local ModelGate server process from development builds, installed builds, and local release packages. Packaged desktop builds include the ModelGate server runtime as an app resource, but this release still requires Node.js to be installed and available in `PATH`.
 
+Installed desktop builds no longer require users to set the repository root manually. **Server Control** prefers the bundled `modelgate-server` runtime and shows a clear error if Node.js is missing from `PATH`.
+
 Development option 1, start the server yourself:
 
 ```bash
@@ -386,7 +388,7 @@ If you manually enable MSI packaging, install WiX or ensure Tauri can download a
 
 ### Local Release Package
 
-Prepare a local v0.1.5 release directory:
+Prepare a local v0.1.6 release directory:
 
 ```bash
 npm run release:local
@@ -395,20 +397,26 @@ npm run release:local
 The release directory is written to:
 
 ```text
-release/modelgate-v0.1.5/
+release/modelgate-v0.1.6/
 ```
 
 To run the Node server from that release directory:
 
 ```bash
-cd release/modelgate-v0.1.5/modelgate-server
+cd release/modelgate-v0.1.6/modelgate-server
 node dist/index.js
 ```
 
 Desktop artifacts are collected under:
 
 ```text
-release/modelgate-v0.1.5/artifacts/
+release/modelgate-v0.1.6/artifacts/
+```
+
+For Windows desktop users, the recommended installer is:
+
+```text
+release/modelgate-v0.1.6/artifacts/ModelGate_0.1.6_x64-setup.exe
 ```
 
 Desktop app features:
