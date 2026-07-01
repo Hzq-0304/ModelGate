@@ -1,3 +1,33 @@
+# ModelGate v0.1.7
+
+## Highlights
+
+- Added a self-contained server bundle for packaged desktop builds.
+- Packaged runtime now uses `modelgate-server.cjs` instead of relying on `dist/index.js` and external `node_modules`.
+- Fixed the issue where Start Server entered starting state but ended as not running in installed builds.
+- Added isolated runtime validation to ensure the packaged server can run outside the repository.
+- Improved server startup diagnostics with command, root, config path, pid, exit code, and stderr details.
+- Refactored desktop routing, Settings, and Server Control organization after studying CC Switch structure.
+
+## Fixes
+
+- Fixed false-positive release smoke tests caused by Node resolving dependencies from the repository root.
+- Fixed packaged server startup failure caused by missing runtime dependencies.
+- Fixed server process state falling back to stopped without useful error details.
+- Kept compatibility for `MODELGATE_CONFIG` / `MODEL_GATE_CONFIG`.
+- Kept compatibility for `MODELGATE_ROOT` / `MODEL_GATE_ROOT`.
+
+## Safety
+
+- Windows builds still avoid extra console windows.
+- CC Switch database remains read-only during import.
+- Plaintext API keys are not saved.
+
+## Notes
+
+- This release supersedes v0.1.6 for all desktop users.
+- This release still requires Node.js to be installed and available in PATH.
+
 # ModelGate v0.1.6
 
 ## Highlights
