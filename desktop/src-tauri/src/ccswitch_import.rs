@@ -20,6 +20,7 @@ pub struct CcSwitchDatabaseDetection {
 #[derive(Clone, Serialize)]
 pub struct CcSwitchImportCandidate {
     id: String,
+    db_path: Option<String>,
     source_table: Option<String>,
     source_id: Option<String>,
     app: String,
@@ -31,6 +32,11 @@ pub struct CcSwitchImportCandidate {
     api_key_env: Option<String>,
     api_key_detected: bool,
     api_key_preview: Option<String>,
+    auth_type: Option<String>,
+    auth_source: Option<String>,
+    auth_status: Option<String>,
+    credential_ref: Option<String>,
+    credential_path: Option<String>,
     model: Option<String>,
     models: Vec<String>,
     suggested_modelgate_provider: String,
@@ -191,6 +197,9 @@ fn scan_database(path: &Path, show_managed: bool) -> Result<CcSwitchScanResult, 
     };
 
     dedupe_candidates(&mut candidates);
+    for candidate in &mut candidates {
+        candidate.db_path = Some(db_path.clone());
+    }
 
     if candidates.is_empty() {
         warnings.push("Scanned database, but no importable Codex model configs were recognized.".to_string());
@@ -378,6 +387,8 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
     let (base_url, api_key, models, provider_type_hint) = extract_current_provider_fields(row);
     let model = models.first().cloned();
     let openai_official = is_openai_official_row(row, model.as_deref());
+    let auth_path = detected_codex_credential_path(&row.settings_config);
+    let auth_detected = api_key.is_some() || auth_path.is_some() || codex_auth_has_login_material(&row.settings_config);
     let provider_key_hint = extract_codex_model_provider(&row.settings_config)
         .filter(|value| !matches!(value.as_str(), "custom" | "openai" | "openai-official"));
     let endpoint_base_url = endpoints.into_iter().find_map(clean_base_url);
@@ -422,8 +433,8 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
     if model.is_none() {
         warnings.push("Missing model.".to_string());
     }
-    if api_key.is_none() {
-        warnings.push("No API key field detected.".to_string());
+    if api_key.is_none() && !auth_detected {
+        warnings.push("No API key or CC Switch credential field detected.".to_string());
     }
     if provider_type == "unknown" {
         warnings.push(format!("Provider app '{}' is not clearly OpenAI-compatible.", row.app_type));
@@ -439,6 +450,7 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
 
     CcSwitchImportCandidate {
         id: format!("providers:{}:{}", row.app_type, row.id),
+        db_path: None,
         source_table: Some("providers".to_string()),
         source_id: Some(row.id.clone()),
         app: row.app_type.clone(),
@@ -448,8 +460,19 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
         base_url,
         description,
         api_key_env: Some(env_name.clone()),
-        api_key_detected: api_key.is_some(),
+        api_key_detected: auth_detected,
         api_key_preview: api_key.as_deref().map(mask_secret),
+        auth_type: openai_official.then(|| "ccswitch".to_string()).or_else(|| Some("env".to_string())),
+        auth_source: openai_official.then(|| "CC Switch OpenAI Official".to_string()),
+        auth_status: Some(if auth_detected {
+            "imported".to_string()
+        } else if openai_official {
+            "fallback".to_string()
+        } else {
+            "missing".to_string()
+        }),
+        credential_ref: openai_official.then(|| format!("ccswitch://providers/{}/{}/auth", row.app_type, row.id)),
+        credential_path: auth_path,
         model,
         models,
         suggested_modelgate_provider: safe_provider.clone(),
@@ -484,12 +507,55 @@ fn extract_codex_fields(settings: &Value) -> (Option<String>, Option<String>, Ve
         .pointer("/auth/OPENAI_API_KEY")
         .and_then(Value::as_str)
         .map(String::from)
+        .or_else(|| extract_toml_string(config_text, "experimental_bearer_token"))
+        .or_else(|| model_provider.as_deref().and_then(|provider| {
+            extract_toml_section_string(config_text, &format!("model_providers.{provider}"), "experimental_bearer_token")
+        }))
         .or_else(|| extract_toml_string(config_text, "api_key"));
     let mut models = Vec::new();
     if let Some(model) = extract_toml_string(config_text, "model") {
         models.push(model);
     }
     (base_url, api_key, models, Some("openai-compatible".to_string()))
+}
+
+fn detected_codex_credential_path(settings: &Value) -> Option<String> {
+    if settings.pointer("/auth/OPENAI_API_KEY").and_then(Value::as_str).is_some() {
+        return Some("/auth/OPENAI_API_KEY".to_string());
+    }
+
+    let config_text = settings.get("config").and_then(Value::as_str).unwrap_or_default();
+    if extract_toml_string(config_text, "experimental_bearer_token").is_some() {
+        return Some("/config/experimental_bearer_token".to_string());
+    }
+
+    if let Some(provider) = extract_codex_model_provider(settings) {
+        if extract_toml_section_string(config_text, &format!("model_providers.{provider}"), "experimental_bearer_token").is_some() {
+            return Some(format!("/config/model_providers/{provider}/experimental_bearer_token"));
+        }
+    }
+
+    None
+}
+
+fn codex_auth_has_login_material(settings: &Value) -> bool {
+    let Some(auth) = settings.get("auth").and_then(Value::as_object) else {
+        return false;
+    };
+
+    auth.iter().any(|(key, value)| {
+        if key == "auth_mode" {
+            return false;
+        }
+
+        match value {
+            Value::Null => false,
+            Value::String(text) => !text.trim().is_empty(),
+            Value::Array(items) => !items.is_empty(),
+            Value::Object(map) => !map.is_empty(),
+            _ => true,
+        }
+    })
 }
 
 fn extract_codex_model_provider(settings: &Value) -> Option<String> {
@@ -920,6 +986,7 @@ fn candidate_from_fields(
 
     Some(CcSwitchImportCandidate {
         id: format!("{table}:{row_index}:{safe_provider}"),
+        db_path: None,
         source_table: Some(table.to_string()),
         source_id: find_source_id(fields),
         app: find_first(fields, &["app_type", "app"]).unwrap_or_else(|| "unknown".to_string()),
@@ -931,6 +998,11 @@ fn candidate_from_fields(
         api_key_env: Some(env_name.clone()),
         api_key_detected: api_key.is_some(),
         api_key_preview: api_key.as_deref().map(mask_secret),
+        auth_type: Some("env".to_string()),
+        auth_source: None,
+        auth_status: Some(if api_key.is_some() { "imported".to_string() } else { "missing".to_string() }),
+        credential_ref: None,
+        credential_path: None,
         model,
         models,
         suggested_modelgate_provider: safe_provider.clone(),
@@ -1276,4 +1348,59 @@ fn dedupe_candidates(candidates: &mut Vec<CcSwitchImportCandidate>) {
         );
         seen.insert(key)
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn codex_fields_read_auth_openai_api_key() {
+        let settings = json!({
+            "auth": {
+                "OPENAI_API_KEY": "sk-from-ccswitch"
+            },
+            "config": "model = \"gpt-5.5\"\n[model_providers.custom]\nbase_url = \"https://api.openai.com/v1\"\n"
+        });
+
+        let (base_url, api_key, models, provider_type) = extract_codex_fields(&settings);
+
+        assert_eq!(base_url.as_deref(), Some("https://api.openai.com/v1"));
+        assert_eq!(api_key.as_deref(), Some("sk-from-ccswitch"));
+        assert_eq!(models, vec!["gpt-5.5"]);
+        assert_eq!(provider_type.as_deref(), Some("openai-compatible"));
+        assert_eq!(detected_codex_credential_path(&settings).as_deref(), Some("/auth/OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn codex_fields_read_experimental_bearer_token() {
+        let settings = json!({
+            "auth": {},
+            "config": "model_provider = \"custom\"\nmodel = \"gpt-5.5\"\n[model_providers.custom]\nbase_url = \"https://api.openai.com/v1\"\nexperimental_bearer_token = \"sk-provider-scoped\"\n"
+        });
+
+        let (_, api_key, _, _) = extract_codex_fields(&settings);
+
+        assert_eq!(api_key.as_deref(), Some("sk-provider-scoped"));
+        assert_eq!(
+            detected_codex_credential_path(&settings).as_deref(),
+            Some("/config/model_providers/custom/experimental_bearer_token")
+        );
+    }
+
+    #[test]
+    fn codex_auth_login_material_is_detected_without_copying_secret() {
+        let settings = json!({
+            "auth": {
+                "tokens": {
+                    "access_token": "secret"
+                }
+            },
+            "config": ""
+        });
+
+        assert!(codex_auth_has_login_material(&settings));
+        assert!(detected_codex_credential_path(&settings).is_none());
+    }
 }

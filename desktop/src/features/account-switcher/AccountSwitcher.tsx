@@ -42,10 +42,15 @@ export function AccountSwitcher({
   const [selectedAliasName, setSelectedAliasName] = useState<string | undefined>(activeName);
   const missingEnvByProvider = useMemo(() => {
     const entries = configWarnings
-      .filter((warning) => warning.type === "missing_env" && warning.provider)
-      .map((warning) => [warning.provider as string, warning.envName ?? warning.env] as const);
+      .filter((warning) => warning.provider)
+      .map((warning) => [
+        warning.provider as string,
+        warning.type === "missing_credential"
+          ? t("switcher.missingCredentialShort", { source: warning.source ?? "CC Switch" })
+          : t("switcher.missingApiKeyShort", { env: warning.envName ?? warning.env ?? "API_KEY" })
+      ] as const);
     return new Map(entries);
-  }, [configWarnings]);
+  }, [configWarnings, t]);
   const selectedAlias = accounts.find((account) => account.name === selectedAliasName)
     ?? activeAlias
     ?? accounts[0]
@@ -108,7 +113,7 @@ export function AccountSwitcher({
                   active={account.name === activeName}
                   disabled={disconnected || Boolean(switchingAlias)}
                   key={account.name}
-                  missingEnv={missingEnvByProvider.get(account.provider)}
+                  authWarning={missingEnvByProvider.get(account.provider)}
                   selected={account.name === selectedAlias?.name}
                   switching={switchingAlias === account.name}
                   onSelect={handleSelect}
@@ -140,7 +145,7 @@ export function AccountSwitcher({
               <div className="account-detail-title">
                 <strong>{formatAliasTitle(selectedAlias.name)}</strong>
                 <span className={selectedMissingEnv ? "pill bad" : selectedAlias.name === activeName ? "pill" : "pill neutral"}>
-                  {selectedMissingEnv ? t("switcher.missingApiKey") : selectedAlias.name === activeName ? t("switcher.currentlyUsing") : t("common.available")}
+                  {selectedMissingEnv ? t("switcher.missingAuth") : selectedAlias.name === activeName ? t("switcher.currentlyUsing") : t("common.available")}
                 </span>
               </div>
               {selectedAlias.description && <p>{selectedAlias.description}</p>}
@@ -159,7 +164,7 @@ export function AccountSwitcher({
                 </div>
                 <div>
                   <dt>{t("common.status")}</dt>
-                  <dd>{selectedMissingEnv ? t("switcher.missingApiKeyShort", { env: selectedMissingEnv }) : t("common.available")}</dd>
+                  <dd>{selectedMissingEnv ?? t("common.available")}</dd>
                 </div>
               </dl>
               <div className="account-detail-actions">

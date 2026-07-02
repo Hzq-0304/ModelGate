@@ -1,5 +1,10 @@
 import type { FastifyReply } from "fastify";
-import { resolveProviderApiKey, type MissingEnvWarning } from "../config/env.js";
+import {
+  resolveProviderAuth,
+  type ConfigWarning,
+  type MissingCredentialWarning,
+  type MissingEnvWarning
+} from "../config/env.js";
 import type { ModelGateConfig } from "../config/schema.js";
 import type {
   ChatCompletionRequestBody,
@@ -143,6 +148,26 @@ export function createMissingEnvError(warning: MissingEnvWarning): OpenAICompati
   );
 }
 
+export function createMissingCredentialError(warning: MissingCredentialWarning): OpenAICompatibleError {
+  return createOpenAICompatibleError(
+    warning.message,
+    "missing_credential",
+    null,
+    {
+      provider: warning.provider,
+      env: warning.envName,
+      source: warning.source,
+      credential_id: warning.credential_id
+    }
+  );
+}
+
+export function createMissingAuthError(warning: ConfigWarning): OpenAICompatibleError {
+  return warning.type === "missing_env"
+    ? createMissingEnvError(warning)
+    : createMissingCredentialError(warning);
+}
+
 export async function forwardOpenAICompatibleChatCompletion(
   body: ChatCompletionRequestBody,
   provider: OpenAICompatibleProviderConfig,
@@ -154,16 +179,16 @@ export async function forwardOpenAICompatibleChatCompletion(
     model: upstreamModel
   };
   const baseUrl = provider.base_url.replace(/\/+$/, "");
-  const apiKey = resolveProviderApiKey(providerName, provider);
+  const auth = resolveProviderAuth(providerName, provider);
 
-  if (!apiKey.ok) {
-    throw new MissingProviderEnvironmentError(apiKey.warning);
+  if (!auth.ok) {
+    throw new MissingProviderAuthError(auth.warning);
   }
 
   return fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${apiKey.apiKey}`,
+      ...auth.headers,
       "content-type": "application/json"
     },
     body: JSON.stringify(upstreamBody)
@@ -181,16 +206,16 @@ export async function forwardOpenAICompatibleResponse(
     model: upstreamModel
   };
   const baseUrl = provider.base_url.replace(/\/+$/, "");
-  const apiKey = resolveProviderApiKey(providerName, provider);
+  const auth = resolveProviderAuth(providerName, provider);
 
-  if (!apiKey.ok) {
-    throw new MissingProviderEnvironmentError(apiKey.warning);
+  if (!auth.ok) {
+    throw new MissingProviderAuthError(auth.warning);
   }
 
   return fetch(`${baseUrl}/responses`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${apiKey.apiKey}`,
+      ...auth.headers,
       "content-type": "application/json"
     },
     body: JSON.stringify(upstreamBody)
@@ -203,6 +228,26 @@ export class MissingProviderEnvironmentError extends Error {
   constructor(warning: MissingEnvWarning) {
     super(warning.message);
     this.name = "MissingProviderEnvironmentError";
+    this.warning = warning;
+  }
+}
+
+export class MissingProviderCredentialError extends Error {
+  readonly warning: MissingCredentialWarning;
+
+  constructor(warning: MissingCredentialWarning) {
+    super(warning.message);
+    this.name = "MissingProviderCredentialError";
+    this.warning = warning;
+  }
+}
+
+export class MissingProviderAuthError extends Error {
+  readonly warning: ConfigWarning;
+
+  constructor(warning: ConfigWarning) {
+    super(warning.message);
+    this.name = "MissingProviderAuthError";
     this.warning = warning;
   }
 }

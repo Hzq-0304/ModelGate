@@ -1,14 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import {
   createOpenAICompatibleError,
-  createMissingEnvError,
+  createMissingAuthError,
   createMockChatCompletion,
   createMockChatCompletionChunk,
   createMockResponse,
   createModelList,
   forwardOpenAICompatibleChatCompletion,
   forwardOpenAICompatibleResponse,
-  MissingProviderEnvironmentError,
+  MissingProviderAuthError,
   readUpstreamError,
   sendOpenAICompatibleStream
 } from "../providers/openaiCompatible.js";
@@ -559,14 +559,15 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
     try {
       upstream = await forwardOpenAICompatibleChatCompletion(body, route.provider, route.providerName, route.upstreamModel);
     } catch (error) {
-      if (error instanceof MissingProviderEnvironmentError) {
+      if (error instanceof MissingProviderAuthError) {
+        const errorType = error.warning.type === "missing_env" ? "missing_environment_variable" : "missing_credential";
         addLog({
           resolved_alias: route.aliasName,
           provider: route.providerName,
           upstream_model: route.upstreamModel,
           status_code: 400,
           ok: false,
-          error_type: "missing_environment_variable",
+          error_type: errorType,
           error_message: truncate(error.message)
         });
         addUsage({
@@ -576,7 +577,7 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           status_code: 400,
           ok: false
         });
-        return reply.status(400).send(createMissingEnvError(error.warning));
+        return reply.status(400).send(createMissingAuthError(error.warning));
       }
 
       addLog({
@@ -838,7 +839,8 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
       try {
         upstream = await forwardOpenAICompatibleResponse(body, route.provider, route.providerName, route.upstreamModel);
       } catch (error) {
-        if (error instanceof MissingProviderEnvironmentError) {
+        if (error instanceof MissingProviderAuthError) {
+          const errorType = error.warning.type === "missing_env" ? "missing_environment_variable" : "missing_credential";
           addLog({
             fallback_mode: "direct_responses",
             resolved_alias: route.aliasName,
@@ -846,7 +848,7 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
             upstream_model: route.upstreamModel,
             status_code: 400,
             ok: false,
-            error_type: "missing_environment_variable",
+            error_type: errorType,
             error_message: truncate(error.message)
           });
           addUsage({
@@ -857,7 +859,7 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
             status_code: 400,
             ok: false
           });
-          return reply.status(400).send(createMissingEnvError(error.warning));
+          return reply.status(400).send(createMissingAuthError(error.warning));
         }
 
         addLog({
@@ -1029,7 +1031,8 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
     try {
       upstream = await forwardOpenAICompatibleChatCompletion(converted.chatBody, route.provider, route.providerName, route.upstreamModel);
     } catch (error) {
-      if (error instanceof MissingProviderEnvironmentError) {
+      if (error instanceof MissingProviderAuthError) {
+        const errorType = error.warning.type === "missing_env" ? "missing_environment_variable" : "missing_credential";
         addLog({
           fallback_mode: "responses_to_chat",
           resolved_alias: route.aliasName,
@@ -1037,7 +1040,7 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           upstream_model: route.upstreamModel,
           status_code: 400,
           ok: false,
-          error_type: "missing_environment_variable",
+          error_type: errorType,
           error_message: truncate(error.message)
         });
         addUsage({
@@ -1048,7 +1051,7 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           status_code: 400,
           ok: false
         });
-        return reply.status(400).send(createMissingEnvError(error.warning));
+        return reply.status(400).send(createMissingAuthError(error.warning));
       }
 
       addLog({

@@ -43,6 +43,22 @@ function maskApiKey(value: unknown) {
   return envOnlyPattern.test(value) ? value : "***";
 }
 
+function sanitizeAuthForAdmin(auth: unknown) {
+  if (!auth || typeof auth !== "object") {
+    return auth;
+  }
+
+  const record = auth as Record<string, unknown>;
+  if (record.type === "static-header-ref" && typeof record.value === "string") {
+    return {
+      ...record,
+      value: "***"
+    };
+  }
+
+  return record;
+}
+
 function envResolved(value: unknown) {
   if (typeof value !== "string") {
     return false;
@@ -52,7 +68,7 @@ function envResolved(value: unknown) {
   return match ? Boolean(process.env[match[1]]) : value.length > 0;
 }
 
-function rawProviderApiKey(rawConfig: unknown, name: string, fallback: string) {
+function rawProviderApiKey(rawConfig: unknown, name: string, fallback: unknown) {
   if (!rawConfig || typeof rawConfig !== "object" || !("providers" in rawConfig)) {
     return fallback;
   }
@@ -79,11 +95,13 @@ export function sanitizeConfigForAdmin(rawConfig: unknown) {
         }
 
         const apiKey = rawProviderApiKey(rawConfig, name, provider.api_key);
+        const auth = "auth" in provider ? sanitizeAuthForAdmin(provider.auth) : undefined;
 
         return [
           name,
           {
             ...provider,
+            ...(auth ? { auth } : {}),
             api_key: maskApiKey(apiKey),
             api_key_resolved: envResolved(apiKey)
           }
@@ -117,8 +135,12 @@ export function validateConfigObject(rawConfig: unknown): ConfigValidationResult
         continue;
       }
 
-      const typedProvider = provider as { type?: string; api_key?: unknown };
+      const typedProvider = provider as { type?: string; api_key?: unknown; auth?: unknown };
       if (typedProvider.type !== "openai-compatible") {
+        continue;
+      }
+
+      if (typedProvider.auth) {
         continue;
       }
 

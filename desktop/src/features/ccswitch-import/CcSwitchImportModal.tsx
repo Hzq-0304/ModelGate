@@ -13,6 +13,11 @@ export type CcSwitchImportDraft = {
   description?: string;
   api_key_detected: boolean;
   api_key_preview?: string;
+  auth_type?: "env" | "ccswitch" | "static-header-ref";
+  auth_source?: string;
+  auth_status?: "imported" | "fallback" | "missing";
+  credential_ref?: string;
+  credential_path?: string;
   suggested_env_name: string;
   complete: boolean;
   modelgate_managed: boolean;
@@ -170,7 +175,14 @@ export function CcSwitchImportModal({
                   <p title={draft.description}>{draft.description || t("ccswitchImport.item.noDescription")}</p>
                   {!draft.api_key_detected && (
                     <span className="ccswitch-import-warning-line">
-                      {t("ccswitchImport.item.missingApiKey", { env: draft.envName })}
+                      {draft.auth_type === "ccswitch"
+                        ? t("ccswitchImport.item.missingCredential", { env: draft.envName })
+                        : t("ccswitchImport.item.missingApiKey", { env: draft.envName })}
+                    </span>
+                  )}
+                  {draft.auth_source && (
+                    <span className="ccswitch-import-source-line">
+                      {t("ccswitchImport.item.authSource", { source: draft.auth_source })}
                     </span>
                   )}
                 </div>
@@ -240,6 +252,10 @@ export function CcSwitchImportModal({
               {t("ccswitchImport.edit.apiKeyEnv")}
               <input value={editing.envName} onChange={(event) => setEditing({ ...editing, envName: event.target.value })} />
             </label>
+            <div className="ccswitch-edit-readonly">
+              <span>{t("ccswitchImport.edit.authSource")}</span>
+              <code>{editingSource.auth_source ?? editingSource.auth_type ?? "env"}</code>
+            </div>
             <div className="ccswitch-edit-readonly">
               <span>{t("ccswitchImport.edit.apiKeyPreview")}</span>
               <code>

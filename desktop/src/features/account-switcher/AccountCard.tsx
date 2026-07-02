@@ -5,20 +5,20 @@ type AccountCardProps = {
   account: AccountAlias;
   active: boolean;
   disabled: boolean;
-  missingEnv?: string;
+  authWarning?: string;
   selected: boolean;
   switching: boolean;
   onSelect: (alias: string) => void;
 };
 
-export function AccountCard({ account, active, disabled, missingEnv, selected, switching, onSelect }: AccountCardProps) {
+export function AccountCard({ account, active, disabled, authWarning, selected, switching, onSelect }: AccountCardProps) {
   const { t } = useI18n();
   const statusText = switching
     ? t("common.switching")
     : active
       ? t("common.active")
-      : missingEnv
-        ? t("switcher.missingApiKey")
+      : authWarning
+        ? t("switcher.missingAuth")
         : t("common.available");
 
   return (
@@ -27,7 +27,7 @@ export function AccountCard({ account, active, disabled, missingEnv, selected, s
         "account-card",
         active ? "active" : "",
         selected ? "selected" : "",
-        missingEnv ? "warning" : ""
+        authWarning ? "warning" : ""
       ].filter(Boolean).join(" ")}
       disabled={disabled}
       onClick={() => onSelect(account.name)}
@@ -35,7 +35,7 @@ export function AccountCard({ account, active, disabled, missingEnv, selected, s
     >
       <span className="account-card-topline">
         <strong>{formatAliasTitle(account.name)}</strong>
-        <span className={missingEnv ? "account-card-status bad" : "account-card-status"}>{statusText}</span>
+        <span className={authWarning ? "account-card-status bad" : "account-card-status"}>{statusText}</span>
       </span>
       {account.description && (
         <p className="account-card-description" title={account.description}>{account.description}</p>
@@ -54,7 +54,7 @@ export function AccountCard({ account, active, disabled, missingEnv, selected, s
           <dd>{account.model}</dd>
         </div>
       </dl>
-      {missingEnv && <span className="account-card-warning">{t("switcher.missingApiKeyShort", { env: missingEnv })}</span>}
+      {authWarning && <span className="account-card-warning">{authWarning}</span>}
     </button>
   );
 }

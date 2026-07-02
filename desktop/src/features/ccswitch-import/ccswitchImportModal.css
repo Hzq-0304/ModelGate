@@ -173,6 +173,15 @@
   white-space: nowrap;
 }
 
+.ccswitch-import-source-line {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ccswitch-import-status {
   background: #f79009;
   border-radius: 999px;

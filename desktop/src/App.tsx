@@ -151,6 +151,30 @@ function draftLooksLikeOpenAIOfficial(draft: Pick<ImportDraft, "name" | "provide
     || looksLikeOpenAIOfficial(draft.provider_name);
 }
 
+function buildProviderAuthFromDraft(draft: ImportDraft, providerName: string, envName: string) {
+  if (draft.auth_type === "ccswitch" || draftLooksLikeOpenAIOfficial(draft)) {
+    return {
+      type: "ccswitch" as const,
+      source: draft.auth_source ?? "CC Switch OpenAI Official",
+      app: draft.app || "codex",
+      db_path: draft.db_path,
+      provider_id: draft.source_id,
+      credential_ref: draft.credential_ref ?? (draft.source_id ? `ccswitch://providers/${draft.app || "codex"}/${draft.source_id}/auth` : undefined),
+      credential_path: draft.credential_path ?? "/auth/OPENAI_API_KEY",
+      fallback_env: envName,
+      header: "Authorization",
+      scheme: "Bearer"
+    };
+  }
+
+  return {
+    type: "env" as const,
+    header: "Authorization",
+    scheme: "Bearer",
+    env: envName || normalizeEnvName(draft.api_key_env ?? draft.suggested_env_name, providerName)
+  };
+}
+
 export function App() {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>("switcher");
@@ -768,7 +792,18 @@ export function App() {
       return "";
     }
 
-    const match = provider.api_key.match(/^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/);
+    const explicitAuth = provider.auth;
+    if (explicitAuth?.type === "env") {
+      return explicitAuth.env;
+    }
+    if (explicitAuth?.type === "ccswitch") {
+      return explicitAuth.fallback_env ?? "";
+    }
+    if (explicitAuth?.type === "static-header-ref") {
+      return explicitAuth.value_env ?? "";
+    }
+
+    const match = provider.api_key?.match(/^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/);
     return match ? match[1] : "";
   }
 
@@ -813,6 +848,12 @@ export function App() {
         type: "openai-compatible",
         base_url: providerForm.baseUrl.trim(),
         api_key: `\${${providerForm.envName.trim()}}`,
+        auth: {
+          type: "env",
+          header: "Authorization",
+          scheme: "Bearer",
+          env: providerForm.envName.trim()
+        },
         responses_api: providerForm.responsesApi
       };
 
@@ -1058,6 +1099,7 @@ export function App() {
           type: "openai-compatible",
           base_url: item.baseUrl,
           api_key: `\${${item.envName}}`,
+          auth: buildProviderAuthFromDraft(item.draft, providerName, item.envName),
           ...(description ? { description } : {})
         };
         aliases[aliasName] = {
@@ -1697,7 +1739,9 @@ export function App() {
                   <span>{provider.type === "openai-compatible" && provider.responses_api ? "direct" : "-"}</span>
                   <span>
                     {provider.type === "openai-compatible"
-                      ? `${provider.api_key} ${provider.api_key_resolved ? "OK" : "Missing"}`
+                      ? provider.auth
+                        ? `${provider.auth.type} ${provider.api_key_resolved ? "OK" : ""}`.trim()
+                        : `${provider.api_key ?? "-"} ${provider.api_key_resolved ? "OK" : "Missing"}`
                       : "-"}
                   </span>
                   <span className="row-actions">

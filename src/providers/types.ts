@@ -8,7 +8,31 @@ export type MockProviderConfig = {
 export type OpenAICompatibleProviderConfig = {
   type: "openai-compatible";
   base_url: string;
-  api_key: string;
+  api_key?: string;
+  auth?: {
+    type: "env";
+    header?: string;
+    scheme?: string;
+    env: string;
+  } | {
+    type: "ccswitch";
+    source: string;
+    app?: string;
+    db_path?: string;
+    provider_id?: string;
+    credential_ref?: string;
+    credential_path?: string;
+    fallback_env?: string;
+    header?: string;
+    scheme?: string;
+  } | {
+    type: "static-header-ref";
+    header?: string;
+    scheme?: string;
+    value_ref?: string;
+    value_env?: string;
+    value?: string;
+  };
   responses_api?: boolean;
   description?: string;
 };
@@ -57,5 +81,7 @@ export type OpenAICompatibleError = {
     code: string | null;
     provider?: string;
     env?: string;
+    source?: string;
+    credential_id?: string;
   };
 };

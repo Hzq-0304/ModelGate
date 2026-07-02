@@ -23,11 +23,13 @@ export type StatusResponse = {
 };
 
 export type ConfigWarning = {
-  type: "missing_env";
+  type: "missing_env" | "missing_credential";
   provider?: string;
   path: string;
-  env: string;
+  env?: string;
   envName?: string;
+  source?: string;
+  credential_id?: string;
   message: string;
 };
 
@@ -73,7 +75,31 @@ export type ProviderConfig =
   | {
     type: "openai-compatible";
     base_url: string;
-    api_key: string;
+    api_key?: string;
+    auth?: {
+      type: "env";
+      header?: string;
+      scheme?: string;
+      env: string;
+    } | {
+      type: "ccswitch";
+      source: string;
+      app?: string;
+      db_path?: string;
+      provider_id?: string;
+      credential_ref?: string;
+      credential_path?: string;
+      fallback_env?: string;
+      header?: string;
+      scheme?: string;
+    } | {
+      type: "static-header-ref";
+      header?: string;
+      scheme?: string;
+      value_ref?: string;
+      value_env?: string;
+      value?: string;
+    };
     responses_api?: boolean;
     api_key_resolved?: boolean;
     description?: string;
@@ -254,6 +280,7 @@ export type CcSwitchDatabaseDetection = {
 
 export type CcSwitchImportCandidate = {
   id: string;
+  db_path?: string;
   source_table?: string;
   source_id?: string;
   app: string;
@@ -265,6 +292,11 @@ export type CcSwitchImportCandidate = {
   api_key_env?: string;
   api_key_detected: boolean;
   api_key_preview?: string;
+  auth_type?: "env" | "ccswitch" | "static-header-ref";
+  auth_source?: string;
+  auth_status?: "imported" | "fallback" | "missing";
+  credential_ref?: string;
+  credential_path?: string;
   model?: string;
   models: string[];
   suggested_modelgate_provider: string;

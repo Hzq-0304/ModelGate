@@ -1,6 +1,44 @@
 import { z } from "zod";
 
 const namePattern = /^[A-Za-z0-9_-]+$/;
+const envNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+export const providerAuthSchema = z.union([
+  z.object({
+    type: z.literal("env"),
+    header: z.string().min(1).default("Authorization"),
+    scheme: z.string().optional().default("Bearer"),
+    env: z.string().regex(envNamePattern)
+  }),
+  z.object({
+    type: z.literal("ccswitch"),
+    source: z.string().min(1),
+    app: z.string().min(1).default("codex"),
+    db_path: z.string().optional(),
+    provider_id: z.string().optional(),
+    credential_ref: z.string().optional(),
+    credential_path: z.string().optional(),
+    fallback_env: z.string().regex(envNamePattern).optional(),
+    header: z.string().min(1).default("Authorization"),
+    scheme: z.string().optional().default("Bearer")
+  }),
+  z.object({
+    type: z.literal("static-header-ref"),
+    header: z.string().min(1).default("Authorization"),
+    scheme: z.string().optional().default("Bearer"),
+    value_ref: z.string().optional(),
+    value_env: z.string().regex(envNamePattern).optional(),
+    value: z.string().min(1).optional()
+  }).superRefine((auth, context) => {
+    if (!auth.value && !auth.value_env && !auth.value_ref) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["value_ref"],
+        message: "static-header-ref auth requires value_ref, value_env, or value"
+      });
+    }
+  })
+]);
 
 export const mockProviderSchema = z.object({
   type: z.literal("mock"),
@@ -10,12 +48,21 @@ export const mockProviderSchema = z.object({
 export const openAICompatibleProviderSchema = z.object({
   type: z.literal("openai-compatible"),
   base_url: z.string().url(),
-  api_key: z.string().min(1),
+  api_key: z.string().min(1).optional(),
+  auth: providerAuthSchema.optional(),
   responses_api: z.boolean().default(false),
   description: z.string().optional()
+}).superRefine((provider, context) => {
+  if (!provider.api_key && !provider.auth) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["auth"],
+      message: "openai-compatible provider requires either api_key or auth"
+    });
+  }
 });
 
-export const providerSchema = z.discriminatedUnion("type", [
+export const providerSchema = z.union([
   mockProviderSchema,
   openAICompatibleProviderSchema
 ]);
@@ -126,6 +173,7 @@ export const modelGateConfigSchema = z.object({
 
 export type ModelGateConfig = z.infer<typeof modelGateConfigSchema>;
 export type ProviderConfig = z.infer<typeof providerSchema>;
+export type ProviderAuthConfig = z.infer<typeof providerAuthSchema>;
 export type AliasConfig = z.infer<typeof aliasSchema>;
 export type EntrypointConfig = z.infer<typeof entrypointSchema>;
 export type PricingConfig = z.infer<typeof pricingSchema>;

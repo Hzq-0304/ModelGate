@@ -109,6 +109,37 @@ providers:
 
 `responses_api` defaults to `false`. Set it to `true` only for upstream providers that support `POST /responses`; otherwise ModelGate converts `/v1/responses` requests to chat completions internally.
 
+Providers may also use the newer `auth` block. `auth` takes precedence over legacy `api_key` when both are present:
+
+```yaml
+providers:
+  openai:
+    type: openai-compatible
+    base_url: https://api.openai.com/v1
+    auth:
+      type: env
+      header: Authorization
+      scheme: Bearer
+      env: OPENAI_API_KEY
+
+  openai-official:
+    type: openai-compatible
+    base_url: https://api.openai.com/v1
+    api_key: ${OPENAI_API_KEY}
+    auth:
+      type: ccswitch
+      source: CC Switch OpenAI Official
+      app: codex
+      provider_id: "<cc-switch-provider-id>"
+      credential_ref: "ccswitch://providers/codex/<cc-switch-provider-id>/auth"
+      credential_path: /auth/OPENAI_API_KEY
+      fallback_env: OPENAI_API_KEY
+      header: Authorization
+      scheme: Bearer
+```
+
+The `ccswitch` form records a CC Switch credential reference and optional environment-variable fallback. ModelGate does not perform OpenAI web login, does not read browser cookies, and does not display plaintext tokens.
+
 Set environment variables before starting ModelGate:
 
 ```bash
@@ -691,7 +722,7 @@ ModelGate scans CC Switch data without modifying it:
 - does not import MCP servers, skills, prompts, or usage logs
 - skips ModelGate-managed providers by default to avoid import loops
 
-The scanner is based on the current CC Switch SQLite schema. It first looks for the real `providers` / `provider_endpoints` schema, reads Codex rows from `providers.settings_config`, and extracts the OpenAI-compatible base URL, model, masked API key preview, and description. Claude, Gemini, OpenCode, OpenClaw, Hermes, and other app configs are not shown in this import list.
+The scanner is based on the current CC Switch SQLite schema. It first looks for the real `providers` / `provider_endpoints` schema, reads Codex rows from `providers.settings_config`, and extracts the OpenAI-compatible base URL, model, masked API key preview, credential reference, and description. Claude, Gemini, OpenCode, OpenClaw, Hermes, and other app configs are not shown in this import list.
 
 Model order is preserved from CC Switch as closely as possible. The current schema uses `sort_index`, `sort_order`, `position`, `order`, `created_at`, then `id`; ModelGate writes imported aliases in that order so the Account Switcher follows the same order.
 
@@ -703,7 +734,7 @@ OpenAI Official configs are recognized when the CC Switch provider name or id lo
 https://api.openai.com/v1
 ```
 
-The suggested API key environment variable for OpenAI Official is `OPENAI_API_KEY`. Missing API keys do not make the item unimportable; the saved YAML still uses an environment variable reference such as `${OPENAI_API_KEY}`.
+OpenAI Official configs are imported as CC Switch credential references when possible. ModelGate recognizes Codex `auth.OPENAI_API_KEY`, provider-scoped `experimental_bearer_token`, and official auth material in the CC Switch provider config. If no usable credential is found, the item remains importable and falls back to an environment-variable reference such as `${OPENAI_API_KEY}`. Missing credentials are warnings; they do not stop the ModelGate backend from starting.
 
 The desktop app first looks for:
 

@@ -1,4 +1,4 @@
-import { resolveProviderApiKey } from "../config/env.js";
+import { resolveProviderAuth, type ProviderAuthResolution } from "../config/env.js";
 import type { ProviderConfig } from "../config/schema.js";
 import type { RuntimeState } from "./state.js";
 import { estimateUsageCost } from "./usageStore.js";
@@ -52,41 +52,42 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function apiKeyCheck(_runtime: RuntimeState, providerName: string, provider: ProviderConfig) {
+function authCheck(_runtime: RuntimeState, providerName: string, provider: ProviderConfig) {
   if (provider.type === "mock") {
     return {
       check: {
-        name: "env_api_key",
+        name: "auth",
         ok: true,
         message: "Mock provider does not require an API key."
       } satisfies DiagnosticCheck,
-      apiKey: undefined,
-      envName: undefined
+      auth: undefined as ProviderAuthResolution | undefined
     };
   }
 
-  const apiKey = resolveProviderApiKey(providerName, provider);
+  const auth = resolveProviderAuth(providerName, provider);
 
-  if (!apiKey.ok) {
+  if (!auth.ok) {
     return {
       check: {
-        name: "env_api_key",
+        name: "auth",
         ok: false,
-        message: apiKey.warning.message
+        message: auth.warning.message
       } satisfies DiagnosticCheck,
-      apiKey: undefined,
-      envName: apiKey.warning.envName
+      auth
     };
   }
 
   return {
     check: {
-      name: "env_api_key",
+      name: "auth",
       ok: true,
-      message: apiKey.envName ? `${apiKey.envName} is set.` : "Provider API key is configured."
+      message: auth.envName
+        ? `${auth.envName} is set.`
+        : auth.source === "ccswitch"
+          ? "CC Switch credential reference is available."
+          : "Provider auth is configured."
     } satisfies DiagnosticCheck,
-    apiKey: apiKey.apiKey,
-    envName: apiKey.envName
+    auth
   };
 }
 
@@ -154,7 +155,7 @@ async function upstreamErrorSummary(response: Response, apiKey?: string) {
 
 async function runOpenAICompatibleTest(
   target: ResolvedDiagnosticTarget,
-  apiKey: string,
+  auth: Extract<ProviderAuthResolution, { ok: true }>,
   stream: boolean,
   startedMs: number,
   checks: DiagnosticCheck[],
@@ -195,7 +196,7 @@ async function runOpenAICompatibleTest(
     const response = await fetch(`${baseUrl}/${endpoint}`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${apiKey}`,
+        ...auth.headers,
         "content-type": "application/json"
       },
       body: JSON.stringify(requestBody),
@@ -203,7 +204,7 @@ async function runOpenAICompatibleTest(
     });
 
     if (!response.ok) {
-      const summary = await upstreamErrorSummary(response, apiKey);
+      const summary = await upstreamErrorSummary(response, auth.secret);
       const message = `Upstream returned HTTP ${response.status} ${response.statusText}. ${summary}`.trim();
       const nextChecks = [
         ...checks,
@@ -317,7 +318,7 @@ async function runOpenAICompatibleTest(
     const message = error instanceof DOMException && error.name === "AbortError"
       ? `Diagnostic timed out after ${timeoutMs / 1000}s.`
       : `Failed to reach upstream provider: ${getErrorMessage(error)}`;
-    const summary = truncate(redact(message, [apiKey]));
+    const summary = truncate(redact(message, [auth.secret]));
 
     return {
       ok: false,
@@ -463,15 +464,15 @@ async function runDiagnostic(
   apiType: "chat_completions" | "responses"
 ): Promise<DiagnosticResult> {
   const baseUrl = validBaseUrlCheck(target.provider);
-  const apiKey = apiKeyCheck(runtime, target.providerName, target.provider);
-  const checks = [...target.checks, baseUrl, apiKey.check];
+  const auth = authCheck(runtime, target.providerName, target.provider);
+  const checks = [...target.checks, baseUrl, auth.check];
 
   if (!baseUrl.ok) {
     return createFailureResult(target, stream, startedMs, checks, baseUrl.message ?? "Base URL is invalid.", apiType);
   }
 
-  if (!apiKey.check.ok) {
-    return createFailureResult(target, stream, startedMs, checks, apiKey.check.message ?? "API key is not available.", apiType);
+  if (!auth.check.ok || !auth.auth?.ok) {
+    return createFailureResult(target, stream, startedMs, checks, auth.check.message ?? "Provider auth is not available.", apiType);
   }
 
   if (target.provider.type === "mock") {
@@ -500,7 +501,7 @@ async function runDiagnostic(
     };
   }
 
-  return runOpenAICompatibleTest(target, apiKey.apiKey ?? target.provider.api_key, stream, startedMs, checks, apiType);
+  return runOpenAICompatibleTest(target, auth.auth, stream, startedMs, checks, apiType);
 }
 
 export async function testProvider(
