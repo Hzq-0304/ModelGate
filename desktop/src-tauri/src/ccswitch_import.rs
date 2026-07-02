@@ -5,7 +5,7 @@ use rusqlite::{
 use serde::Serialize;
 use serde_json::Value;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     env,
     path::{Path, PathBuf},
 };
@@ -35,8 +35,12 @@ pub struct CcSwitchImportCandidate {
     auth_type: Option<String>,
     auth_source: Option<String>,
     auth_status: Option<String>,
+    credential_id: Option<String>,
     credential_ref: Option<String>,
     credential_path: Option<String>,
+    source_config_hash: Option<String>,
+    source_fingerprint: Option<String>,
+    source_order: Option<usize>,
     model: Option<String>,
     models: Vec<String>,
     suggested_modelgate_provider: String,
@@ -88,6 +92,12 @@ struct SchemaCandidateRow {
 struct TableScanResult {
     candidates: Vec<CcSwitchImportCandidate>,
     skipped_modelgate_managed: usize,
+}
+
+#[derive(Clone, Default)]
+struct CredentialHint {
+    id: Option<String>,
+    path: Option<String>,
 }
 
 const NAME_KEYS: &[&str] = &["name", "label", "display_name", "title", "provider_name"];
@@ -279,6 +289,7 @@ fn has_current_ccswitch_schema(tables: &[CcSwitchTableInfo]) -> bool {
 
 fn scan_current_schema(connection: &Connection, show_managed: bool) -> Result<TableScanResult, String> {
     let endpoints = load_provider_endpoints(connection).unwrap_or_default();
+    let credentials = load_credentials(connection).unwrap_or_default();
     let order_clause = provider_order_clause(connection);
     let mut statement = connection
         .prepare(&format!(
@@ -318,7 +329,12 @@ fn scan_current_schema(connection: &Connection, show_managed: bool) -> Result<Ta
             .get(&(row.id.clone(), row.app_type.clone()))
             .cloned()
             .unwrap_or_default();
-        let candidate = candidate_from_current_schema(&row, urls);
+        let credential = credentials
+            .get(&(row.id.clone(), row.app_type.clone()))
+            .or_else(|| credentials.get(&(row.id.clone(), String::new())))
+            .cloned()
+            .unwrap_or_default();
+        let candidate = candidate_from_current_schema(&row, urls, credential, candidates.len());
 
         if candidate.model.is_none() {
             continue;
@@ -383,12 +399,70 @@ fn load_provider_endpoints(connection: &Connection) -> Result<HashMap<(String, S
     Ok(endpoints)
 }
 
-fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String>) -> CcSwitchImportCandidate {
+fn load_credentials(connection: &Connection) -> Result<HashMap<(String, String), CredentialHint>, String> {
+    let tables = describe_tables(connection)?;
+    let Some(credentials_table) = tables.iter().find(|table| table.name == "credentials") else {
+        return Ok(HashMap::new());
+    };
+
+    let has_column = |name: &str| credentials_table.columns.iter().any(|column| column == name);
+    if !has_column("provider_id") {
+        return Ok(HashMap::new());
+    }
+
+    let id_column = if has_column("id") { "id" } else { "provider_id" };
+    let app_expr = if has_column("app_type") { "app_type" } else { "''" };
+    let path_expr = if has_column("credential_path") {
+        "credential_path"
+    } else if has_column("path") {
+        "path"
+    } else {
+        "''"
+    };
+    let sql = format!(
+        "SELECT provider_id, {app_expr}, {id_column}, {path_expr} FROM credentials ORDER BY {id_column} ASC"
+    );
+    let mut statement = connection.prepare(&sql).map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1).unwrap_or_default(),
+                row.get::<_, String>(2).ok(),
+                row.get::<_, String>(3).ok(),
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut hints = HashMap::new();
+    for row in rows {
+        let (provider_id, app_type, id, path) = row.map_err(|error| error.to_string())?;
+        hints.insert(
+            (provider_id, app_type),
+            CredentialHint {
+                id,
+                path,
+            },
+        );
+    }
+    Ok(hints)
+}
+
+fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String>, credential: CredentialHint, source_order: usize) -> CcSwitchImportCandidate {
     let (base_url, api_key, models, provider_type_hint) = extract_current_provider_fields(row);
     let model = models.first().cloned();
     let openai_official = is_openai_official_row(row, model.as_deref());
     let auth_path = detected_codex_credential_path(&row.settings_config);
-    let auth_detected = api_key.is_some() || auth_path.is_some() || codex_auth_has_login_material(&row.settings_config);
+    let auth_detected = auth_path.is_some()
+        || api_key.is_some()
+        || credential.id.is_some()
+        || credential.path.is_some()
+        || codex_auth_has_login_material(&row.settings_config);
+    let credential_id = if auth_detected {
+        credential.id.clone().or_else(|| Some(row.id.clone()))
+    } else {
+        None
+    };
     let provider_key_hint = extract_codex_model_provider(&row.settings_config)
         .filter(|value| !matches!(value.as_str(), "custom" | "openai" | "openai-official"));
     let endpoint_base_url = endpoints.into_iter().find_map(clean_base_url);
@@ -446,6 +520,27 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
         warnings.push("Official/default provider; review before importing.".to_string());
     }
 
+    let source_config_hash = Some(stable_hash(&canonicalize_for_hash(&row.settings_config)));
+    let credential_ref = credential_id.as_ref().map(|id| {
+        if credential.id.is_some() {
+            format!("ccswitch://credentials/{}/{id}", row.app_type)
+        } else {
+            format!("ccswitch://providers/{}/{id}/auth", row.app_type)
+        }
+    });
+    let auth_source_type = if auth_detected { "ccswitch" } else { "env" };
+    let fingerprint = Some(stable_hash(&format!(
+        "app={}|provider_id={}|name={}|base_url={}|model={}|auth_type={}|credential={}|config={}",
+        row.app_type,
+        row.id,
+        provider_name,
+        base_url.as_deref().unwrap_or_default().trim_end_matches('/'),
+        model.as_deref().unwrap_or_default(),
+        auth_source_type,
+        credential_ref.as_deref().or(auth_path.as_deref()).unwrap_or_default(),
+        source_config_hash.as_deref().unwrap_or_default()
+    )));
+
     let complete = base_url.is_some() && model.is_some() && provider_type == "openai-compatible";
 
     CcSwitchImportCandidate {
@@ -462,12 +557,18 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
         api_key_env: Some(env_name.clone()),
         api_key_detected: auth_detected,
         api_key_preview: api_key.as_deref().map(mask_secret),
-        auth_type: if openai_official && auth_detected {
+        auth_type: if auth_detected {
             Some("ccswitch".to_string())
         } else {
             Some("env".to_string())
         },
-        auth_source: (openai_official && auth_detected).then(|| "CC Switch OpenAI Official".to_string()),
+        auth_source: auth_detected.then(|| {
+            if openai_official {
+                "CC Switch OpenAI Official".to_string()
+            } else {
+                "CC Switch provider_settings".to_string()
+            }
+        }),
         auth_status: Some(if auth_detected {
             "imported".to_string()
         } else if openai_official {
@@ -475,9 +576,12 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
         } else {
             "missing".to_string()
         }),
-        credential_ref: (openai_official && auth_detected)
-            .then(|| format!("ccswitch://providers/{}/{}/auth", row.app_type, row.id)),
-        credential_path: auth_path.filter(|_| openai_official && auth_detected),
+        credential_id,
+        credential_ref,
+        credential_path: credential.path.or_else(|| auth_path.filter(|_| auth_detected)),
+        source_config_hash,
+        source_fingerprint: fingerprint,
+        source_order: Some(source_order),
         model,
         models,
         suggested_modelgate_provider: safe_provider.clone(),
@@ -507,7 +611,8 @@ fn extract_codex_fields(settings: &Value) -> (Option<String>, Option<String>, Ve
     let base_url = model_provider
         .as_deref()
         .and_then(|provider| extract_toml_section_string(config_text, &format!("model_providers.{provider}"), "base_url"))
-        .or_else(|| extract_toml_string(config_text, "base_url"));
+        .or_else(|| extract_toml_string(config_text, "base_url"))
+        .or_else(|| extract_first_toml_section_string(config_text, "model_providers.", "base_url").map(|(_, value)| value));
     let api_key = settings
         .pointer("/auth/OPENAI_API_KEY")
         .and_then(Value::as_str)
@@ -516,7 +621,15 @@ fn extract_codex_fields(settings: &Value) -> (Option<String>, Option<String>, Ve
         .or_else(|| model_provider.as_deref().and_then(|provider| {
             extract_toml_section_string(config_text, &format!("model_providers.{provider}"), "experimental_bearer_token")
         }))
-        .or_else(|| extract_toml_string(config_text, "api_key"));
+        .or_else(|| model_provider.as_deref().and_then(|provider| {
+            extract_toml_section_string(config_text, &format!("model_providers.{provider}"), "api_key")
+        }))
+        .or_else(|| extract_toml_string(config_text, "api_key"))
+        .or_else(|| {
+            extract_first_toml_section_string(config_text, "model_providers.", "experimental_bearer_token")
+                .or_else(|| extract_first_toml_section_string(config_text, "model_providers.", "api_key"))
+                .map(|(_, value)| value)
+        });
     let mut models = Vec::new();
     if let Some(model) = extract_toml_string(config_text, "model") {
         models.push(model);
@@ -538,6 +651,20 @@ fn detected_codex_credential_path(settings: &Value) -> Option<String> {
         if extract_toml_section_string(config_text, &format!("model_providers.{provider}"), "experimental_bearer_token").is_some() {
             return Some(format!("/config/model_providers/{provider}/experimental_bearer_token"));
         }
+        if extract_toml_section_string(config_text, &format!("model_providers.{provider}"), "api_key").is_some() {
+            return Some(format!("/config/model_providers/{provider}/api_key"));
+        }
+    }
+
+    if extract_toml_string(config_text, "api_key").is_some() {
+        return Some("/config/api_key".to_string());
+    }
+
+    if let Some((provider, _value)) = extract_first_toml_section_string(config_text, "model_providers.", "experimental_bearer_token") {
+        return Some(format!("/config/{}/experimental_bearer_token", provider.replace('.', "/")));
+    }
+    if let Some((provider, _value)) = extract_first_toml_section_string(config_text, "model_providers.", "api_key") {
+        return Some(format!("/config/{}/api_key", provider.replace('.', "/")));
     }
 
     None
@@ -561,6 +688,88 @@ fn codex_auth_has_login_material(settings: &Value) -> bool {
             _ => true,
         }
     })
+}
+
+fn canonicalize_for_hash(value: &Value) -> String {
+    sanitize_hash_value(value).to_string()
+}
+
+fn sanitize_hash_value(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut sorted = BTreeMap::new();
+            for (key, item) in map {
+                let normalized = normalize_key(key);
+                if matches!(
+                    normalized.as_str(),
+                    "last_refresh" | "updated_at" | "created_at" | "sort_index" | "sort_order" | "position"
+                ) {
+                    continue;
+                }
+
+                let sanitized = if key_looks_secret(key) {
+                    Value::String("<secret-present>".to_string())
+                } else {
+                    sanitize_hash_value(item)
+                };
+                sorted.insert(key.clone(), sanitized);
+            }
+            Value::Object(sorted.into_iter().collect())
+        }
+        Value::Array(items) => Value::Array(items.iter().map(sanitize_hash_value).collect()),
+        Value::String(text) => Value::String(sanitize_hash_string(text)),
+        _ => value.clone(),
+    }
+}
+
+fn stable_hash(value: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in value.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn key_looks_secret(key: &str) -> bool {
+    let normalized = normalize_key(key);
+    normalized.contains("api_key")
+        || normalized.contains("token")
+        || normalized.contains("secret")
+        || normalized.contains("authorization")
+        || normalized.contains("bearer")
+}
+
+fn looks_secret_value(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.starts_with("sk-")
+        || trimmed.starts_with("eyJ")
+        || trimmed.len() > 80 && !trimmed.contains('\n')
+}
+
+fn sanitize_hash_string(value: &str) -> String {
+    if looks_secret_value(value) {
+        return "<secret-present>".to_string();
+    }
+
+    if !value.contains('=') {
+        return value.to_string();
+    }
+
+    value
+        .lines()
+        .map(|line| {
+            let Some((left, _right)) = line.split_once('=') else {
+                return line.to_string();
+            };
+            if key_looks_secret(left.trim()) {
+                format!("{}= <secret-present>", left.trim_end())
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn extract_codex_model_provider(settings: &Value) -> Option<String> {
@@ -646,11 +855,23 @@ fn extract_generic_json_fields(settings: &Value) -> (Option<String>, Option<Stri
 }
 
 fn extract_toml_string(config: &str, key: &str) -> Option<String> {
+    let mut in_section = false;
+
     for line in config.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('#') || !trimmed.starts_with(key) {
+        if trimmed.starts_with('#') || trimmed.is_empty() {
             continue;
         }
+
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_section = true;
+            continue;
+        }
+
+        if in_section || !trimmed.starts_with(key) {
+            continue;
+        }
+
         let Some((left, right)) = trimmed.split_once('=') else {
             continue;
         };
@@ -703,6 +924,48 @@ fn extract_toml_section_string(config: &str, section: &str, key: &str) -> Option
                 .to_string(),
         )
         .filter(|value| !value.is_empty());
+    }
+
+    None
+}
+
+fn extract_first_toml_section_string(config: &str, section_prefix: &str, key: &str) -> Option<(String, String)> {
+    let mut current_section: Option<String> = None;
+
+    for line in config.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') || trimmed.is_empty() {
+            continue;
+        }
+
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            let current = trimmed.trim_start_matches('[').trim_end_matches(']').trim();
+            current_section = current.starts_with(section_prefix).then(|| current.to_string());
+            continue;
+        }
+
+        let Some(section) = current_section.as_ref() else {
+            continue;
+        };
+        if !trimmed.starts_with(key) {
+            continue;
+        }
+
+        let Some((left, right)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if left.trim() != key {
+            continue;
+        }
+
+        let value = right
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
+        if !value.is_empty() {
+            return Some((section.clone(), value));
+        }
     }
 
     None
@@ -1006,8 +1269,12 @@ fn candidate_from_fields(
         auth_type: Some("env".to_string()),
         auth_source: None,
         auth_status: Some(if api_key.is_some() { "imported".to_string() } else { "missing".to_string() }),
+        credential_id: None,
         credential_ref: None,
         credential_path: None,
+        source_config_hash: None,
+        source_fingerprint: None,
+        source_order: Some(row_index),
         model,
         models,
         suggested_modelgate_provider: safe_provider.clone(),
@@ -1376,6 +1643,43 @@ mod tests {
         assert_eq!(models, vec!["gpt-5.5"]);
         assert_eq!(provider_type.as_deref(), Some("openai-compatible"));
         assert_eq!(detected_codex_credential_path(&settings).as_deref(), Some("/auth/OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn codex_hardyai_candidate_uses_ccswitch_auth_reference() {
+        let settings = json!({
+            "auth": {
+                "OPENAI_API_KEY": "sk-from-ccswitch"
+            },
+            "config": "model_provider = \"custom\"\nmodel = \"gpt-5.5\"\n[model_providers.custom]\nname = \"HardyAI\"\nbase_url = \"https://api.hardyapi.online\"\nwire_api = \"responses\"\nrequires_openai_auth = true\n"
+        });
+        let row = SchemaCandidateRow {
+            id: "hardyai-1782220605678".to_string(),
+            app_type: "codex".to_string(),
+            name: "HardyAI".to_string(),
+            settings_config: settings,
+            notes: None,
+            category: None,
+            meta: Value::Null,
+        };
+
+        let candidate = candidate_from_current_schema(&row, Vec::new(), CredentialHint::default(), 0);
+
+        assert_eq!(candidate.provider_name, "HardyAI");
+        assert_eq!(candidate.base_url.as_deref(), Some("https://api.hardyapi.online"));
+        assert_eq!(candidate.model.as_deref(), Some("gpt-5.5"));
+        assert_eq!(candidate.api_key_env.as_deref(), Some("HARDYAI_API_KEY"));
+        assert!(candidate.api_key_detected);
+        assert_eq!(candidate.auth_type.as_deref(), Some("ccswitch"));
+        assert_eq!(candidate.auth_status.as_deref(), Some("imported"));
+        assert_eq!(candidate.credential_id.as_deref(), Some("hardyai-1782220605678"));
+        assert_eq!(
+            candidate.credential_ref.as_deref(),
+            Some("ccswitch://providers/codex/hardyai-1782220605678/auth")
+        );
+        assert_eq!(candidate.credential_path.as_deref(), Some("/auth/OPENAI_API_KEY"));
+        assert!(candidate.source_config_hash.is_some());
+        assert!(candidate.source_fingerprint.is_some());
     }
 
     #[test]

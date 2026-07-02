@@ -144,6 +144,86 @@ providers:
   });
 }
 
+async function testCcSwitchHardyAiReferenceDoesNotWarnAsHardyEnv() {
+  delete process.env.HARDYAI_API_KEY;
+  const configPath = join(tempDir, "ccswitch-hardyai-reference.yaml");
+
+  writeFileSync(configPath, `server:
+  host: 127.0.0.1
+  port: 11435
+
+active: hardyai
+
+aliases:
+  hardyai:
+    provider: hardyai
+    model: gpt-5.5
+    description: HardyAI imported from CC Switch
+    metadata:
+      imported_from: ccswitch
+      source_app: codex
+      source_provider_id: hardyai-1782220605678
+      source_config_hash: hash-hardyai
+      source_fingerprint: fingerprint-hardyai
+
+providers:
+  hardyai:
+    type: openai-compatible
+    base_url: https://api.hardyapi.online
+    api_key: \${HARDYAI_API_KEY}
+    auth:
+      type: ccswitch
+      source: CC Switch provider_settings
+      app: codex
+      provider_id: hardyai-1782220605678
+      credential_id: hardyai-1782220605678
+      credential_ref: ccswitch://providers/codex/hardyai-1782220605678/auth
+      credential_path: /auth/OPENAI_API_KEY
+      fallback_env: HARDYAI_API_KEY
+      header: Authorization
+      scheme: Bearer
+    description: HardyAI imported from CC Switch
+    metadata:
+      imported_from: ccswitch
+      source_app: codex
+      source_provider_id: hardyai-1782220605678
+      source_config_hash: hash-hardyai
+      source_fingerprint: fingerprint-hardyai
+`, "utf8");
+
+  const config = await loadConfig({ configPath });
+  const provider = config.providers.hardyai;
+  assert.equal(provider?.type, "openai-compatible");
+  assert.equal(provider?.auth?.type, "ccswitch");
+  assert.equal(provider?.auth?.credential_id, "hardyai-1782220605678");
+  assert.equal(provider?.metadata?.source_config_hash, "hash-hardyai");
+
+  await withModelGate(configPath, async (baseUrl) => {
+    const health = await fetch(`${baseUrl}/health`).then((response) => response.json());
+    assert.equal(health.ok, true);
+
+    const status = await fetch(`${baseUrl}/admin/status`).then((response) => response.json());
+    assert.equal(status.config_warnings?.length ?? 0, 0);
+    assert.notEqual(status.config_warnings?.[0]?.env, "HARDYAI_API_KEY");
+
+    const chatResponse = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "hardyai",
+        messages: [{ role: "user", content: "hello" }]
+      })
+    });
+    const chatJson = await chatResponse.json();
+    assert.equal(chatResponse.status, 400);
+    assert.equal(chatJson.error.type, "missing_credential");
+    assert.equal(chatJson.error.provider, "hardyai");
+    assert.equal(chatJson.error.credential_id, "ccswitch://providers/codex/hardyai-1782220605678/auth");
+    assert.notEqual(chatJson.error.type, "missing_environment_variable");
+    assert.notEqual(chatJson.error.env, "HARDYAI_API_KEY");
+  });
+}
+
 async function testCcSwitchMissingCredentialWarningWithoutReference() {
   const configPath = join(tempDir, "ccswitch-missing-credential-warning.yaml");
 
@@ -254,6 +334,7 @@ providers:
 try {
   await testLegacyMissingEnv();
   await testCcSwitchImportedReferenceDoesNotWarnAsOpenAiEnv();
+  await testCcSwitchHardyAiReferenceDoesNotWarnAsHardyEnv();
   await testCcSwitchMissingCredentialWarningWithoutReference();
   await testImportedCredentialHeader();
 

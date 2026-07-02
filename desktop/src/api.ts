@@ -49,6 +49,8 @@ type SwitchResponse = {
   active: string;
 };
 
+export type ConfigMetadata = Record<string, unknown>;
+
 export type ServerProcessStatus = {
   status: "stopped" | "starting" | "running" | "stopping" | "failed" | "external-running";
   endpoint: string;
@@ -73,6 +75,7 @@ export type ProviderConfig =
   | {
     type: "mock";
     description?: string;
+    metadata?: ConfigMetadata;
   }
   | {
     type: "openai-compatible";
@@ -89,6 +92,7 @@ export type ProviderConfig =
       app?: string;
       db_path?: string;
       provider_id?: string;
+      credential_id?: string;
       credential_ref?: string;
       credential_path?: string;
       fallback_env?: string;
@@ -105,6 +109,7 @@ export type ProviderConfig =
     responses_api?: boolean;
     api_key_resolved?: boolean;
     description?: string;
+    metadata?: ConfigMetadata;
   };
 
 export type EditableConfig = {
@@ -120,6 +125,7 @@ export type EditableConfig = {
     provider: string;
     model: string;
     description?: string;
+    metadata?: ConfigMetadata;
   }>;
   providers: Record<string, ProviderConfig>;
   pricing?: Record<string, {
@@ -305,8 +311,18 @@ export type CcSwitchImportCandidate = {
   auth_type?: "env" | "ccswitch" | "static-header-ref";
   auth_source?: string;
   auth_status?: "imported" | "fallback" | "missing";
+  credential_id?: string;
   credential_ref?: string;
   credential_path?: string;
+  source_config_hash?: string;
+  source_fingerprint?: string;
+  source_order?: number;
+  duplicate?: {
+    existing_alias?: string;
+    existing_provider?: string;
+    reason: string;
+    match: "source_config_hash" | "source_fingerprint" | "source_provider_id" | "base_model_auth";
+  };
   model?: string;
   models: string[];
   suggested_modelgate_provider: string;
@@ -562,14 +578,19 @@ async function collectOfflineConfigWarnings(config: EditableConfig) {
     }
 
     if (provider.auth?.type === "ccswitch") {
-      const hasReference = Boolean(provider.auth.credential_ref || provider.auth.credential_path || provider.auth.provider_id);
+      const hasReference = Boolean(
+        provider.auth.credential_ref
+        || provider.auth.credential_path
+        || provider.auth.credential_id
+        || provider.auth.provider_id
+      );
       if (hasReference) {
         continue;
       }
 
       const fallbackEnv = provider.auth.fallback_env;
       const source = provider.auth.source;
-      const credentialRef = provider.auth.credential_ref ?? provider.auth.provider_id;
+      const credentialRef = provider.auth.credential_ref ?? provider.auth.credential_id ?? provider.auth.provider_id;
       if (fallbackEnv) {
         envNames.push(fallbackEnv);
       }

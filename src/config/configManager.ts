@@ -78,7 +78,7 @@ function authResolved(auth: unknown, fallbackApiKey: unknown) {
     return typeof record.env === "string" && Boolean(process.env[record.env]);
   }
   if (record.type === "ccswitch") {
-    return Boolean(record.credential_ref || record.credential_path || record.provider_id);
+    return Boolean(record.credential_ref || record.credential_path || record.credential_id || record.provider_id);
   }
   if (record.type === "static-header-ref") {
     if (typeof record.value === "string" && record.value.trim()) {

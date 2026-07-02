@@ -131,6 +131,11 @@
   padding: 12px;
 }
 
+.ccswitch-import-item.duplicate {
+  background: #fffaf0;
+  border-color: #fedf89;
+}
+
 .ccswitch-import-check {
   align-items: center;
   display: flex;

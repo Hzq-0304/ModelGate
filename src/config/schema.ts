@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const namePattern = /^[A-Za-z0-9_-]+$/;
 const envNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const metadataSchema = z.record(z.unknown()).optional();
 
 export const providerAuthSchema = z.union([
   z.object({
@@ -16,6 +17,7 @@ export const providerAuthSchema = z.union([
     app: z.string().min(1).default("codex"),
     db_path: z.string().optional(),
     provider_id: z.string().optional(),
+    credential_id: z.string().optional(),
     credential_ref: z.string().optional(),
     credential_path: z.string().optional(),
     fallback_env: z.string().regex(envNamePattern).optional(),
@@ -42,7 +44,8 @@ export const providerAuthSchema = z.union([
 
 export const mockProviderSchema = z.object({
   type: z.literal("mock"),
-  description: z.string().optional()
+  description: z.string().optional(),
+  metadata: metadataSchema
 });
 
 export const openAICompatibleProviderSchema = z.object({
@@ -51,7 +54,8 @@ export const openAICompatibleProviderSchema = z.object({
   api_key: z.string().min(1).optional(),
   auth: providerAuthSchema.optional(),
   responses_api: z.boolean().default(false),
-  description: z.string().optional()
+  description: z.string().optional(),
+  metadata: metadataSchema
 }).superRefine((provider, context) => {
   if (!provider.api_key && !provider.auth) {
     context.addIssue({
@@ -70,7 +74,8 @@ export const providerSchema = z.union([
 export const aliasSchema = z.object({
   provider: z.string().min(1),
   model: z.string().min(1),
-  description: z.string().optional()
+  description: z.string().optional(),
+  metadata: metadataSchema
 });
 
 export const entrypointSchema = z.object({

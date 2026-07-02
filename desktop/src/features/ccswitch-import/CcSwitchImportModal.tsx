@@ -16,8 +16,18 @@ export type CcSwitchImportDraft = {
   auth_type?: "env" | "ccswitch" | "static-header-ref";
   auth_source?: string;
   auth_status?: "imported" | "fallback" | "missing";
+  credential_id?: string;
   credential_ref?: string;
   credential_path?: string;
+  source_config_hash?: string;
+  source_fingerprint?: string;
+  source_order?: number;
+  duplicate?: {
+    existing_alias?: string;
+    existing_provider?: string;
+    reason: string;
+    match: "source_config_hash" | "source_fingerprint" | "source_provider_id" | "base_model_auth";
+  };
   suggested_env_name: string;
   complete: boolean;
   modelgate_managed: boolean;
@@ -86,7 +96,7 @@ export function CcSwitchImportModal({
   onUpdateDraft
 }: CcSwitchImportModalProps) {
   const { t } = useI18n();
-  const selectedCount = drafts.filter((draft) => draft.selected).length;
+  const selectedCount = drafts.filter((draft) => draft.selected && (!draft.duplicate || generateNewNames)).length;
   const scanning = busyAction === "ccswitch:scan";
   const selecting = busyAction === "ccswitch:select";
   const importing = busyAction === "ccswitch:import";
@@ -111,6 +121,13 @@ export function CcSwitchImportModal({
       envName: editing.envName
     });
     setEditing(null);
+  }
+
+  function updateSelected(draft: CcSwitchImportDraft, selected: boolean) {
+    onUpdateDraft(draft.id, {
+      selected,
+      duplicate: draft.duplicate
+    });
   }
 
   return (
@@ -162,17 +179,25 @@ export function CcSwitchImportModal({
         {drafts.length > 0 ? (
           <div className="ccswitch-import-list">
             {drafts.map((draft) => (
-              <article className="ccswitch-import-item" key={draft.id}>
+              <article className={draft.duplicate ? "ccswitch-import-item duplicate" : "ccswitch-import-item"} key={draft.id}>
                 <label className="ccswitch-import-check">
                   <input
+                    disabled={Boolean(draft.duplicate) && !generateNewNames}
                     type="checkbox"
                     checked={draft.selected}
-                    onChange={(event) => onUpdateDraft(draft.id, { selected: event.target.checked })}
+                    onChange={(event) => updateSelected(draft, event.target.checked)}
                   />
                 </label>
                 <div className="ccswitch-import-item-main">
                   <strong>{draft.name}</strong>
                   <p title={draft.description}>{draft.description || t("ccswitchImport.item.noDescription")}</p>
+                  {draft.duplicate && (
+                    <span className="ccswitch-import-source-line">
+                      {t("ccswitchImport.item.alreadyImported", { alias: draft.duplicate.existing_alias ?? draft.duplicate.existing_provider ?? "-" })}
+                      {" "}
+                      {t("ccswitchImport.item.duplicateReason", { reason: draft.duplicate.reason })}
+                    </span>
+                  )}
                   {!draft.api_key_detected && (
                     <span className="ccswitch-import-warning-line">
                       {draft.auth_type === "ccswitch"
@@ -256,6 +281,16 @@ export function CcSwitchImportModal({
               <span>{t("ccswitchImport.edit.authSource")}</span>
               <code>{editingSource.auth_source ?? editingSource.auth_type ?? "env"}</code>
             </div>
+            {editingSource.duplicate && (
+              <div className="ccswitch-edit-readonly">
+                <span>{t("ccswitchImport.edit.duplicate")}</span>
+                <code>
+                  {t("ccswitchImport.item.alreadyImported", { alias: editingSource.duplicate.existing_alias ?? editingSource.duplicate.existing_provider ?? "-" })}
+                  {" "}
+                  {t("ccswitchImport.item.duplicateReason", { reason: editingSource.duplicate.reason })}
+                </code>
+              </div>
+            )}
             <div className="ccswitch-edit-readonly">
               <span>{t("ccswitchImport.edit.apiKeyPreview")}</span>
               <code>

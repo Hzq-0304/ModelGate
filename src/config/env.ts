@@ -53,6 +53,7 @@ type ProviderAuthConfigLike =
     app?: string;
     db_path?: string;
     provider_id?: string;
+    credential_id?: string;
     credential_ref?: string;
     credential_path?: string;
     fallback_env?: string;
@@ -230,7 +231,7 @@ function collectAuthWarning(providerName: string, auth: ProviderAuthConfigLike):
         `providers.${providerName}.auth`,
         auth.source,
         providerName,
-        auth.credential_ref ?? auth.provider_id,
+        auth.credential_ref ?? auth.credential_id ?? auth.provider_id,
         auth.fallback_env
       );
   }
@@ -242,6 +243,7 @@ function hasCcSwitchReference(auth: Extract<ProviderAuthConfigLike, { type: "ccs
   return Boolean(
     auth.credential_ref?.trim()
     || auth.credential_path?.trim()
+    || auth.credential_id?.trim()
     || auth.provider_id?.trim()
   );
 }
@@ -326,7 +328,7 @@ function resolveExplicitProviderAuth(providerName: string, auth: ProviderAuthCon
             `providers.${providerName}.auth`,
             auth.source,
             providerName,
-            auth.credential_ref ?? auth.provider_id,
+            auth.credential_ref ?? auth.credential_id ?? auth.provider_id,
             hasReference ? undefined : auth.fallback_env
           )
         };

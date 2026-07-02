@@ -21,6 +21,8 @@ type AccountSwitcherProps = {
   onGoToIntegrations?: () => void;
   onSelectAccount: (alias: string) => void;
   onAlreadyActive: () => void;
+  onDeleteAccount?: (alias: string) => void;
+  onEditAccount?: (alias: string) => void;
 };
 
 export function AccountSwitcher({
@@ -33,6 +35,8 @@ export function AccountSwitcher({
   message,
   switchingAlias,
   onGoToIntegrations,
+  onDeleteAccount,
+  onEditAccount,
   onSelectAccount,
   onAlreadyActive
 }: AccountSwitcherProps) {
@@ -65,10 +69,6 @@ export function AccountSwitcher({
 
   function handleSelect(alias: string) {
     setSelectedAliasName(alias);
-
-    if (disconnected) {
-      return;
-    }
 
     if (alias === activeName) {
       onAlreadyActive();
@@ -114,6 +114,8 @@ export function AccountSwitcher({
                   disabled={Boolean(switchingAlias)}
                   key={account.name}
                   authWarning={missingEnvByProvider.get(account.provider)}
+                  onDelete={onDeleteAccount}
+                  onEdit={onEditAccount}
                   selected={account.name === selectedAlias?.name}
                   switching={switchingAlias === account.name}
                   onSelect={handleSelect}
@@ -169,7 +171,7 @@ export function AccountSwitcher({
               </dl>
               <div className="account-detail-actions">
                 <button
-                  disabled={disconnected || Boolean(switchingAlias) || selectedAlias.name === activeName}
+                  disabled={Boolean(switchingAlias) || selectedAlias.name === activeName}
                   onClick={() => handleSelect(selectedAlias.name)}
                   type="button"
                 >
@@ -178,6 +180,16 @@ export function AccountSwitcher({
                 {onGoToIntegrations && (
                   <button className="secondary" onClick={onGoToIntegrations} type="button">
                     {t("quickStart.configureProviders")}
+                  </button>
+                )}
+                {onEditAccount && (
+                  <button className="secondary" onClick={() => onEditAccount(selectedAlias.name)} type="button">
+                    {t("common.edit")}
+                  </button>
+                )}
+                {onDeleteAccount && (
+                  <button className="secondary danger" onClick={() => onDeleteAccount(selectedAlias.name)} type="button">
+                    {t("common.delete")}
                   </button>
                 )}
               </div>

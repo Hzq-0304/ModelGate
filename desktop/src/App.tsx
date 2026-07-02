@@ -62,6 +62,7 @@ type ConfigSection = SettingsSectionId;
 
 type ImportDraft = CcSwitchImportCandidate & {
   selected: boolean;
+  duplicate?: CcSwitchImportCandidate["duplicate"];
   providerName: string;
   baseUrl: string;
   envName: string;
@@ -139,6 +140,16 @@ function normalizeEnvName(value: string | undefined, fallbackKey: string) {
   return `${fallback || "CCSWITCH_PROVIDER"}_API_KEY`;
 }
 
+function normalizeEndpointForCompare(value: string | undefined) {
+  return (value ?? "").trim().replace(/\/+$/, "").toLowerCase();
+}
+
+function metadataString(metadata: unknown, key: string) {
+  return metadata && typeof metadata === "object" && key in metadata
+    ? String((metadata as Record<string, unknown>)[key] ?? "")
+    : "";
+}
+
 function looksLikeOpenAIOfficial(value: string | undefined) {
   const normalized = normalizeConfigKey(value ?? "");
   return normalized === "openai"
@@ -158,15 +169,16 @@ function draftLooksLikeOpenAIOfficial(draft: Pick<ImportDraft, "name" | "provide
 function buildProviderAuthFromDraft(draft: ImportDraft, providerName: string, envName: string) {
   const hasCcSwitchCredential = draft.auth_type === "ccswitch"
     && draft.auth_status === "imported"
-    && Boolean(draft.credential_ref || draft.credential_path || draft.source_id);
+    && Boolean(draft.credential_ref || draft.credential_path || draft.credential_id || draft.source_id);
 
   if (hasCcSwitchCredential) {
     return {
       type: "ccswitch" as const,
-      source: draft.auth_source ?? "CC Switch OpenAI Official",
+      source: draft.auth_source ?? "CC Switch provider_settings",
       app: draft.app || "codex",
       db_path: draft.db_path,
       provider_id: draft.source_id,
+      credential_id: draft.credential_id ?? draft.source_id,
       credential_ref: draft.credential_ref ?? (draft.source_id ? `ccswitch://providers/${draft.app || "codex"}/${draft.source_id}/auth` : undefined),
       credential_path: draft.credential_path ?? "/auth/OPENAI_API_KEY",
       fallback_env: envName,
@@ -199,7 +211,7 @@ export function App() {
   const [ccSwitchMessage, setCcSwitchMessage] = useState("CC Switch import not scanned");
   const [ccSwitchReport, setCcSwitchReport] = useState<CcSwitchImportReport | null>(null);
   const [showCcSwitchImportGuide, setShowCcSwitchImportGuide] = useState(false);
-  const [generateImportNames, setGenerateImportNames] = useState(true);
+  const [generateImportNames, setGenerateImportNames] = useState(false);
   const [ccSwitchExportDraft, setCcSwitchExportDraft] = useState<CcSwitchExportDraft>({
     name: "ModelGate Local",
     app: "codex",
@@ -227,13 +239,15 @@ export function App() {
     type: "openai-compatible",
     baseUrl: "",
     envName: "",
-    responsesApi: false
+    responsesApi: false,
+    description: ""
   });
   const [aliasForm, setAliasForm] = useState({
     editingName: "",
     name: "",
     provider: "",
-    model: ""
+    model: "",
+    description: ""
   });
   const [entrypointForm, setEntrypointForm] = useState({
     editingName: "",
@@ -298,20 +312,65 @@ export function App() {
     };
   }
 
-  function makeUniqueName(baseName: string, existing: Set<string>) {
-    if (!existing.has(baseName)) {
-      existing.add(baseName);
-      return baseName;
+  function findImportedDuplicate(draft: ImportDraft, config: EditableConfig | null): ImportDraft["duplicate"] {
+    if (!config) {
+      return undefined;
     }
 
-    let candidate = `${baseName}-imported`;
-    let index = 2;
-    while (existing.has(candidate)) {
-      candidate = `${baseName}-imported-${index}`;
-      index += 1;
+    const sourceHash = draft.source_config_hash ?? "";
+    const sourceFingerprint = draft.source_fingerprint ?? "";
+    const sourceProviderId = draft.source_id ?? "";
+    const credentialRef = draft.credential_ref ?? draft.credential_id ?? draft.credential_path ?? "";
+    const baseUrl = normalizeEndpointForCompare(draft.baseUrl);
+    const model = draft.modelValue.trim();
+
+    for (const [aliasName, alias] of Object.entries(config.aliases)) {
+      const provider = config.providers[alias.provider];
+      if (!provider || provider.type !== "openai-compatible") {
+        continue;
+      }
+
+      const providerMetadata = provider.metadata;
+      const aliasMetadata = alias.metadata;
+      const existingHash = metadataString(providerMetadata, "source_config_hash") || metadataString(aliasMetadata, "source_config_hash");
+      const existingFingerprint = metadataString(providerMetadata, "source_fingerprint") || metadataString(aliasMetadata, "source_fingerprint");
+      const existingProviderId = metadataString(providerMetadata, "source_provider_id") || metadataString(aliasMetadata, "source_provider_id");
+      const existingCredential = provider.auth?.type === "ccswitch"
+        ? provider.auth.credential_ref ?? provider.auth.credential_id ?? provider.auth.credential_path ?? ""
+        : "";
+
+      if (sourceHash && existingHash === sourceHash) {
+        return { existing_alias: aliasName, existing_provider: alias.provider, reason: "source_config_hash", match: "source_config_hash" };
+      }
+      if (sourceFingerprint && existingFingerprint === sourceFingerprint) {
+        return { existing_alias: aliasName, existing_provider: alias.provider, reason: "source_fingerprint", match: "source_fingerprint" };
+      }
+      if (sourceProviderId && existingProviderId === sourceProviderId) {
+        return { existing_alias: aliasName, existing_provider: alias.provider, reason: "source_provider_id", match: "source_provider_id" };
+      }
+      if (
+        baseUrl
+        && normalizeEndpointForCompare(provider.base_url) === baseUrl
+        && alias.model === model
+        && credentialRef
+        && existingCredential === credentialRef
+      ) {
+        return { existing_alias: aliasName, existing_provider: alias.provider, reason: "base_url + model + credential reference", match: "base_model_auth" };
+      }
     }
-    existing.add(candidate);
-    return candidate;
+
+    return undefined;
+  }
+
+  function markImportDuplicates(drafts: ImportDraft[], config = editableConfig) {
+    return drafts.map((draft) => {
+      const duplicate = findImportedDuplicate(draft, config);
+      return {
+        ...draft,
+        duplicate,
+        selected: duplicate ? false : draft.selected
+      };
+    });
   }
 
   function makeNumberedName(baseName: string, existing: Set<string>) {
@@ -342,7 +401,19 @@ export function App() {
   }
 
   function updateImportDraft(id: string, patch: Partial<ImportDraft>) {
-    setImportDrafts((drafts) => drafts.map((draft) => draft.id === id ? { ...draft, ...patch } : draft));
+    setImportDrafts((drafts) => drafts.map((draft) => {
+      if (draft.id !== id) {
+        return draft;
+      }
+
+      const nextDraft = { ...draft, ...patch };
+      const duplicate = findImportedDuplicate(nextDraft, editableConfig);
+      return {
+        ...nextDraft,
+        duplicate,
+        selected: duplicate && !generateImportNames ? false : nextDraft.selected
+      };
+    }));
   }
 
   async function loadConfiguration() {
@@ -397,6 +468,22 @@ export function App() {
       mode: "offline" as const,
       result: await writeModelGateConfig(config)
     };
+  }
+
+  async function persistConfigChange(config: EditableConfig, successMessage: string) {
+    const { mode, result } = await saveConfigForCurrentMode(config);
+    if (!result.ok) {
+      throw new Error((result.errors ?? ["Save failed"]).join(" "));
+    }
+
+    setEditableConfig(config);
+    await loadConfiguration().catch(() => undefined);
+    if (mode === "online") {
+      await reloadConfig().catch(() => undefined);
+      await refresh();
+    }
+    setMessage(successMessage);
+    setConfigMessage(successMessage);
   }
 
   async function loadProviderPresets() {
@@ -605,7 +692,7 @@ export function App() {
   async function applyCcSwitchScan(scan: Awaited<ReturnType<typeof scanCcSwitchDatabase>>) {
     setCcSwitchPath(scan.path);
     setCcSwitchReport(scan.report);
-    setImportDrafts(scan.candidates.map(candidateToDraft));
+    setImportDrafts(markImportDuplicates(scan.candidates.map(candidateToDraft)));
     const skipped = scan.skipped_modelgate_managed > 0
       ? ` ${t("ccswitch.simple.skippedManaged", { count: scan.skipped_modelgate_managed })}`
       : "";
@@ -717,6 +804,14 @@ export function App() {
   }, [refresh]);
 
   useEffect(() => {
+    if (!showCcSwitchImportGuide || importDrafts.length === 0) {
+      return;
+    }
+
+    setImportDrafts((drafts) => markImportDuplicates(drafts));
+  }, [editableConfig, showCcSwitchImportGuide]);
+
+  useEffect(() => {
     const lifecycle = serverProcess?.status;
     if (lifecycle !== "starting" && lifecycle !== "stopping") {
       return;
@@ -749,14 +844,92 @@ export function App() {
     setBusyAction(`switch:${aliasName}`);
 
     try {
-      await switchAlias(aliasName);
-      const [nextStatus, nextAliases] = await Promise.all([getStatus(), getAliases()]);
-      setStatus(nextStatus);
-      setAliases(nextAliases);
-      setConnection("connected");
-      setMessage(`Switched to ${aliasName}`);
+      if (connection === "connected") {
+        await switchAlias(aliasName);
+        const [nextStatus, nextAliases] = await Promise.all([getStatus(), getAliases()]);
+        setStatus(nextStatus);
+        setAliases(nextAliases);
+        setConnection("connected");
+        setMessage(`Switched to ${aliasName}`);
+      } else if (editableConfig) {
+        const nextConfig = { ...editableConfig, active: aliasName };
+        await persistConfigChange(nextConfig, `Active alias set to ${aliasName}. It will take effect after the server starts.`);
+      } else {
+        setMessage("Load local configuration before switching aliases offline.");
+      }
     } catch (error) {
       setMessage(`Failed to switch: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function handleEditAccount(aliasName: string) {
+    if (!editableConfig) {
+      return;
+    }
+    const alias = editableConfig.aliases[aliasName];
+    if (!alias) {
+      setMessage(`Alias ${aliasName} is missing from local config.`);
+      return;
+    }
+    const provider = editableConfig.providers[alias.provider];
+    editAlias(aliasName, alias);
+    if (provider) {
+      editProvider(alias.provider, provider);
+    }
+    openSettings("aliases");
+    setConfigMessage(`Editing ${aliasName}. Provider fields are also prefilled.`);
+  }
+
+  async function handleDeleteAccount(aliasName: string) {
+    if (!editableConfig) {
+      return;
+    }
+    const alias = editableConfig.aliases[aliasName];
+    if (!alias) {
+      setMessage(`Alias ${aliasName} is missing from local config.`);
+      return;
+    }
+    if (Object.keys(editableConfig.aliases).length <= 1) {
+      setMessage("Cannot delete the last alias. Add or import another alias first.");
+      return;
+    }
+    if (!window.confirm(`Delete alias "${aliasName}"?`)) {
+      return;
+    }
+
+    const providerName = alias.provider;
+    const remainingReferences = Object.entries(editableConfig.aliases)
+      .filter(([name]) => name !== aliasName)
+      .filter(([, candidate]) => candidate.provider === providerName);
+    const deleteProviderToo = remainingReferences.length === 0
+      && Boolean(editableConfig.providers[providerName])
+      && window.confirm(`Provider "${providerName}" has no other aliases. Delete it too?`);
+
+    const aliases = { ...editableConfig.aliases };
+    delete aliases[aliasName];
+    const providers = { ...editableConfig.providers };
+    if (deleteProviderToo) {
+      delete providers[providerName];
+    }
+    const nextActive = editableConfig.active === aliasName
+      ? Object.keys(aliases)[0] ?? ""
+      : editableConfig.active;
+    const nextConfig = {
+      ...editableConfig,
+      active: nextActive,
+      aliases,
+      providers
+    };
+
+    setBusyAction(`delete:${aliasName}`);
+    try {
+      await persistConfigChange(nextConfig, deleteProviderToo
+        ? `Deleted ${aliasName} and orphan provider ${providerName}.`
+        : `Deleted ${aliasName}.`);
+    } catch (error) {
+      setMessage(`Delete failed: ${getErrorMessage(error)}`);
     } finally {
       setBusyAction(null);
     }
@@ -933,7 +1106,8 @@ export function App() {
       type: "openai-compatible",
       baseUrl: "",
       envName: "",
-      responsesApi: false
+      responsesApi: false,
+      description: ""
     });
   }
 
@@ -942,7 +1116,8 @@ export function App() {
       editingName: "",
       name: "",
       provider: "",
-      model: ""
+      model: "",
+      description: ""
     });
   }
 
@@ -954,38 +1129,68 @@ export function App() {
     });
   }
 
-  function saveProviderDraft() {
+  async function saveProviderDraft() {
     if (!editableConfig || !providerForm.name.trim()) {
       setConfigMessage("Provider name is required");
       return;
     }
 
     const name = providerForm.name.trim();
+    const previousProvider = providerForm.editingName
+      ? editableConfig.providers[providerForm.editingName]
+      : editableConfig.providers[name];
+    const previousAuth = previousProvider?.type === "openai-compatible" ? previousProvider.auth : undefined;
+    const previousMetadata = previousProvider?.metadata;
+    const description = providerForm.description.trim();
     const provider: ProviderConfig = providerForm.type === "mock"
-      ? { type: "mock" }
+      ? {
+        type: "mock",
+        ...(description ? { description } : {}),
+        ...(previousMetadata ? { metadata: previousMetadata } : {})
+      }
       : {
         type: "openai-compatible",
         base_url: providerForm.baseUrl.trim(),
         api_key: `\${${providerForm.envName.trim()}}`,
-        auth: {
-          type: "env",
-          header: "Authorization",
-          scheme: "Bearer",
-          env: providerForm.envName.trim()
-        },
-        responses_api: providerForm.responsesApi
+        auth: previousAuth?.type === "ccswitch"
+          ? {
+            ...previousAuth,
+            fallback_env: providerForm.envName.trim() || previousAuth.fallback_env
+          }
+          : {
+            type: "env",
+            header: "Authorization",
+            scheme: "Bearer",
+            env: providerForm.envName.trim()
+          },
+        responses_api: providerForm.responsesApi,
+        ...(description ? { description } : {}),
+        ...(previousMetadata ? { metadata: previousMetadata } : {})
       };
 
-    updateConfig((config) => {
-      const providers = { ...config.providers };
-      if (providerForm.editingName && providerForm.editingName !== name) {
-        delete providers[providerForm.editingName];
-      }
-      providers[name] = provider;
-      return { ...config, providers };
-    });
-    resetProviderForm();
-    setConfigMessage(`Provider ${name} updated locally`);
+    const providers = { ...editableConfig.providers };
+    if (providerForm.editingName && providerForm.editingName !== name) {
+      delete providers[providerForm.editingName];
+    }
+    providers[name] = provider;
+    const aliases = Object.fromEntries(
+      Object.entries(editableConfig.aliases).map(([aliasName, alias]) => [
+        aliasName,
+        alias.provider === providerForm.editingName && providerForm.editingName !== name
+          ? { ...alias, provider: name }
+          : alias
+      ])
+    );
+
+    setBusyAction("config:provider-save");
+    try {
+      await persistConfigChange({ ...editableConfig, providers, aliases }, `Provider ${name} saved.`);
+      resetProviderForm();
+    } catch (error) {
+      setConfigMessage(`Provider save failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   function editProvider(name: string, provider: ProviderConfig) {
@@ -995,39 +1200,80 @@ export function App() {
       type: provider.type,
       baseUrl: provider.type === "openai-compatible" ? provider.base_url : "",
       envName: providerEnvName(provider),
-      responsesApi: provider.type === "openai-compatible" ? Boolean(provider.responses_api) : false
+      responsesApi: provider.type === "openai-compatible" ? Boolean(provider.responses_api) : false,
+      description: provider.description ?? ""
     });
   }
 
-  function deleteProvider(name: string) {
-    updateConfig((config) => {
-      const providers = { ...config.providers };
-      delete providers[name];
-      return { ...config, providers };
-    });
-    setConfigMessage(`Provider ${name} deleted locally`);
+  async function deleteProvider(name: string) {
+    if (!editableConfig) {
+      return;
+    }
+
+    const aliasesUsingProvider = Object.entries(editableConfig.aliases)
+      .filter(([, alias]) => alias.provider === name)
+      .map(([aliasName]) => aliasName);
+    const detail = aliasesUsingProvider.length > 0
+      ? ` This also deletes aliases: ${aliasesUsingProvider.join(", ")}.`
+      : "";
+    if (!window.confirm(`Delete provider "${name}"?${detail}`)) {
+      return;
+    }
+
+    const providers = { ...editableConfig.providers };
+    delete providers[name];
+    const aliases = { ...editableConfig.aliases };
+    for (const aliasName of aliasesUsingProvider) {
+      delete aliases[aliasName];
+    }
+    if (Object.keys(aliases).length === 0) {
+      setConfigMessage("Cannot delete provider because it would remove the last alias.");
+      return;
+    }
+    const active = aliases[editableConfig.active] ? editableConfig.active : Object.keys(aliases)[0];
+
+    setBusyAction("config:provider-delete");
+    try {
+      await persistConfigChange({ ...editableConfig, active, providers, aliases }, `Provider ${name} deleted.`);
+    } catch (error) {
+      setConfigMessage(`Provider delete failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
   }
 
-  function saveAliasDraft() {
+  async function saveAliasDraft() {
     if (!editableConfig || !aliasForm.name.trim()) {
       setConfigMessage("Alias name is required");
       return;
     }
 
     const name = aliasForm.name.trim();
-    updateConfig((config) => {
-      const aliases = { ...config.aliases };
-      if (aliasForm.editingName && aliasForm.editingName !== name) {
-        delete aliases[aliasForm.editingName];
-      }
-      aliases[name] = {
-        provider: aliasForm.provider,
-        model: aliasForm.model.trim()
-      };
-      return { ...config, aliases };
-    });
-    resetAliasForm();
-    setConfigMessage(`Alias ${name} updated locally`);
+    const previousAlias = aliasForm.editingName
+      ? editableConfig.aliases[aliasForm.editingName]
+      : editableConfig.aliases[name];
+    const description = aliasForm.description.trim();
+    const aliases = { ...editableConfig.aliases };
+    if (aliasForm.editingName && aliasForm.editingName !== name) {
+      delete aliases[aliasForm.editingName];
+    }
+    aliases[name] = {
+      provider: aliasForm.provider,
+      model: aliasForm.model.trim(),
+      ...(description ? { description } : {}),
+      ...(previousAlias?.metadata ? { metadata: previousAlias.metadata } : {})
+    };
+    const active = editableConfig.active === aliasForm.editingName ? name : editableConfig.active;
+
+    setBusyAction("config:alias-save");
+    try {
+      await persistConfigChange({ ...editableConfig, active, aliases }, `Alias ${name} saved.`);
+      resetAliasForm();
+    } catch (error) {
+      setConfigMessage(`Alias save failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   function editAlias(name: string, alias: EditableConfig["aliases"][string]) {
@@ -1035,22 +1281,50 @@ export function App() {
       editingName: name,
       name,
       provider: alias.provider,
-      model: alias.model
+      model: alias.model,
+      description: alias.description ?? ""
     });
   }
 
-  function deleteAlias(name: string) {
-    updateConfig((config) => {
-      const aliases = { ...config.aliases };
-      delete aliases[name];
-      return { ...config, aliases };
-    });
-    setConfigMessage(`Alias ${name} deleted locally`);
+  async function deleteAlias(name: string) {
+    if (!editableConfig) {
+      return;
+    }
+    if (Object.keys(editableConfig.aliases).length <= 1) {
+      setConfigMessage("Cannot delete the last alias. Add or import another alias first.");
+      return;
+    }
+    if (!window.confirm(`Delete alias "${name}"?`)) {
+      return;
+    }
+
+    const aliases = { ...editableConfig.aliases };
+    delete aliases[name];
+    const active = editableConfig.active === name ? Object.keys(aliases)[0] : editableConfig.active;
+
+    setBusyAction("config:alias-delete");
+    try {
+      await persistConfigChange({ ...editableConfig, active, aliases }, `Alias ${name} deleted.`);
+    } catch (error) {
+      setConfigMessage(`Alias delete failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
   }
 
-  function setActiveAlias(name: string) {
-    updateConfig((config) => ({ ...config, active: name }));
-    setConfigMessage(`Active alias set to ${name} locally`);
+  async function setActiveAlias(name: string) {
+    if (!editableConfig) {
+      return;
+    }
+
+    setBusyAction("config:set-active");
+    try {
+      await persistConfigChange({ ...editableConfig, active: name }, `Active alias set to ${name}.`);
+    } catch (error) {
+      setConfigMessage(`Set active failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   function saveEntrypointDraft() {
@@ -1138,7 +1412,7 @@ export function App() {
       return;
     }
 
-    const selected = importDrafts.filter((draft) => draft.selected);
+    const selected = importDrafts.filter((draft) => draft.selected && (!draft.duplicate || generateImportNames));
     if (selected.length === 0) {
       setCcSwitchMessage("Select at least one candidate to import.");
       return;
@@ -1219,18 +1493,28 @@ export function App() {
         }
 
         const description = item.draft.description?.trim();
+        const metadata = {
+          imported_from: "ccswitch",
+          source_app: item.draft.app,
+          source_provider_id: item.draft.source_id,
+          source_config_hash: item.draft.source_config_hash,
+          source_fingerprint: item.draft.source_fingerprint,
+          source_order: item.draft.source_order
+        };
 
         providers[providerName] = {
           type: "openai-compatible",
           base_url: item.baseUrl,
           api_key: `\${${item.envName}}`,
           auth: buildProviderAuthFromDraft(item.draft, providerName, item.envName),
-          ...(description ? { description } : {})
+          ...(description ? { description } : {}),
+          metadata
         };
         aliases[aliasName] = {
           provider: providerName,
           model: item.modelValue,
-          ...(description ? { description } : {})
+          ...(description ? { description } : {}),
+          metadata
         };
       }
 
@@ -1610,6 +1894,8 @@ export function App() {
               message={message}
               switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
               onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
+              onDeleteAccount={(alias) => void handleDeleteAccount(alias)}
+              onEditAccount={handleEditAccount}
               onGoToIntegrations={() => openSettings("integrations")}
               onSelectAccount={(alias) => void handleSwitch(alias)}
             />
@@ -1737,7 +2023,7 @@ export function App() {
                 {t("config.activeAlias")}
                 <select
                   value={editableConfig?.active ?? ""}
-                  onChange={(event) => editableConfig && setActiveAlias(event.target.value)}
+                  onChange={(event) => editableConfig && void setActiveAlias(event.target.value)}
                   disabled={!editableConfig || configBusy}
                 >
                   {aliasNames.map((name) => (
@@ -1886,7 +2172,7 @@ export function App() {
                       {busyAction === `diagnostic:provider:${name}` ? t("common.testing") : t("config.test")}
                     </button>
                     <button className="secondary" onClick={() => editProvider(name, provider)} disabled={configBusy}>{t("common.edit")}</button>
-                    <button className="secondary danger" onClick={() => deleteProvider(name)} disabled={configBusy}>{t("common.delete")}</button>
+                    <button className="secondary danger" onClick={() => void deleteProvider(name)} disabled={configBusy}>{t("common.delete")}</button>
                   </span>
                 </div>
               ))}
@@ -1899,11 +2185,12 @@ export function App() {
               </select>
               <input placeholder={t("config.baseUrl")} value={providerForm.baseUrl} onChange={(event) => setProviderForm({ ...providerForm, baseUrl: event.target.value })} disabled={providerForm.type === "mock"} />
               <input placeholder={t("config.apiKeyEnvName")} value={providerForm.envName} onChange={(event) => setProviderForm({ ...providerForm, envName: event.target.value })} disabled={providerForm.type === "mock"} />
+              <input placeholder={t("ccswitch.simple.description")} value={providerForm.description} onChange={(event) => setProviderForm({ ...providerForm, description: event.target.value })} />
               <label className="inline-checkbox">
                 <input type="checkbox" checked={providerForm.responsesApi} onChange={(event) => setProviderForm({ ...providerForm, responsesApi: event.target.checked })} disabled={providerForm.type === "mock"} />
                 Responses API
               </label>
-              <button onClick={saveProviderDraft} disabled={configBusy}>{providerForm.editingName ? t("config.updateProvider") : t("config.addProvider")}</button>
+              <button onClick={() => void saveProviderDraft()} disabled={configBusy}>{providerForm.editingName ? t("config.updateProvider") : t("config.addProvider")}</button>
             </div>
           </section>
           </>
@@ -1941,8 +2228,8 @@ export function App() {
                       {busyAction === `diagnostic:alias-stream:${name}` ? t("common.testing") : t("config.testStream")}
                     </button>
                     <button className="secondary" onClick={() => editAlias(name, alias)} disabled={configBusy}>{t("common.edit")}</button>
-                    <button className="secondary" onClick={() => setActiveAlias(name)} disabled={configBusy}>{t("config.setActive")}</button>
-                    <button className="secondary danger" onClick={() => deleteAlias(name)} disabled={configBusy}>{t("common.delete")}</button>
+                    <button className="secondary" onClick={() => void setActiveAlias(name)} disabled={configBusy}>{t("config.setActive")}</button>
+                    <button className="secondary danger" onClick={() => void deleteAlias(name)} disabled={configBusy}>{t("common.delete")}</button>
                   </span>
                 </div>
               ))}
@@ -1956,7 +2243,8 @@ export function App() {
                 ))}
               </select>
               <input placeholder={t("config.upstreamModel")} value={aliasForm.model} onChange={(event) => setAliasForm({ ...aliasForm, model: event.target.value })} />
-              <button onClick={saveAliasDraft} disabled={configBusy}>{aliasForm.editingName ? t("config.updateAlias") : t("config.addAlias")}</button>
+              <input placeholder={t("ccswitch.simple.description")} value={aliasForm.description} onChange={(event) => setAliasForm({ ...aliasForm, description: event.target.value })} />
+              <button onClick={() => void saveAliasDraft()} disabled={configBusy}>{aliasForm.editingName ? t("config.updateAlias") : t("config.addAlias")}</button>
             </div>
           </section>
           )}

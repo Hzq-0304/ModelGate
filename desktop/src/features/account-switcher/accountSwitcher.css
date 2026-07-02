@@ -106,6 +106,7 @@
   border: 1px solid #e4e9f2;
   border-radius: 8px;
   color: #1f2937;
+  cursor: pointer;
   display: grid;
   gap: 8px;
   min-height: 118px;
@@ -114,7 +115,7 @@
   width: 100%;
 }
 
-.account-card:hover:not(:disabled) {
+.account-card:hover {
   background: #f8fafc;
   border-color: #84adff;
   transform: translateY(-1px);
@@ -134,8 +135,9 @@
   border-color: #fdb022;
 }
 
-.account-card:disabled {
-  opacity: 0.6;
+.account-card[aria-disabled="true"] {
+  cursor: progress;
+  opacity: 0.72;
 }
 
 .account-card-topline {
@@ -198,6 +200,17 @@
   color: #b54708;
   font-size: 12px;
   font-weight: 700;
+}
+
+.account-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.account-card-actions button {
+  min-height: 30px;
+  padding: 5px 8px;
 }
 
 .account-detail-panel {

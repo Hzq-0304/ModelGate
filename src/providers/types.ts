@@ -3,6 +3,7 @@ export type ProviderType = "mock" | "openai-compatible";
 export type MockProviderConfig = {
   type: "mock";
   description?: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type OpenAICompatibleProviderConfig = {
@@ -20,6 +21,7 @@ export type OpenAICompatibleProviderConfig = {
     app?: string;
     db_path?: string;
     provider_id?: string;
+    credential_id?: string;
     credential_ref?: string;
     credential_path?: string;
     fallback_env?: string;
@@ -35,6 +37,7 @@ export type OpenAICompatibleProviderConfig = {
   };
   responses_api?: boolean;
   description?: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type ProviderConfig = MockProviderConfig | OpenAICompatibleProviderConfig;
@@ -43,6 +46,7 @@ export type ModelAlias = {
   provider: string;
   model: string;
   description?: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type ResolvedModelRoute = {
