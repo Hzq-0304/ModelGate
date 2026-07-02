@@ -462,8 +462,12 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
         api_key_env: Some(env_name.clone()),
         api_key_detected: auth_detected,
         api_key_preview: api_key.as_deref().map(mask_secret),
-        auth_type: openai_official.then(|| "ccswitch".to_string()).or_else(|| Some("env".to_string())),
-        auth_source: openai_official.then(|| "CC Switch OpenAI Official".to_string()),
+        auth_type: if openai_official && auth_detected {
+            Some("ccswitch".to_string())
+        } else {
+            Some("env".to_string())
+        },
+        auth_source: (openai_official && auth_detected).then(|| "CC Switch OpenAI Official".to_string()),
         auth_status: Some(if auth_detected {
             "imported".to_string()
         } else if openai_official {
@@ -471,8 +475,9 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
         } else {
             "missing".to_string()
         }),
-        credential_ref: openai_official.then(|| format!("ccswitch://providers/{}/{}/auth", row.app_type, row.id)),
-        credential_path: auth_path,
+        credential_ref: (openai_official && auth_detected)
+            .then(|| format!("ccswitch://providers/{}/{}/auth", row.app_type, row.id)),
+        credential_path: auth_path.filter(|_| openai_official && auth_detected),
         model,
         models,
         suggested_modelgate_provider: safe_provider.clone(),

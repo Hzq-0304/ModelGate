@@ -29,7 +29,7 @@ export function ServerControl({
   const isStarting = lifecycle === "starting";
   const isStopping = lifecycle === "stopping";
   const isExternal = lifecycle === "external-running";
-  const hasManagedChild = serverProcess?.managed ?? false;
+  const canStop = serverProcess?.canStop ?? false;
   const canStart = lifecycle === "stopped" || lifecycle === "failed";
   const serverBusy = (busyAction?.startsWith("server:") ?? false) || isStarting || isStopping;
   const startupLog = serverProcess?.startupLog ?? [];
@@ -83,7 +83,7 @@ export function ServerControl({
       </dl>
       {isExternal && (
         <p className="server-hint">
-          Server is running externally. Stop it from the terminal or process manager.
+          {t("advanced.externalStopUnavailable")}
         </p>
       )}
       {(serverProcess?.lastError || serverProcess?.message) && (
@@ -136,14 +136,14 @@ export function ServerControl({
         <button
           className="secondary"
           onClick={onStop}
-          disabled={busyAction !== null || !hasManagedChild || isStopping}
+          disabled={busyAction !== null || !canStop || isStopping}
         >
           {busyAction === "server:stop" || isStopping ? t("advanced.stopping") : t("advanced.stopServer")}
         </button>
         <button
           className="secondary"
           onClick={onRestart}
-          disabled={busyAction !== null || !hasManagedChild || isStarting || isStopping}
+          disabled={busyAction !== null || !canStop || isStarting || isStopping}
         >
           {busyAction === "server:restart" ? t("advanced.restarting") : t("advanced.restartServer")}
         </button>
@@ -154,4 +154,3 @@ export function ServerControl({
     </section>
   );
 }
-

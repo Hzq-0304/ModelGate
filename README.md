@@ -377,6 +377,8 @@ Start Server -> node dist/index.js
 
 On first managed startup, the desktop app copies `examples/modelgate.config.yaml` from the server runtime into the user-writable app config directory as `modelgate.config.yaml`, then starts the server with `MODELGATE_CONFIG` pointing at that file. It does not write into the bundled resource directory.
 
+The desktop app can also manage that same config while the server is stopped. Provider lists, aliases, CC Switch import, and config edits use the local YAML file directly in offline config mode, then take effect when the server starts or after a reload.
+
 `MODELGATE_ROOT` is still available as an advanced override for development or custom portable layouts. The older `MODEL_GATE_ROOT` spelling is also accepted for compatibility:
 
 ```powershell

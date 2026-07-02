@@ -4,6 +4,7 @@ import {
   type CcSwitchImportCandidate,
   type CcSwitchImportReport,
   type CcSwitchProviderLink,
+  type ConfigWarning,
   type DiagnosticResult,
   type EditableConfig,
   type ProviderPreset,
@@ -23,6 +24,7 @@ import {
   getRequestStats,
   getServerProcessStatus,
   getStatus,
+  readModelGateConfig,
   reloadConfig,
   restartServerProcess,
   saveAdminConfig,
@@ -35,7 +37,9 @@ import {
   testActive,
   testAlias,
   testProvider,
-  validateAdminConfig
+  validateAdminConfig,
+  validateModelGateConfigOffline,
+  writeModelGateConfig
 } from "./api";
 import { SettingsIcon } from "./components/icons/SettingsIcon";
 import { LanguageSelector } from "./components/LanguageSelector";
@@ -152,7 +156,11 @@ function draftLooksLikeOpenAIOfficial(draft: Pick<ImportDraft, "name" | "provide
 }
 
 function buildProviderAuthFromDraft(draft: ImportDraft, providerName: string, envName: string) {
-  if (draft.auth_type === "ccswitch" || draftLooksLikeOpenAIOfficial(draft)) {
+  const hasCcSwitchCredential = draft.auth_type === "ccswitch"
+    && draft.auth_status === "imported"
+    && Boolean(draft.credential_ref || draft.credential_path || draft.source_id);
+
+  if (hasCcSwitchCredential) {
     return {
       type: "ccswitch" as const,
       source: draft.auth_source ?? "CC Switch OpenAI Official",
@@ -185,6 +193,7 @@ export function App() {
   const [serverProcess, setServerProcess] = useState<ServerProcessStatus | null>(null);
   const [configPath, setConfigPath] = useState("");
   const [editableConfig, setEditableConfig] = useState<EditableConfig | null>(null);
+  const [configWarnings, setConfigWarnings] = useState<ConfigWarning[]>([]);
   const [configMessage, setConfigMessage] = useState(t("config.notLoaded"));
   const [ccSwitchPath, setCcSwitchPath] = useState("");
   const [ccSwitchMessage, setCcSwitchMessage] = useState("CC Switch import not scanned");
@@ -235,13 +244,37 @@ export function App() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [copyOk, setCopyOk] = useState(false);
 
+  const localAliases = useMemo(() => {
+    if (!editableConfig) {
+      return [];
+    }
+
+    return Object.entries(editableConfig.aliases).map(([name, alias]) => ({
+      name,
+      provider: alias.provider,
+      model: alias.model,
+      description: alias.description
+    }));
+  }, [editableConfig]);
+
+  const displayAliases = aliases?.aliases ?? localAliases;
+  const displayActiveAliasName = status?.active ?? editableConfig?.active;
+  const displayConfigWarnings = status?.config_warnings ?? configWarnings;
+  const configWarningByProvider = useMemo(() => {
+    return new Map(
+      displayConfigWarnings
+        .filter((warning) => warning.provider)
+        .map((warning) => [warning.provider as string, warning])
+    );
+  }, [displayConfigWarnings]);
+
   const activeAlias = useMemo(() => {
-    if (!status || !aliases) {
+    if (!displayActiveAliasName) {
       return null;
     }
 
-    return aliases.aliases.find((alias) => alias.name === status.active) ?? null;
-  }, [aliases, status]);
+    return displayAliases.find((alias) => alias.name === displayActiveAliasName) ?? null;
+  }, [displayAliases, displayActiveAliasName]);
 
   const codexConfig = `Base URL: ${serverUrl}/v1\nAPI Key: modelgate-local\nModel: codex-main`;
 
@@ -313,10 +346,57 @@ export function App() {
   }
 
   async function loadConfiguration() {
-    const result = await getAdminConfig();
-    setConfigPath(result.path);
-    setEditableConfig(result.config);
-    setConfigMessage("Configuration loaded");
+    try {
+      const result = await getAdminConfig();
+      setConfigPath(result.path);
+      setEditableConfig(result.config);
+      setConfigWarnings(result.config_warnings ?? []);
+      setConfigMessage("Configuration loaded");
+      return result;
+    } catch (onlineError) {
+      const result = await readModelGateConfig();
+      setConfigPath(result.path);
+      setEditableConfig(result.config);
+      setConfigWarnings(result.config_warnings ?? []);
+      setConfigMessage(`Configuration loaded offline: ${result.path}`);
+      return result;
+    }
+  }
+
+  async function validateConfigForCurrentMode(config: EditableConfig) {
+    if (connection === "connected") {
+      try {
+        return {
+          mode: "online" as const,
+          result: await validateAdminConfig(config)
+        };
+      } catch {
+        // The server can go away between refreshes; fall through to offline validation.
+      }
+    }
+
+    return {
+      mode: "offline" as const,
+      result: await validateModelGateConfigOffline(config)
+    };
+  }
+
+  async function saveConfigForCurrentMode(config: EditableConfig) {
+    if (connection === "connected") {
+      try {
+        return {
+          mode: "online" as const,
+          result: await saveAdminConfig(config)
+        };
+      } catch {
+        // Keep configuration editing usable when the backend is stopped or restarting.
+      }
+    }
+
+    return {
+      mode: "offline" as const,
+      result: await writeModelGateConfig(config)
+    };
   }
 
   async function loadProviderPresets() {
@@ -495,12 +575,15 @@ export function App() {
         }
       };
 
-      const validation = await validateAdminConfig(nextConfig);
+      const { result: validation } = await validateConfigForCurrentMode(nextConfig);
       if (!validation.ok) {
         throw new Error((validation.errors ?? ["Validation failed"]).join(" "));
       }
 
-      await saveAdminConfig(nextConfig);
+      const { result: saveResult } = await saveConfigForCurrentMode(nextConfig);
+      if (!saveResult.ok) {
+        throw new Error((saveResult.errors ?? ["Save failed"]).join(" "));
+      }
       setEditableConfig(nextConfig);
       setPresetDraft({
         ...presetDraft,
@@ -508,7 +591,10 @@ export function App() {
         aliasName
       });
       setPresetMessage(`Added ${providerName} and ${aliasName}. Set ${presetDraft.envName.trim()} before using this provider.`);
-      await refresh();
+      await loadConfiguration().catch(() => undefined);
+      if (connection === "connected") {
+        await refresh();
+      }
     } catch (error) {
       setPresetMessage(`Add preset failed: ${getErrorMessage(error)}`);
     } finally {
@@ -594,6 +680,7 @@ export function App() {
       setConnection("disconnected");
       setStatus(null);
       setAliases(null);
+      await loadConfiguration().catch(() => undefined);
       const statusMessage = nextProcessStatus.lastError ?? nextProcessStatus.message;
       if (nextProcessStatus.status === "starting") {
         setMessage(statusMessage ?? "Server is starting.");
@@ -602,7 +689,7 @@ export function App() {
       } else if (nextProcessStatus.status === "failed" && statusMessage) {
         setMessage(`Failed to start server: ${statusMessage}`);
       } else {
-        setMessage(`ModelGate server is not running. Start it with: npm run dev. ${getErrorMessage(error)}`);
+        setMessage(`ModelGate server is not running. Local configuration is available. ${getErrorMessage(error)}`);
       }
     }
   }, []);
@@ -616,9 +703,10 @@ export function App() {
       setConnection("disconnected");
       setStatus(null);
       setAliases(null);
+      await loadConfiguration().catch(() => undefined);
       const nextProcessStatus = await getServerProcessStatus().catch(() => null);
       setServerProcess(nextProcessStatus);
-      setMessage(`ModelGate server is not running. Start it with: npm run dev. ${getErrorMessage(error)}`);
+      setMessage(`ModelGate server is not running. Local configuration is available. ${getErrorMessage(error)}`);
     } finally {
       setBusyAction(null);
     }
@@ -704,6 +792,7 @@ export function App() {
         setConnection("disconnected");
         setStatus(null);
         setAliases(null);
+        await loadConfiguration().catch(() => undefined);
         setMessage(
           result.status === "failed"
             ? `Failed to start server: ${result.lastError ?? result.message ?? "Unknown error"}`
@@ -726,6 +815,7 @@ export function App() {
       setConnection("disconnected");
       setStatus(null);
       setAliases(null);
+      await loadConfiguration().catch(() => undefined);
       setMessage(result.message ?? (result.status === "stopped" ? "Server stopped" : "Server is stopping."));
     } catch (error) {
       setMessage(`Failed to stop server: ${getErrorMessage(error)}`);
@@ -746,6 +836,7 @@ export function App() {
         setConnection("disconnected");
         setStatus(null);
         setAliases(null);
+        await loadConfiguration().catch(() => undefined);
         setMessage(
           result.status === "failed"
             ? `Failed to restart server: ${result.lastError ?? result.message ?? "Unknown error"}`
@@ -805,6 +896,34 @@ export function App() {
 
     const match = provider.api_key?.match(/^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/);
     return match ? match[1] : "";
+  }
+
+  function providerAuthSummary(name: string, provider: ProviderConfig) {
+    if (provider.type !== "openai-compatible") {
+      return "-";
+    }
+
+    const warning = configWarningByProvider.get(name);
+    if (warning?.type === "missing_env") {
+      return `Missing ${warning.envName ?? warning.env ?? "API_KEY"}`;
+    }
+    if (warning?.type === "missing_credential") {
+      return "CC Switch auth missing";
+    }
+
+    if (provider.auth?.type === "ccswitch") {
+      return provider.auth.credential_ref || provider.auth.credential_path
+        ? "CC Switch auth imported"
+        : "CC Switch auth";
+    }
+    if (provider.auth?.type === "env") {
+      return `${provider.auth.env}${provider.api_key_resolved ? " OK" : ""}`.trim();
+    }
+    if (provider.auth?.type === "static-header-ref") {
+      return provider.api_key_resolved ? "Header ref OK" : "Header ref";
+    }
+
+    return `${provider.api_key ?? "-"} ${provider.api_key_resolved ? "OK" : ""}`.trim();
   }
 
   function resetProviderForm() {
@@ -979,9 +1098,9 @@ export function App() {
 
     setBusyAction("config:validate");
     try {
-      const result = await validateAdminConfig(editableConfig);
+      const { mode, result } = await validateConfigForCurrentMode(editableConfig);
       const warnings = result.warnings.length > 0 ? ` Warnings: ${result.warnings.join(" ")}` : "";
-      setConfigMessage(result.ok ? `Configuration is valid.${warnings}` : `Validation failed: ${(result.errors ?? []).join(" ")}`);
+      setConfigMessage(result.ok ? `Configuration is valid (${mode}).${warnings}` : `Validation failed: ${(result.errors ?? []).join(" ")}`);
     } catch (error) {
       setConfigMessage(`Validation failed: ${getErrorMessage(error)}`);
     } finally {
@@ -996,10 +1115,16 @@ export function App() {
 
     setBusyAction("config:save");
     try {
-      const result = await saveAdminConfig(editableConfig);
+      const { mode, result } = await saveConfigForCurrentMode(editableConfig);
+      if (!result.ok) {
+        throw new Error((result.errors ?? ["Save failed"]).join(" "));
+      }
       const warnings = result.warnings.length > 0 ? ` Warnings: ${result.warnings.join(" ")}` : "";
-      setConfigMessage(`Configuration saved and reloaded.${warnings}`);
-      await refresh();
+      setConfigMessage(mode === "online" ? `Configuration saved and reloaded.${warnings}` : `Configuration saved offline.${warnings}`);
+      await loadConfiguration().catch(() => undefined);
+      if (mode === "online") {
+        await refresh();
+      }
     } catch (error) {
       setConfigMessage(`Save failed: ${getErrorMessage(error)}`);
     } finally {
@@ -1115,15 +1240,25 @@ export function App() {
         aliases
       };
 
-      const validation = await validateAdminConfig(nextConfig);
+      const { result: validation } = await validateConfigForCurrentMode(nextConfig);
       if (!validation.ok) {
         throw new Error((validation.errors ?? ["Validation failed"]).join(" "));
       }
 
-      await saveAdminConfig(nextConfig);
+      const { mode, result: saveResult } = await saveConfigForCurrentMode(nextConfig);
+      if (!saveResult.ok) {
+        throw new Error((saveResult.errors ?? ["Save failed"]).join(" "));
+      }
       setEditableConfig(nextConfig);
-      setCcSwitchMessage(t("ccswitch.simple.imported", { count: selected.length }));
-      await refresh();
+      await loadConfiguration().catch(() => undefined);
+
+      if (mode === "online") {
+        await reloadConfig().catch(() => undefined);
+        setCcSwitchMessage(t("ccswitch.simple.importedReloaded"));
+        await refresh();
+      } else {
+        setCcSwitchMessage(t("ccswitch.simple.importedOffline"));
+      }
     } catch (error) {
       setCcSwitchMessage(`Import failed: ${getErrorMessage(error)}`);
     } finally {
@@ -1370,8 +1505,16 @@ export function App() {
       : date.toLocaleString();
   }
 
-  const entrypoints = status ? Object.entries(status.entrypoints) : [];
-  const aliasesList = aliases?.aliases ?? [];
+  const entrypoints = status
+    ? Object.entries(status.entrypoints)
+    : Object.entries(editableConfig?.entrypoints ?? {}).map(([name, entrypoint]) => [
+      name,
+      {
+        use: entrypoint.use,
+        resolved: entrypoint.use === "active" ? editableConfig?.active ?? "" : entrypoint.use
+      }
+    ] as const);
+  const aliasesList = displayAliases;
   const disconnected = connection === "disconnected";
   const serverLifecycle = serverProcess?.status ?? (connection === "connected" ? "external-running" : "stopped");
   const isServerStarting = serverLifecycle === "starting";
@@ -1460,9 +1603,9 @@ export function App() {
             <AccountSwitcher
               accounts={aliasesList}
               activeAlias={activeAlias}
-              activeAliasName={status?.active}
+              activeAliasName={displayActiveAliasName}
               connection={connection}
-              configWarnings={status?.config_warnings}
+              configWarnings={displayConfigWarnings}
               endpoint={serverUrl}
               message={message}
               switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
@@ -1737,15 +1880,9 @@ export function App() {
                   <span>{provider.type}</span>
                   <span>{provider.type === "openai-compatible" ? provider.base_url : "-"}</span>
                   <span>{provider.type === "openai-compatible" && provider.responses_api ? "direct" : "-"}</span>
-                  <span>
-                    {provider.type === "openai-compatible"
-                      ? provider.auth
-                        ? `${provider.auth.type} ${provider.api_key_resolved ? "OK" : ""}`.trim()
-                        : `${provider.api_key ?? "-"} ${provider.api_key_resolved ? "OK" : "Missing"}`
-                      : "-"}
-                  </span>
+                  <span>{providerAuthSummary(name, provider)}</span>
                   <span className="row-actions">
-                    <button className="secondary" onClick={() => handleTestProvider(name)} disabled={busyAction !== null}>
+                    <button className="secondary" onClick={() => handleTestProvider(name)} disabled={busyAction !== null || disconnected}>
                       {busyAction === `diagnostic:provider:${name}` ? t("common.testing") : t("config.test")}
                     </button>
                     <button className="secondary" onClick={() => editProvider(name, provider)} disabled={configBusy}>{t("common.edit")}</button>
@@ -1797,10 +1934,10 @@ export function App() {
                   <span>{alias.provider}</span>
                   <span>{alias.model}</span>
                   <span className="row-actions">
-                    <button className="secondary" onClick={() => void runDiagnostic(`diagnostic:alias:${name}`, () => testAlias(name, false))} disabled={busyAction !== null}>
+                    <button className="secondary" onClick={() => void runDiagnostic(`diagnostic:alias:${name}`, () => testAlias(name, false))} disabled={busyAction !== null || disconnected}>
                       {busyAction === `diagnostic:alias:${name}` ? t("common.testing") : t("config.test")}
                     </button>
-                    <button className="secondary" onClick={() => void runDiagnostic(`diagnostic:alias-stream:${name}`, () => testAlias(name, true))} disabled={busyAction !== null}>
+                    <button className="secondary" onClick={() => void runDiagnostic(`diagnostic:alias-stream:${name}`, () => testAlias(name, true))} disabled={busyAction !== null || disconnected}>
                       {busyAction === `diagnostic:alias-stream:${name}` ? t("common.testing") : t("config.testStream")}
                     </button>
                     <button className="secondary" onClick={() => editAlias(name, alias)} disabled={configBusy}>{t("common.edit")}</button>

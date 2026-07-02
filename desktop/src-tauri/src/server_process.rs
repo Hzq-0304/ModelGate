@@ -23,6 +23,8 @@ const NODE_CHECK_TIMEOUT: Duration = Duration::from_millis(1500);
 const STARTUP_LOG_LIMIT: usize = 32;
 const STDERR_LOG_LIMIT: usize = 100;
 const NODE_MISSING_ERROR: &str = "Failed to start ModelGate server: this release requires Node.js to be installed and available in PATH.";
+const EXTERNAL_STOP_UNAVAILABLE: &str =
+    "This server was not started by the desktop app and cannot be stopped here.";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ServerLifecycle {
@@ -88,6 +90,7 @@ pub struct ServerProcessStatus {
     endpoint: String,
     reachable: bool,
     managed: bool,
+    can_stop: bool,
     running: bool,
     pid: Option<u32>,
     mode: String,
@@ -370,12 +373,19 @@ fn status_from_locked(
     } else {
         ("stopped".to_string(), "stopped".to_string())
     };
+    let can_stop = managed
+        && inner.child.is_some()
+        && matches!(
+            inner.status,
+            ServerLifecycle::Starting | ServerLifecycle::Running
+        );
 
     ServerProcessStatus {
         status,
         endpoint: ENDPOINT.to_string(),
         reachable,
         managed,
+        can_stop,
         running: reachable,
         pid: inner.pid,
         mode,
@@ -842,10 +852,10 @@ pub async fn stop_server_process(
     let current = state.current_status(None)?;
 
     if current.status == "external-running" {
-        return Err(
-            "Server is running externally. Stop it from the terminal or process manager."
-                .to_string(),
-        );
+        return Ok(ServerProcessStatus {
+            message: Some(EXTERNAL_STOP_UNAVAILABLE.to_string()),
+            ..current
+        });
     }
 
     if let Some((child, pid)) =
@@ -866,10 +876,10 @@ pub async fn restart_server_process(
     let current = state.current_status(None)?;
 
     if current.status == "external-running" {
-        return Err(
-            "Server is running externally. Stop it from the terminal or process manager."
-                .to_string(),
-        );
+        return Ok(ServerProcessStatus {
+            message: Some(EXTERNAL_STOP_UNAVAILABLE.to_string()),
+            ..current
+        });
     }
 
     if matches!(current.status.as_str(), "starting" | "stopping") {

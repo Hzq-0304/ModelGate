@@ -111,7 +111,7 @@ export function AccountSwitcher({
                 <AccountCard
                   account={account}
                   active={account.name === activeName}
-                  disabled={disconnected || Boolean(switchingAlias)}
+                  disabled={Boolean(switchingAlias)}
                   key={account.name}
                   authWarning={missingEnvByProvider.get(account.provider)}
                   selected={account.name === selectedAlias?.name}
@@ -123,7 +123,7 @@ export function AccountSwitcher({
           ) : (
             <div className="empty-state switcher-empty">
               <strong>{t("switcher.noAccounts")}</strong>
-              {connection === "connected" && onGoToIntegrations && (
+              {onGoToIntegrations && (
                 <>
                   <p>{t("empty.noAccounts.goToIntegrations")}</p>
                   <button className="secondary" onClick={onGoToIntegrations} type="button">

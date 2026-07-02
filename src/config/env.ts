@@ -220,6 +220,9 @@ function collectAuthWarning(providerName: string, auth: ProviderAuthConfigLike):
       );
     }
     case "ccswitch":
+      if (hasCcSwitchReference(auth)) {
+        return null;
+      }
       if (auth.fallback_env && process.env[auth.fallback_env]) {
         return null;
       }
@@ -233,6 +236,14 @@ function collectAuthWarning(providerName: string, auth: ProviderAuthConfigLike):
   }
 
   return null;
+}
+
+function hasCcSwitchReference(auth: Extract<ProviderAuthConfigLike, { type: "ccswitch" }>) {
+  return Boolean(
+    auth.credential_ref?.trim()
+    || auth.credential_path?.trim()
+    || auth.provider_id?.trim()
+  );
 }
 
 export function resolveProviderAuth(providerName: string, provider: ProviderApiKeyConfig): ProviderAuthResolution {
@@ -306,6 +317,7 @@ function resolveExplicitProviderAuth(providerName: string, auth: ProviderAuthCon
       };
     }
     case "ccswitch": {
+      const hasReference = hasCcSwitchReference(auth);
       const value = auth.fallback_env ? process.env[auth.fallback_env] : undefined;
       if (!value) {
         return {
@@ -315,7 +327,7 @@ function resolveExplicitProviderAuth(providerName: string, auth: ProviderAuthCon
             auth.source,
             providerName,
             auth.credential_ref ?? auth.provider_id,
-            auth.fallback_env
+            hasReference ? undefined : auth.fallback_env
           )
         };
       }

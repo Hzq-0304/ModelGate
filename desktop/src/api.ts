@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import YAML from "yaml";
 
 const baseUrl = "http://127.0.0.1:11435";
 
@@ -53,6 +54,7 @@ export type ServerProcessStatus = {
   endpoint: string;
   reachable: boolean;
   managed: boolean;
+  canStop: boolean;
   running: boolean;
   pid?: number;
   mode: "external" | "managed" | "stopped" | "starting" | "stopping" | "failed" | "unknown";
@@ -133,11 +135,19 @@ export type AdminConfigResponse = {
   config_warnings?: ConfigWarning[];
 };
 
+export type OfflineConfigResponse = AdminConfigResponse;
+
+type OfflineConfigTextResponse = {
+  path: string;
+  raw: string;
+};
+
 export type ConfigValidationResponse = {
   ok: boolean;
   errors?: string[];
   warnings: string[];
   active?: string;
+  path?: string;
 };
 
 export type RequestLogEntry = {
@@ -415,10 +425,208 @@ function unavailableServerProcessStatus(): ServerProcessStatus {
     endpoint: baseUrl,
     reachable: false,
     managed: false,
+    canStop: false,
     running: false,
     mode: "unknown",
     status: "failed",
     message: "Server process control is only available in the desktop app."
+  };
+}
+
+const envRefPattern = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function normalizeConfigObject(value: unknown): EditableConfig {
+  const record = objectRecord(value);
+  const server = objectRecord(record.server);
+
+  return {
+    server: {
+      host: typeof server.host === "string" ? server.host : "127.0.0.1",
+      port: typeof server.port === "number" ? server.port : Number(server.port ?? 11435)
+    },
+    active: typeof record.active === "string" ? record.active : "codex-main",
+    entrypoints: Object.keys(objectRecord(record.entrypoints)).length > 0
+      ? objectRecord(record.entrypoints) as EditableConfig["entrypoints"]
+      : {},
+    aliases: Object.keys(objectRecord(record.aliases)).length > 0
+      ? objectRecord(record.aliases) as EditableConfig["aliases"]
+      : {
+        "codex-main": {
+          provider: "mock",
+          model: "mock-codex-model"
+        }
+      },
+    providers: Object.keys(objectRecord(record.providers)).length > 0
+      ? objectRecord(record.providers) as EditableConfig["providers"]
+      : {
+        mock: {
+          type: "mock"
+        }
+      },
+    pricing: objectRecord(record.pricing) as EditableConfig["pricing"]
+  };
+}
+
+function collectEnvRefs(value: string) {
+  return [...value.matchAll(envRefPattern)].map((match) => match[1]);
+}
+
+function missingEnvWarning(path: string, envName: string, provider?: string): ConfigWarning {
+  return {
+    type: "missing_env",
+    provider,
+    path,
+    env: envName,
+    envName,
+    message: provider
+      ? `Provider ${provider} requires environment variable ${envName}, but it is not set.`
+      : `Environment variable ${envName} is not set.`
+  };
+}
+
+function missingCredentialWarning(
+  path: string,
+  source: string,
+  provider?: string,
+  credentialId?: string,
+  fallbackEnv?: string
+): ConfigWarning {
+  return {
+    type: "missing_credential",
+    provider,
+    path,
+    source,
+    credential_id: credentialId,
+    env: fallbackEnv,
+    envName: fallbackEnv,
+    message: provider
+      ? `Provider ${provider} requires ${source} credential${fallbackEnv ? ` or environment variable ${fallbackEnv}` : ""}, but it is not available.`
+      : `${source} credential is not available.`
+  };
+}
+
+async function checkEnvironmentVariables(names: string[]) {
+  const unique = [...new Set(names.filter(Boolean))];
+  if (unique.length === 0 || !isTauriRuntime()) {
+    return {} as Record<string, boolean>;
+  }
+
+  return invoke<Record<string, boolean>>("check_environment_variables", { names: unique });
+}
+
+async function collectOfflineConfigWarnings(config: EditableConfig) {
+  const envNames: string[] = [];
+  const pending: Array<() => ConfigWarning | null> = [];
+  let envStatus: Record<string, boolean> = {};
+
+  for (const [providerName, provider] of Object.entries(config.providers)) {
+    if (provider.type !== "openai-compatible") {
+      continue;
+    }
+
+    if (provider.auth?.type === "env") {
+      const envName = provider.auth.env;
+      envNames.push(envName);
+      pending.push(() => envStatus[envName]
+        ? null
+        : missingEnvWarning(`providers.${providerName}.auth.env`, envName, providerName));
+      continue;
+    }
+
+    if (provider.auth?.type === "static-header-ref") {
+      if (provider.auth.value) {
+        continue;
+      }
+      if (provider.auth.value_env) {
+        const valueEnv = provider.auth.value_env;
+        envNames.push(valueEnv);
+        pending.push(() => envStatus[valueEnv]
+          ? null
+          : missingEnvWarning(`providers.${providerName}.auth.value_env`, valueEnv, providerName));
+      } else {
+        const valueRef = provider.auth.value_ref;
+        pending.push(() => missingCredentialWarning(
+          `providers.${providerName}.auth.value_ref`,
+          "static-header-ref",
+          providerName,
+          valueRef
+        ));
+      }
+      continue;
+    }
+
+    if (provider.auth?.type === "ccswitch") {
+      const hasReference = Boolean(provider.auth.credential_ref || provider.auth.credential_path || provider.auth.provider_id);
+      if (hasReference) {
+        continue;
+      }
+
+      const fallbackEnv = provider.auth.fallback_env;
+      const source = provider.auth.source;
+      const credentialRef = provider.auth.credential_ref ?? provider.auth.provider_id;
+      if (fallbackEnv) {
+        envNames.push(fallbackEnv);
+      }
+      pending.push(() => fallbackEnv && envStatus[fallbackEnv]
+        ? null
+        : missingCredentialWarning(
+          `providers.${providerName}.auth`,
+          source,
+          providerName,
+          credentialRef,
+          fallbackEnv
+        ));
+      continue;
+    }
+
+    if (provider.api_key) {
+      for (const envName of collectEnvRefs(provider.api_key)) {
+        envNames.push(envName);
+        pending.push(() => envStatus[envName]
+          ? null
+          : missingEnvWarning(`providers.${providerName}.api_key`, envName, providerName));
+      }
+    }
+  }
+
+  envStatus = await checkEnvironmentVariables(envNames);
+  return pending.map((create) => create()).filter(Boolean) as ConfigWarning[];
+}
+
+async function validateConfigOfflineLocal(config: EditableConfig): Promise<ConfigValidationResponse> {
+  const errors: string[] = [];
+  const providers = config.providers ?? {};
+  const aliases = config.aliases ?? {};
+
+  if (!config.active) {
+    errors.push("active alias is required.");
+  } else if (!aliases[config.active]) {
+    errors.push(`Active alias "${config.active}" is not configured in aliases.`);
+  }
+
+  for (const [name, alias] of Object.entries(aliases)) {
+    if (!alias.provider) {
+      errors.push(`Alias "${name}" is missing provider.`);
+    } else if (!providers[alias.provider]) {
+      errors.push(`Alias "${name}" uses missing provider "${alias.provider}".`);
+    }
+    if (!alias.model) {
+      errors.push(`Alias "${name}" is missing model.`);
+    }
+  }
+
+  const configWarnings = await collectOfflineConfigWarnings(config);
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings: configWarnings.map((warning) => warning.message)
   };
 }
 
@@ -488,6 +696,60 @@ export async function saveAdminConfig(config: EditableConfig) {
   });
 
   return parseJson<ConfigValidationResponse>(response);
+}
+
+export async function getModelGateConfigPath() {
+  if (!isTauriRuntime()) {
+    throw new Error("Offline config access is only available in the desktop app.");
+  }
+
+  return invoke<string>("get_modelgate_config_path");
+}
+
+export async function readModelGateConfig() {
+  if (!isTauriRuntime()) {
+    throw new Error("Offline config access is only available in the desktop app.");
+  }
+
+  const result = await invoke<OfflineConfigTextResponse>("read_modelgate_config");
+  const parsed = YAML.parse(result.raw) ?? {};
+  const config = normalizeConfigObject(parsed);
+  return {
+    path: result.path,
+    config,
+    config_warnings: await collectOfflineConfigWarnings(config)
+  } satisfies OfflineConfigResponse;
+}
+
+export async function writeModelGateConfig(config: EditableConfig) {
+  if (!isTauriRuntime()) {
+    throw new Error("Offline config access is only available in the desktop app.");
+  }
+
+  const validation = await validateConfigOfflineLocal(config);
+  if (!validation.ok) {
+    return validation;
+  }
+
+  const response = await invoke<ConfigValidationResponse>("write_modelgate_config", {
+    raw: YAML.stringify(config, {
+      indent: 2,
+      lineWidth: 0
+    })
+  });
+
+  return {
+    ...response,
+    warnings: validation.warnings
+  };
+}
+
+export async function validateModelGateConfigOffline(config: EditableConfig) {
+  if (!isTauriRuntime()) {
+    throw new Error("Offline config access is only available in the desktop app.");
+  }
+
+  return validateConfigOfflineLocal(config);
 }
 
 export async function getRequestLogs(limit = 50) {

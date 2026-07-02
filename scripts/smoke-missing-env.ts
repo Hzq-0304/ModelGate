@@ -92,8 +92,8 @@ providers:
   });
 }
 
-async function testCcSwitchMissingCredential() {
-  const configPath = join(tempDir, "ccswitch-missing-credential.yaml");
+async function testCcSwitchImportedReferenceDoesNotWarnAsOpenAiEnv() {
+  const configPath = join(tempDir, "ccswitch-imported-reference.yaml");
 
   writeFileSync(configPath, `server:
   host: 127.0.0.1
@@ -124,9 +124,7 @@ providers:
 
   await withModelGate(configPath, async (baseUrl) => {
     const status = await fetch(`${baseUrl}/admin/status`).then((response) => response.json());
-    assert.equal(status.config_warnings?.[0]?.type, "missing_credential");
-    assert.equal(status.config_warnings?.[0]?.provider, "openai-official");
-    assert.equal(status.config_warnings?.[0]?.source, "CC Switch OpenAI Official");
+    assert.equal(status.config_warnings?.length ?? 0, 0);
 
     const chatResponse = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: "POST",
@@ -141,6 +139,44 @@ providers:
     assert.equal(chatJson.error.type, "missing_credential");
     assert.equal(chatJson.error.provider, "openai-official");
     assert.equal(chatJson.error.source, "CC Switch OpenAI Official");
+    assert.notEqual(chatJson.error.type, "missing_environment_variable");
+    assert.notEqual(chatJson.error.env, "OPENAI_API_KEY");
+  });
+}
+
+async function testCcSwitchMissingCredentialWarningWithoutReference() {
+  const configPath = join(tempDir, "ccswitch-missing-credential-warning.yaml");
+
+  writeFileSync(configPath, `server:
+  host: 127.0.0.1
+  port: 11435
+
+active: codex-main
+
+aliases:
+  codex-main:
+    provider: openai-official
+    model: gpt-5.5
+
+providers:
+  openai-official:
+    type: openai-compatible
+    base_url: https://api.openai.com/v1
+    auth:
+      type: ccswitch
+      source: CC Switch OpenAI Official
+      app: codex
+      fallback_env: OPENAI_API_KEY
+      header: Authorization
+      scheme: Bearer
+`, "utf8");
+
+  await withModelGate(configPath, async (baseUrl) => {
+    const status = await fetch(`${baseUrl}/admin/status`).then((response) => response.json());
+    assert.equal(status.config_warnings?.[0]?.type, "missing_credential");
+    assert.equal(status.config_warnings?.[0]?.provider, "openai-official");
+    assert.equal(status.config_warnings?.[0]?.source, "CC Switch OpenAI Official");
+    assert.equal(status.config_warnings?.[0]?.env, "OPENAI_API_KEY");
   });
 }
 
@@ -217,7 +253,8 @@ providers:
 
 try {
   await testLegacyMissingEnv();
-  await testCcSwitchMissingCredential();
+  await testCcSwitchImportedReferenceDoesNotWarnAsOpenAiEnv();
+  await testCcSwitchMissingCredentialWarningWithoutReference();
   await testImportedCredentialHeader();
 
   console.log("startup/auth smoke tests passed");

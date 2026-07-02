@@ -68,6 +68,28 @@ function envResolved(value: unknown) {
   return match ? Boolean(process.env[match[1]]) : value.length > 0;
 }
 
+function authResolved(auth: unknown, fallbackApiKey: unknown) {
+  if (!auth || typeof auth !== "object") {
+    return envResolved(fallbackApiKey);
+  }
+
+  const record = auth as Record<string, unknown>;
+  if (record.type === "env") {
+    return typeof record.env === "string" && Boolean(process.env[record.env]);
+  }
+  if (record.type === "ccswitch") {
+    return Boolean(record.credential_ref || record.credential_path || record.provider_id);
+  }
+  if (record.type === "static-header-ref") {
+    if (typeof record.value === "string" && record.value.trim()) {
+      return true;
+    }
+    return typeof record.value_env === "string" && Boolean(process.env[record.value_env]);
+  }
+
+  return false;
+}
+
 function rawProviderApiKey(rawConfig: unknown, name: string, fallback: unknown) {
   if (!rawConfig || typeof rawConfig !== "object" || !("providers" in rawConfig)) {
     return fallback;
@@ -103,7 +125,7 @@ export function sanitizeConfigForAdmin(rawConfig: unknown) {
             ...provider,
             ...(auth ? { auth } : {}),
             api_key: maskApiKey(apiKey),
-            api_key_resolved: envResolved(apiKey)
+            api_key_resolved: authResolved(provider.auth, apiKey)
           }
         ];
       })

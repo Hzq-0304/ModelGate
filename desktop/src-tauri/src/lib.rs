@@ -1,5 +1,6 @@
 mod ccswitch_import;
 mod ccswitch_export;
+mod offline_config;
 mod server_process;
 
 use tauri::{Manager, WindowEvent};
@@ -14,6 +15,12 @@ pub fn run() {
             ccswitch_import::scan_ccswitch_database,
             ccswitch_import::scan_selected_ccswitch_database,
             ccswitch_export::open_ccswitch_deep_link,
+            offline_config::get_modelgate_config_path,
+            offline_config::read_modelgate_config,
+            offline_config::write_modelgate_config,
+            offline_config::merge_ccswitch_import_into_config,
+            offline_config::validate_modelgate_config_offline,
+            offline_config::check_environment_variables,
             server_process::get_server_process_status,
             server_process::start_server_process,
             server_process::stop_server_process,
