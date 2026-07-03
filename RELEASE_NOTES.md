@@ -1,3 +1,41 @@
+# ModelGate v0.1.8
+
+## Highlights
+
+- Added CC Switch snapshot-based import.
+- ModelGate now copies a local CC Switch configuration snapshot and resolves Codex providers from that snapshot.
+- Added `auth.type = ccswitch-snapshot` for providers imported from CC Switch.
+- Improved OpenAI Official and HardyAI authentication detection from CC Switch.
+- Reduced incorrect fallback to `${OPENAI_API_KEY}` / `${HARDYAI_API_KEY}`.
+- Added source metadata and `source_config_hash` for duplicate import detection.
+- Duplicate imports are now detected by configuration fingerprint instead of display name only.
+- Added offline config support so providers and aliases can be viewed, imported, edited, and deleted when the backend server is not running.
+- Added provider card actions: set active, edit, delete, and copy info.
+- Refactored the desktop main screen into a CC Switch-style compact provider list.
+- Moved secondary actions into Settings, leaving the main screen focused on provider switching.
+
+## Fixes
+
+- Fixed imported HardyAI configs being incorrectly reported as missing `HARDYAI_API_KEY`.
+- Fixed imported OpenAI Official configs being incorrectly reported as missing `OPENAI_API_KEY` when CC Switch auth is available.
+- Fixed repeated CC Switch imports creating duplicate `-2` / `-3` providers.
+- Fixed service stop behavior for desktop-managed servers.
+- External servers are no longer accidentally stopped by the desktop app.
+- Kept missing environment variables and missing credentials as warnings instead of backend startup failures.
+
+## Safety
+
+- CC Switch original database and config files are not modified.
+- CC Switch snapshots are stored locally in ModelGate app data/config directories.
+- Plaintext tokens are not displayed in the UI.
+- CC Switch credential issues return warnings or structured JSON errors instead of crashing the backend.
+- Windows builds still avoid extra console windows.
+
+## Notes
+
+- This release supersedes v0.1.7 for all desktop users.
+- This release still requires Node.js to be installed and available in PATH.
+
 # ModelGate v0.1.7
 
 ## Highlights

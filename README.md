@@ -1,6 +1,6 @@
 # ModelGate
 
-Current release: `v0.1.7`
+Current release: `v0.1.8`
 
 ModelGate is a local OpenAI-compatible gateway for routing large-model requests and hot-switching upstream providers. Codex can keep using one local model name, while ModelGate decides which real provider and model receive new requests.
 
@@ -422,7 +422,7 @@ If you manually enable MSI packaging, install WiX or ensure Tauri can download a
 
 ### Local Release Package
 
-Prepare a local v0.1.7 release directory:
+Prepare a local v0.1.8 release directory:
 
 ```bash
 npm run release:local
@@ -431,29 +431,31 @@ npm run release:local
 The release directory is written to:
 
 ```text
-release/modelgate-v0.1.7/
+release/modelgate-v0.1.8/
 ```
 
 To run the Node server from that release directory:
 
 ```bash
-cd release/modelgate-v0.1.7/modelgate-server
+cd release/modelgate-v0.1.8/modelgate-server
 node modelgate-server.cjs
 ```
 
 Desktop artifacts are collected under:
 
 ```text
-release/modelgate-v0.1.7/artifacts/
+release/modelgate-v0.1.8/artifacts/
 ```
 
 For Windows desktop users, the recommended installer is:
 
 ```text
-release/modelgate-v0.1.7/artifacts/ModelGate_0.1.7_x64-setup.exe
+release/modelgate-v0.1.8/artifacts/ModelGate_0.1.8_x64-setup.exe
 ```
 
-Packaged desktop builds use the self-contained `modelgate-server.cjs` runtime and no longer depend on the repository root `node_modules`. The desktop app still requires Node.js to be installed and available in `PATH`.
+For v0.1.8, download `ModelGate_0.1.8_x64-setup.exe` from `release/modelgate-v0.1.8/artifacts/`. Packaged desktop builds use the self-contained `modelgate-server.cjs` runtime and no longer depend on the repository root `node_modules`. The desktop app still requires Node.js to be installed and available in `PATH`.
+
+This release uses CC Switch configuration snapshots for import, keeps providers and aliases visible/editable while the service is stopped, and treats missing auth as provider warnings instead of backend startup failures.
 
 Desktop app features:
 
