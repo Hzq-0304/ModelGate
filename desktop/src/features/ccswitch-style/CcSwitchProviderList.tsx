@@ -17,10 +17,13 @@ type CcSwitchProviderListProps = {
 
 function copyProviderInfo(provider: AccountAlias) {
   void navigator.clipboard?.writeText([
+    provider.displayName ? `Name: ${provider.displayName}` : undefined,
     `Alias: ${provider.name}`,
     `Provider: ${provider.provider}`,
     `Model: ${provider.model}`,
     provider.baseUrl ? `Base URL: ${provider.baseUrl}` : undefined,
+    provider.envName ? `Auth Env: ${provider.envName}` : undefined,
+    provider.authSource ? `Auth Source: ${provider.authSource}` : undefined,
     provider.description ? `Description: ${provider.description}` : undefined
   ].filter(Boolean).join("\n"));
 }

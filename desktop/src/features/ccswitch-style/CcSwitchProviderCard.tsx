@@ -14,8 +14,12 @@ type CcSwitchProviderCardProps = {
   onSwitch: (alias: string) => void;
 };
 
+function providerTitle(provider: AccountAlias) {
+  return provider.displayName?.trim() || formatAliasTitle(provider.name);
+}
+
 function providerInitial(provider: AccountAlias) {
-  return formatAliasTitle(provider.name).charAt(0).toUpperCase() || "M";
+  return providerTitle(provider).charAt(0).toUpperCase() || "M";
 }
 
 function providerSubtitle(provider: AccountAlias) {
@@ -27,7 +31,7 @@ function providerSubtitle(provider: AccountAlias) {
 
 function Icon({ name }: { name: "check" | "copy" | "drag" | "edit" | "play" | "trash" }) {
   if (name === "drag") {
-    return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 5h.01" /><path d="M9 12h.01" /><path d="M9 19h.01" /><path d="M15 5h.01" /><path d="M15 12h.01" /><path d="M15 19h.01" /></svg>;
+    return <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="9" cy="18" r="1" /><circle cx="15" cy="6" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="18" r="1" /></svg>;
   }
   if (name === "play") {
     return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z" /></svg>;
@@ -47,7 +51,6 @@ function Icon({ name }: { name: "check" | "copy" | "drag" | "edit" | "play" | "t
 export function CcSwitchProviderCard({
   provider,
   isCurrent,
-  connectionState,
   disabled,
   authWarning,
   switching,
@@ -58,15 +61,6 @@ export function CcSwitchProviderCard({
 }: CcSwitchProviderCardProps) {
   const { t } = useI18n();
   const subtitle = providerSubtitle(provider);
-  const statusText = switching
-    ? t("common.switching")
-    : authWarning
-      ? t("switcher.status.missingAuth")
-      : connectionState === "disconnected"
-        ? t("switcher.status.offline")
-        : connectionState === "checking"
-          ? t("app.checking")
-          : t("switcher.status.ready");
   const canSwitch = !disabled && !isCurrent;
 
   return (
@@ -82,19 +76,22 @@ export function CcSwitchProviderCard({
       <div className="ccs-provider-active-layer" />
       <div className="ccs-provider-content">
         <div className="ccs-provider-left">
-        <button className="ccs-drag-handle" disabled type="button" aria-label="Drag handle">
+        <span className="ccs-drag-handle" aria-hidden="true">
           <Icon name="drag" />
-        </button>
+        </span>
 
-        <div className="ccs-provider-avatar" title={formatAliasTitle(provider.name)}>
+        <div className="ccs-provider-avatar" title={providerTitle(provider)}>
           {providerInitial(provider)}
         </div>
 
         <div className="ccs-provider-body">
           <div className="ccs-provider-title-row">
-            <h3>{formatAliasTitle(provider.name)}</h3>
+            <h3>{providerTitle(provider)}</h3>
             {provider.providerType === "mock" && (
               <span className="ccs-mini-badge">{t("switcher.managedLocal")}</span>
+            )}
+            {authWarning && (
+              <span className="ccs-mini-badge warning" title={authWarning}>{authWarning}</span>
             )}
           </div>
           <div className="ccs-provider-url" title={subtitle}>{subtitle}</div>
@@ -107,28 +104,22 @@ export function CcSwitchProviderCard({
 
         <div className="ccs-provider-right">
           <div className="ccs-provider-idle">
-            <span className={[
-              "ccs-status-badge",
-              authWarning ? "warning" : "",
-              connectionState !== "connected" && !authWarning ? "muted" : ""
-            ].filter(Boolean).join(" ")}
-            >
-              {statusText}
-            </span>
             {isCurrent && <span className="ccs-current-dot" aria-hidden="true" />}
           </div>
 
           <div className="ccs-provider-actions" aria-label={t("provider.more")}>
-            <button
-              className={isCurrent ? "ccs-action-main is-current" : "ccs-action-main"}
-              disabled={!canSwitch}
-              onClick={() => onSwitch(provider.name)}
-              title={isCurrent ? t("provider.ready") : t("provider.setActive")}
-              type="button"
-            >
-              <Icon name={isCurrent ? "check" : "play"} />
-              <span>{isCurrent ? t("provider.ready") : t("provider.setActive")}</span>
-            </button>
+            {!isCurrent && (
+              <button
+                className="ccs-action-main"
+                disabled={!canSwitch}
+                onClick={() => onSwitch(provider.name)}
+                title={t("provider.setActive")}
+                type="button"
+              >
+                <Icon name="play" />
+                <span>{switching ? t("common.switching") : t("provider.setActive")}</span>
+              </button>
+            )}
             {onEdit && (
               <button className="ccs-action-icon" onClick={() => onEdit(provider.name)} title={t("provider.edit")} type="button">
                 <Icon name="edit" />

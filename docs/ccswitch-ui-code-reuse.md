@@ -25,6 +25,7 @@ The port keeps the UI structure and interaction model, then replaces CC Switch d
 - Provider list structure: left drag handle, avatar, provider title, compact status badge, subtitle URL/description line, gray metadata row, current dot, and a hover-only actions toolbar.
 - Provider card visual language: light border, 12px rounded card, subtle hover shadow, blue selected border, and soft selected gradient layer copied from the CC Switch active-card pattern.
 - Hover action model: the card body no longer switches providers directly; the action toolbar appears on hover/focus and contains Set Active, Edit, Copy, and Delete.
+- Editing model: Edit opens a dedicated provider/alias modal instead of navigating to Settings. Delete opens a confirmation modal (with an optional orphan-provider checkbox) instead of `window.confirm`. Both flows work offline (write local config) and online (write then reload), and never show plaintext tokens; CC Switch snapshot auth is shown as a read-only source only.
 - Toolbar/icon button style: restrained icon-sized settings button instead of large top-level actions.
 - Settings drawer structure: compact grouped cards with short labels, light borders, small controls, and minimal explanatory text.
 - Empty-state density: small centered empty state rather than a large dashboard panel.
@@ -64,12 +65,17 @@ New or updated ModelGate files that correspond to the reused structure:
 - `desktop/src/features/ccswitch-style/CcSwitchShell.tsx`
 - `desktop/src/features/ccswitch-style/CcSwitchProviderList.tsx`
 - `desktop/src/features/ccswitch-style/CcSwitchProviderCard.tsx`
+- `desktop/src/features/ccswitch-style/CcSwitchProviderEditModal.tsx`
+- `desktop/src/features/ccswitch-style/CcSwitchConfirmModal.tsx`
 - `desktop/src/features/ccswitch-style/CcSwitchSettingsDrawer.tsx`
 - `desktop/src/features/ccswitch-style/ccswitchStyle.css`
 - `desktop/src/features/account-switcher/AccountSwitcher.tsx`
 - `desktop/src/styles.css`
 - `docs/ccswitch-ui-code-reuse.md`
 - `NOTICE.md`
+
+The edit/delete modals correspond to CC Switch's `EditProviderDialog.tsx` and `ConfirmDialog.tsx`
+interaction shape, reimplemented with plain CSS instead of Radix/framer-motion dependencies.
 
 The previous `desktop/src/features/provider-list/*` ModelGate-only approximation was removed so the main screen is not styled by the old provider card CSS.
 

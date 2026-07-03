@@ -23,12 +23,13 @@ This made the desktop app feel like a backend admin form instead of a focused sw
 
 ModelGate now treats the Codex Home page as a provider/alias switcher:
 
-- compact header with `ModelGate`, `Codex / Logs / Advanced`, language, server status, server action, and Settings;
-- single-column alias/provider list;
-- current alias shown only by blue border and pale blue card background;
-- each card shows an avatar, name, short status badge, URL/description, provider, and model;
-- edit/delete/set-active actions are tucked behind a small `...` menu;
-- Usage Overview moved away from the Home page and shown with Logs.
+- minimal header with only `ModelGate`, a small server status dot, and a Settings icon (no tabs, language dropdown, endpoint text, or server buttons in the header);
+- single-column alias/provider list as the only thing on the main screen;
+- current alias shown only by a blue border, pale blue card background, and a small blue dot (no "current"/"in use" text);
+- each card shows drag dots, an avatar, the display name (falling back to the alias key), a URL/description line, and a `provider / model` metadata row;
+- the card body does not switch providers; hover/focus reveals a compact toolbar with Set Active, Edit, Copy, and Delete;
+- Edit opens a dedicated provider/alias modal and Delete opens a confirmation modal — neither navigates to Settings;
+- server control, imports, model routing, logs, usage, diagnostics, and language all live inside the Settings drawer.
 
 ## 4. Removed Elements
 
@@ -38,14 +39,17 @@ ModelGate now treats the Codex Home page as a provider/alias switcher:
 - Right-side selected-item detail panel.
 - Alias / provider / model three-box layout inside cards.
 - Always-visible large Edit / Delete / Set Active buttons on every card.
+- Codex / Logs / Advanced tabs, language selector, and server buttons in the header.
+- Edit jumping to the Settings page and `window.confirm` delete prompts.
 
 ## 5. Preserved Elements
 
-- Active alias switching.
+- Active alias switching (offline and online).
 - Offline display of local aliases/providers.
 - Missing-auth warning status.
-- Edit alias/provider entry point.
-- Delete alias/provider entry point.
-- Settings entry and grouped Settings page.
+- Edit alias/provider through a modal.
+- Delete alias/provider through a confirmation modal.
+- Copy provider/alias info.
+- Settings entry and grouped Settings drawer.
 - CC Switch import and Codex import under Settings.
-- Server start/stop control, now as a compact header action.
+- Server start/stop/restart control inside Settings.

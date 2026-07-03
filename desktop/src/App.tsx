@@ -43,9 +43,11 @@ import {
 } from "./api";
 import { LanguageSelector } from "./components/LanguageSelector";
 import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
-import type { ConnectionState } from "./features/account-switcher/accountTypes";
+import type { ConnectionState, ProviderAuthKind } from "./features/account-switcher/accountTypes";
 import type { CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
 import { CcSwitchImportModal } from "./features/ccswitch-import/CcSwitchImportModal";
+import { CcSwitchConfirmModal } from "./features/ccswitch-style/CcSwitchConfirmModal";
+import { CcSwitchProviderEditModal, type ProviderEditPatch } from "./features/ccswitch-style/CcSwitchProviderEditModal";
 import { CcSwitchSettingsDrawer } from "./features/ccswitch-style/CcSwitchSettingsDrawer";
 import { CcSwitchShell } from "./features/ccswitch-style/CcSwitchShell";
 import { ServerControl } from "./features/server-control/ServerControl";
@@ -214,6 +216,54 @@ function buildProviderAuthFromDraft(draft: ImportDraft, providerName: string, en
   };
 }
 
+function providerEnvNameOf(provider: ProviderConfig) {
+  if (provider.type !== "openai-compatible") {
+    return "";
+  }
+
+  const explicitAuth = provider.auth;
+  if (explicitAuth?.type === "env") {
+    return explicitAuth.env;
+  }
+  if (explicitAuth?.type === "ccswitch" || explicitAuth?.type === "ccswitch-snapshot") {
+    return explicitAuth.fallback_env ?? "";
+  }
+  if (explicitAuth?.type === "static-header-ref") {
+    return explicitAuth.value_env ?? "";
+  }
+
+  const match = provider.api_key?.match(/^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/);
+  return match ? match[1] : "";
+}
+
+function providerAuthKindOf(provider: ProviderConfig): ProviderAuthKind {
+  if (provider.type !== "openai-compatible") {
+    return "none";
+  }
+
+  return provider.auth?.type ?? "env";
+}
+
+function providerAuthSourceOf(provider: ProviderConfig) {
+  if (provider.type !== "openai-compatible" || !provider.auth) {
+    return undefined;
+  }
+
+  if (provider.auth.type === "ccswitch" || provider.auth.type === "ccswitch-snapshot") {
+    return provider.auth.source;
+  }
+  if (provider.auth.type === "static-header-ref") {
+    return "static-header-ref";
+  }
+
+  return undefined;
+}
+
+function metadataDisplayName(metadata: unknown) {
+  const value = metadataString(metadata, "display_name") || metadataString(metadata, "displayName");
+  return value.trim() ? value.trim() : undefined;
+}
+
 export function App() {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>("switcher");
@@ -276,6 +326,10 @@ export function App() {
   const [message, setMessage] = useState(t("advanced.statusRefreshed"));
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [copyOk, setCopyOk] = useState(false);
+  const [editAliasName, setEditAliasName] = useState<string | null>(null);
+  const [editMessage, setEditMessage] = useState("");
+  const [editMessageBad, setEditMessageBad] = useState(false);
+  const [deleteAliasName, setDeleteAliasName] = useState<string | null>(null);
 
   const localAliases = useMemo(() => {
     if (!editableConfig) {
@@ -314,13 +368,17 @@ export function App() {
         provider: providerName,
         model: localAlias?.model ?? alias.model,
         description: localAlias?.description ?? alias.description,
+        displayName: metadataDisplayName(localAlias?.metadata),
         providerDescription: provider?.description,
         baseUrl: provider?.type === "openai-compatible"
           ? provider.base_url
           : provider?.type === "mock"
             ? "Managed by ModelGate"
             : undefined,
-        providerType: provider?.type
+        providerType: provider?.type,
+        envName: provider ? providerEnvNameOf(provider) : undefined,
+        authKind: provider ? providerAuthKindOf(provider) : undefined,
+        authSource: provider ? providerAuthSourceOf(provider) : undefined
       };
     });
   }, [aliases, editableConfig, localAliases]);
@@ -920,24 +978,159 @@ export function App() {
 
   function handleEditAccount(aliasName: string) {
     if (!editableConfig) {
+      void loadConfiguration()
+        .then(() => {
+          setEditMessage("");
+          setEditMessageBad(false);
+          setEditAliasName(aliasName);
+        })
+        .catch((error) => setMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
       return;
     }
-    const alias = editableConfig.aliases[aliasName];
-    if (!alias) {
+    if (!editableConfig.aliases[aliasName]) {
       setMessage(`Alias ${aliasName} is missing from local config.`);
       return;
     }
-    const provider = editableConfig.providers[alias.provider];
-    editAlias(aliasName, alias);
-    if (provider) {
-      editProvider(alias.provider, provider);
-    }
-    openSettings("aliases");
-    setConfigMessage(`Editing ${aliasName}. Provider fields are also prefilled.`);
+    setEditMessage("");
+    setEditMessageBad(false);
+    setEditAliasName(aliasName);
   }
 
-  async function handleDeleteAccount(aliasName: string) {
+  async function handleSaveProviderEdit(patch: ProviderEditPatch) {
     if (!editableConfig) {
+      return;
+    }
+
+    const aliasName = patch.aliasName.trim();
+    const providerName = patch.providerName.trim();
+    const model = patch.model.trim();
+    const baseUrl = patch.baseUrl.trim();
+    const envName = patch.envName.trim();
+    const displayName = patch.displayName.trim();
+    const description = patch.description.trim();
+
+    if (!aliasName || !configKeyPattern.test(aliasName)) {
+      setEditMessage(`Invalid alias name "${patch.aliasName}".`);
+      setEditMessageBad(true);
+      return;
+    }
+    if (!providerName || !configKeyPattern.test(providerName)) {
+      setEditMessage(`Invalid provider name "${patch.providerName}".`);
+      setEditMessageBad(true);
+      return;
+    }
+    if (!model) {
+      setEditMessage("Upstream model is required.");
+      setEditMessageBad(true);
+      return;
+    }
+    if (aliasName !== patch.originalAlias && editableConfig.aliases[aliasName]) {
+      setEditMessage(`Alias "${aliasName}" already exists.`);
+      setEditMessageBad(true);
+      return;
+    }
+
+    const previousProvider = editableConfig.providers[patch.originalProvider];
+    const isMock = previousProvider?.type === "mock";
+    const repointToExisting = providerName !== patch.originalProvider
+      && Boolean(editableConfig.providers[providerName]);
+
+    if (!isMock && !repointToExisting) {
+      if (!baseUrl) {
+        setEditMessage("Base URL is required.");
+        setEditMessageBad(true);
+        return;
+      }
+      if (!isValidHttpUrl(baseUrl)) {
+        setEditMessage(`Invalid base URL "${baseUrl}".`);
+        setEditMessageBad(true);
+        return;
+      }
+      if (patch.authKind === "env" && envName && !envNamePattern.test(envName)) {
+        setEditMessage(`Invalid API key env "${envName}".`);
+        setEditMessageBad(true);
+        return;
+      }
+    }
+
+    const providers = { ...editableConfig.providers };
+
+    if (!isMock && !repointToExisting && previousProvider?.type === "openai-compatible") {
+      const previousAuth = previousProvider.auth;
+      const managedAuth = previousAuth?.type === "ccswitch" || previousAuth?.type === "ccswitch-snapshot";
+      const nextAuth = managedAuth
+        ? { ...previousAuth, fallback_env: envName || previousAuth.fallback_env }
+        : envName
+          ? { type: "env" as const, header: "Authorization", scheme: "Bearer", env: envName }
+          : previousAuth;
+
+      const nextProvider: ProviderConfig = {
+        ...previousProvider,
+        base_url: baseUrl,
+        ...(nextAuth ? { auth: nextAuth } : {}),
+        ...(nextAuth?.type === "env" ? { api_key: `\${${nextAuth.env}}` } : {})
+      };
+
+      if (providerName !== patch.originalProvider) {
+        delete providers[patch.originalProvider];
+      }
+      providers[providerName] = nextProvider;
+    }
+
+    const previousAlias = editableConfig.aliases[patch.originalAlias];
+    const previousMetadata = (previousAlias?.metadata ?? {}) as Record<string, unknown>;
+    const nextMetadata: Record<string, unknown> = { ...previousMetadata };
+    if (displayName) {
+      nextMetadata.display_name = displayName;
+    } else {
+      delete nextMetadata.display_name;
+      delete nextMetadata.displayName;
+    }
+
+    const aliases = { ...editableConfig.aliases };
+    if (aliasName !== patch.originalAlias) {
+      delete aliases[patch.originalAlias];
+    }
+    aliases[aliasName] = {
+      provider: providerName,
+      model,
+      ...(description ? { description } : {}),
+      ...(Object.keys(nextMetadata).length > 0 ? { metadata: nextMetadata } : {})
+    };
+
+    // Repoint any other alias that used the renamed provider key.
+    if (providerName !== patch.originalProvider && !repointToExisting) {
+      for (const [name, candidate] of Object.entries(aliases)) {
+        if (name !== aliasName && candidate.provider === patch.originalProvider) {
+          aliases[name] = { ...candidate, provider: providerName };
+        }
+      }
+    }
+
+    const active = editableConfig.active === patch.originalAlias ? aliasName : editableConfig.active;
+    const nextConfig: EditableConfig = { ...editableConfig, active, aliases, providers };
+
+    setBusyAction(`provider-edit:${patch.originalAlias}`);
+    setEditMessage("");
+    setEditMessageBad(false);
+    try {
+      const { result: validation } = await validateConfigForCurrentMode(nextConfig);
+      if (!validation.ok) {
+        throw new Error((validation.errors ?? ["Validation failed"]).join(" "));
+      }
+      await persistConfigChange(nextConfig, `Saved ${aliasName}.`);
+      setEditAliasName(null);
+    } catch (error) {
+      setEditMessage(`Save failed: ${getErrorMessage(error)}`);
+      setEditMessageBad(true);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function handleDeleteAccount(aliasName: string) {
+    if (!editableConfig) {
+      setMessage("Load local configuration before deleting aliases offline.");
       return;
     }
     const alias = editableConfig.aliases[aliasName];
@@ -949,7 +1142,17 @@ export function App() {
       setMessage("Cannot delete the last alias. Add or import another alias first.");
       return;
     }
-    if (!window.confirm(`Delete alias "${aliasName}"?`)) {
+    setDeleteAliasName(aliasName);
+  }
+
+  async function confirmDeleteAccount(deleteProviderToo: boolean) {
+    if (!editableConfig || !deleteAliasName) {
+      return;
+    }
+    const aliasName = deleteAliasName;
+    const alias = editableConfig.aliases[aliasName];
+    if (!alias) {
+      setDeleteAliasName(null);
       return;
     }
 
@@ -957,14 +1160,14 @@ export function App() {
     const remainingReferences = Object.entries(editableConfig.aliases)
       .filter(([name]) => name !== aliasName)
       .filter(([, candidate]) => candidate.provider === providerName);
-    const deleteProviderToo = remainingReferences.length === 0
-      && Boolean(editableConfig.providers[providerName])
-      && window.confirm(`Provider "${providerName}" has no other aliases. Delete it too?`);
+    const removeProvider = deleteProviderToo
+      && remainingReferences.length === 0
+      && Boolean(editableConfig.providers[providerName]);
 
     const aliases = { ...editableConfig.aliases };
     delete aliases[aliasName];
     const providers = { ...editableConfig.providers };
-    if (deleteProviderToo) {
+    if (removeProvider) {
       delete providers[providerName];
     }
     const nextActive = editableConfig.active === aliasName
@@ -979,9 +1182,10 @@ export function App() {
 
     setBusyAction(`delete:${aliasName}`);
     try {
-      await persistConfigChange(nextConfig, deleteProviderToo
+      await persistConfigChange(nextConfig, removeProvider
         ? `Deleted ${aliasName} and orphan provider ${providerName}.`
         : `Deleted ${aliasName}.`);
+      setDeleteAliasName(null);
     } catch (error) {
       setMessage(`Delete failed: ${getErrorMessage(error)}`);
     } finally {
@@ -1912,6 +2116,20 @@ export function App() {
     ].some((value) => value.toLowerCase().includes(normalizedPresetSearch));
   });
   const codexDeepLink = buildCcSwitchDeepLink("codex");
+  const editingAlias = editAliasName
+    ? displayAliases.find((alias) => alias.name === editAliasName) ?? null
+    : null;
+  const deletingAlias = deleteAliasName ? editableConfig?.aliases[deleteAliasName] : undefined;
+  const deleteProviderOrphaned = Boolean(
+    deleteAliasName
+    && deletingAlias
+    && editableConfig
+    && Object.entries(editableConfig.aliases)
+      .filter(([name]) => name !== deleteAliasName)
+      .every(([, candidate]) => candidate.provider !== deletingAlias.provider)
+    && editableConfig.providers[deletingAlias.provider]
+  );
+  const editSaving = busyAction === `provider-edit:${editAliasName}`;
 
   return (
     <CcSwitchShell
@@ -1943,106 +2161,7 @@ export function App() {
         </section>
       </section>
 
-      {activeTab === "advanced" ? (
-        <>
-
-      {disconnected && (
-        <section className="notice error">
-          <strong>{t("advanced.serverNotRunning")}</strong>
-          <span>{t("advanced.startWithDev")}</span>
-        </section>
-      )}
-
-      <section className="actions">
-        <button onClick={() => void refresh()} disabled={busyAction !== null}>
-          {busyAction === "refresh" ? t("common.refreshing") : t("common.refresh")}
-        </button>
-        <button onClick={() => void handleReload()} disabled={busyAction !== null || disconnected}>
-          {busyAction === "reload" ? t("config.reloading") : t("config.reload")}
-        </button>
-        <span className={message.startsWith("Failed") || disconnected ? "action-message bad" : "action-message"}>
-          {message}
-        </span>
-      </section>
-
-      <ServerControl
-        busyAction={busyAction}
-        serverProcess={serverProcess}
-        serverUrl={serverUrl}
-        onRefresh={() => void refresh()}
-        onRestart={() => void handleRestartServer()}
-        onStart={() => void handleStartServer()}
-        onStop={() => void handleStopServer()}
-      />
-
-      <section className="grid">
-        <article className="card active-card">
-          <div className="card-heading">
-            <span>{t("advanced.activeAlias")}</span>
-            {status && <strong>{status.active}</strong>}
-          </div>
-          {status && activeAlias ? (
-            <>
-              <dl>
-                <div>
-                  <dt>{t("common.provider")}</dt>
-                  <dd>{activeAlias.provider}</dd>
-                </div>
-                <div>
-                  <dt>{t("config.upstreamModel")}</dt>
-                  <dd>{activeAlias.model}</dd>
-                </div>
-              </dl>
-              <div className="diagnostic-actions">
-                <button onClick={() => void runDiagnostic("diagnostic:active", () => testActive(false))} disabled={busyAction !== null || disconnected}>
-                  {busyAction === "diagnostic:active" ? t("common.testing") : t("advanced.testActive")}
-                </button>
-                <button className="secondary" onClick={() => void runDiagnostic("diagnostic:active-stream", () => testActive(true))} disabled={busyAction !== null || disconnected}>
-                  {busyAction === "diagnostic:active-stream" ? t("common.testing") : t("advanced.testActiveStream")}
-                </button>
-              </div>
-            </>
-          ) : status ? (
-            <p className="inline-error">Active alias is missing from the alias list.</p>
-          ) : (
-            <p className="muted">Connect to ModelGate to view active alias details.</p>
-          )}
-        </article>
-
-        <article className="card">
-          <div className="card-heading">
-            <span>{t("config.entrypoints")}</span>
-            <strong>{entrypoints.length}</strong>
-          </div>
-          {entrypoints.length > 0 ? (
-            <div className="entrypoints">
-              {entrypoints.map(([name, entrypoint]) => (
-                <div className="entrypoint" key={name}>
-                  <code>{name}</code>
-                  <span>{entrypoint.use === "active" ? "active" : entrypoint.use}</span>
-                  <strong>{entrypoint.resolved}</strong>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="muted">No entrypoints reported.</p>
-          )}
-        </article>
-      </section>
-
-      {renderDiagnosticResult()}
-
-      <section className="card codex-card">
-        <div className="card-heading">
-          <span>{t("advanced.codexConfiguration")}</span>
-          <button className="secondary" onClick={() => void handleCopy()}>
-            {copyOk ? t("common.copied") : t("common.copy")}
-          </button>
-        </div>
-        <pre>{codexConfig}</pre>
-      </section>
-        </>
-      ) : activeTab === "settings" ? (
+      {activeTab === "settings" ? (
         <CcSwitchSettingsDrawer
           closeLabel={t("common.close")}
           message={configMessage}
@@ -2466,122 +2585,6 @@ export function App() {
             </button>
           </section>
         </CcSwitchSettingsDrawer>
-      ) : activeTab === "logs" ? (
-        <section className="logs-page">
-          {disconnected && (
-            <section className="notice error">
-              <strong>{t("logs.notConnected")}</strong>
-              <span>{t("logs.startToView")}</span>
-            </section>
-          )}
-
-          <UsageOverview activeModel={activeAlias?.model} disconnected={disconnected} />
-
-          <section className="grid">
-            <article className="card stats-card">
-              <div className="card-heading">
-                <span>{t("logs.requestStats")}</span>
-                <strong>{requestStats?.total ?? 0}</strong>
-              </div>
-              <dl className="stats-grid">
-                <div>
-                  <dt>{t("logs.totalRequests")}</dt>
-                  <dd>{requestStats?.total ?? 0}</dd>
-                </div>
-                <div>
-                  <dt>{t("common.success")}</dt>
-                  <dd>{requestStats?.success ?? 0}</dd>
-                </div>
-                <div>
-                  <dt>{t("common.failed")}</dt>
-                  <dd>{requestStats?.failed ?? 0}</dd>
-                </div>
-                <div>
-                  <dt>{t("logs.averageDuration")}</dt>
-                  <dd>{requestStats?.avg_duration_ms ?? 0}ms</dd>
-                </div>
-                <div>
-                  <dt>{t("logs.stream")}</dt>
-                  <dd>{requestStats?.stream ?? 0}</dd>
-                </div>
-                <div>
-                  <dt>{t("logs.nonStream")}</dt>
-                  <dd>{requestStats?.non_stream ?? 0}</dd>
-                </div>
-              </dl>
-            </article>
-
-            <article className="card stats-card">
-              <div className="card-heading">
-                <span>{t("logs.byProvider")}</span>
-                <strong>{Object.keys(requestStats?.by_provider ?? {}).length}</strong>
-              </div>
-              <div className="provider-stats">
-                {Object.entries(requestStats?.by_provider ?? {}).length > 0 ? (
-                  Object.entries(requestStats?.by_provider ?? {}).map(([provider, count]) => (
-                    <div key={provider}>
-                      <span>{provider}</span>
-                      <strong>{count}</strong>
-                    </div>
-                  ))
-                ) : (
-                  <p className="muted">{t("logs.noProviderStats")}</p>
-                )}
-              </div>
-            </article>
-          </section>
-
-          <section className="actions">
-            <button onClick={() => void handleRefreshLogs()} disabled={busyAction !== null || disconnected}>
-              {busyAction === "logs:refresh" ? t("common.refreshing") : t("common.refresh")}
-            </button>
-            <button className="secondary danger" onClick={() => void handleClearLogs()} disabled={busyAction !== null || disconnected}>
-              {busyAction === "logs:clear" ? t("logs.clearing") : t("logs.clearLogs")}
-            </button>
-            <span className={logsMessage.startsWith("Failed") ? "action-message bad" : "action-message"}>
-              {logsMessage}
-            </span>
-          </section>
-
-          <section className="card table-card">
-            <div className="card-heading">
-              <span>{t("logs.recentRequests")}</span>
-              <strong>{requestLogs.length}</strong>
-            </div>
-            <div className="request-log-table">
-              <div className="request-log-row request-log-head">
-                <span>{t("usage.time")}</span>
-                <span>{t("logs.kind")}</span>
-                <span>API</span>
-                <span>{t("logs.fallback")}</span>
-                <span>{t("common.status")}</span>
-                <span>{t("logs.stream")}</span>
-                <span>{t("logs.requestedModel")}</span>
-                <span>{t("common.alias")}</span>
-                <span>{t("common.provider")}</span>
-                <span>{t("config.upstreamModel")}</span>
-                <span>{t("common.duration")}</span>
-                <span>{t("common.error")}</span>
-              </div>
-              {requestLogs.map((entry) => (
-                <div className={entry.ok ? "request-log-row ok" : "request-log-row failed"} key={entry.id}>
-                  <span>{formatLogTime(entry.started_at)}</span>
-                  <span>{entry.kind === "diagnostic" ? t("logs.diagnostic") : t("logs.normal")}</span>
-                  <span>{entry.api_type === "responses" ? "responses" : "chat"}</span>
-                  <span>{entry.fallback_mode ?? "-"}</span>
-                  <span><span className={entry.ok ? "pill" : "pill bad"}>{entry.ok ? "OK" : entry.status_code ?? "ERR"}</span></span>
-                  <span>{entry.stream ? "stream" : "non-stream"}</span>
-                  <span>{entry.requested_model ?? "-"}</span>
-                  <span>{entry.resolved_alias ?? "-"}</span>
-                  <span>{entry.provider ?? "-"}</span>
-                  <span>{entry.upstream_model ?? "-"}</span>
-                  <span>{entry.duration_ms ?? 0}ms</span>
-                  <span>{entry.error_message ?? ""}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        </section>
       ) : null}
       <CcSwitchImportModal
         busyAction={busyAction}
@@ -2597,6 +2600,29 @@ export function App() {
         onScanAuto={() => void handleScanAutoCcSwitch()}
         onSelectDatabase={() => void handleSelectCcSwitch()}
         onUpdateDraft={updateImportDraft}
+      />
+      <CcSwitchProviderEditModal
+        alias={editingAlias}
+        busy={editSaving}
+        message={editMessage}
+        messageBad={editMessageBad}
+        open={Boolean(editAliasName && editingAlias)}
+        providerNames={providerNames}
+        onClose={() => setEditAliasName(null)}
+        onSave={(patch) => void handleSaveProviderEdit(patch)}
+      />
+      <CcSwitchConfirmModal
+        busy={busyAction?.startsWith("delete:") ?? false}
+        checkboxDefault={deleteProviderOrphaned}
+        checkboxLabel={deleteProviderOrphaned && deletingAlias
+          ? t("providerDelete.orphanProvider", { provider: deletingAlias.provider })
+          : undefined}
+        confirmLabel={t("common.delete")}
+        message={deleteAliasName ? t("providerDelete.message", { alias: deleteAliasName }) : ""}
+        open={Boolean(deleteAliasName && deletingAlias)}
+        title={t("providerDelete.title")}
+        onCancel={() => setDeleteAliasName(null)}
+        onConfirm={(checked) => void confirmDeleteAccount(checked)}
       />
     </CcSwitchShell>
   );
