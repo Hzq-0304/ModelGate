@@ -28,6 +28,19 @@ export type OpenAICompatibleProviderConfig = {
     header?: string;
     scheme?: string;
   } | {
+    type: "ccswitch-snapshot";
+    source?: string;
+    app?: string;
+    snapshot_id: string;
+    snapshot_path?: string;
+    provider_id: string;
+    credential_id?: string;
+    credential_ref?: string;
+    credential_path?: string;
+    fallback_env?: string;
+    header?: string;
+    scheme?: string;
+  } | {
     type: "static-header-ref";
     header?: string;
     scheme?: string;

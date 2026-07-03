@@ -80,6 +80,9 @@ function authResolved(auth: unknown, fallbackApiKey: unknown) {
   if (record.type === "ccswitch") {
     return Boolean(record.credential_ref || record.credential_path || record.credential_id || record.provider_id);
   }
+  if (record.type === "ccswitch-snapshot") {
+    return Boolean(record.snapshot_id && record.provider_id);
+  }
   if (record.type === "static-header-ref") {
     if (typeof record.value === "string" && record.value.trim()) {
       return true;

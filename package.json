@@ -22,6 +22,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test:startup-env": "tsx scripts/smoke-missing-env.ts",
+    "test:ccswitch-snapshot": "tsx scripts/smoke-ccswitch-snapshot.ts",
     "release:prepare": "npm run typecheck && npm run build && npm run build:desktop-ui && npm run build:desktop",
     "release:local": "npm run release:prepare && node scripts/prepare-release.mjs"
   },

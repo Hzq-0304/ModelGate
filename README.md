@@ -125,11 +125,12 @@ providers:
   openai-official:
     type: openai-compatible
     base_url: https://api.openai.com/v1
-    api_key: ${OPENAI_API_KEY}
     auth:
-      type: ccswitch
-      source: CC Switch OpenAI Official
+      type: ccswitch-snapshot
+      source: CC Switch snapshot
       app: codex
+      snapshot_id: "snapshot-..."
+      snapshot_path: "C:\\Users\\you\\AppData\\Roaming\\com.modelgate.desktop\\ccswitch-snapshots\\snapshot-..."
       provider_id: "<cc-switch-provider-id>"
       credential_ref: "ccswitch://providers/codex/<cc-switch-provider-id>/auth"
       credential_path: /auth/OPENAI_API_KEY
@@ -138,7 +139,7 @@ providers:
       scheme: Bearer
 ```
 
-The `ccswitch` form records a CC Switch credential reference and optional environment-variable fallback. ModelGate does not perform OpenAI web login, does not read browser cookies, and does not display plaintext tokens.
+The `ccswitch-snapshot` form records a local CC Switch snapshot reference and optional environment-variable fallback. ModelGate does not modify the original CC Switch database, does not perform OpenAI web login, does not read browser cookies, and does not display plaintext tokens.
 
 Set environment variables before starting ModelGate:
 
@@ -154,7 +155,7 @@ On Windows PowerShell:
 $env:DEEPSEEK_API_KEY = "your-api-key"
 ```
 
-If a config references `${ENV_NAME}` and that environment variable is missing, ModelGate fails fast with a clear error.
+If a provider references `${ENV_NAME}` and that environment variable is missing, ModelGate still starts. `/admin/status` reports a warning, and requests that use that provider return a structured `missing_environment_variable` or `missing_credential` JSON error.
 
 Keep provider API keys in environment variables instead of YAML. The desktop app and admin API are designed to show `${ENV_NAME}` or `***`, never the real API key.
 
@@ -703,19 +704,20 @@ The import flow is aimed at Codex OpenAI-compatible provider settings. When impo
 
 ### Import From CC Switch
 
-The desktop Home page and Configuration -> Integrations both include **Import from CC Switch**. Clicking either button opens the same import modal instead of navigating away from the current page.
+The desktop Home page and Configuration -> Integrations both include **Import from CC Switch**. Clicking either button opens the same import modal instead of navigating away from the current page. ModelGate first copies a local CC Switch configuration snapshot into ModelGate app data, then imports Codex provider configs from that snapshot.
 
 The modal keeps the default flow short:
 
-1. ModelGate auto-scans the default local CC Switch database.
-2. Only Codex app provider/model configs are read.
-3. Importable Codex models are shown as a compact selectable list with only checkbox, name, description, and an edit action.
-4. Use **Edit** only when you need to review or change alias name, description, model, provider, Base URL, or API key environment variable name.
-5. Select the models to import.
-6. Click **Import Selected Models**.
-7. ModelGate writes its own providers / aliases, validates the config, saves, and reloads.
+1. ModelGate auto-detects the default local CC Switch database.
+2. ModelGate copies `cc-switch.db` and available Codex auth files into a snapshot directory.
+3. Only Codex app provider/model configs are read from the copied snapshot.
+4. Importable Codex models are shown as a compact selectable list with only checkbox, name, description, and an edit action.
+5. Use **Edit** only when you need to review or change alias name, description, model, provider, Base URL, or API key environment variable name.
+6. Select the models to import.
+7. Click **Import Selected Models**.
+8. ModelGate writes its own providers / aliases, validates the config, saves, and reloads.
 
-ModelGate scans CC Switch data without modifying it:
+ModelGate copies and scans CC Switch data without modifying the source:
 
 - does not modify the CC Switch SQLite database
 - does not modify CC Switch settings
@@ -724,7 +726,15 @@ ModelGate scans CC Switch data without modifying it:
 - does not import MCP servers, skills, prompts, or usage logs
 - skips ModelGate-managed providers by default to avoid import loops
 
-The scanner is based on the current CC Switch SQLite schema. It first looks for the real `providers` / `provider_endpoints` schema, reads Codex rows from `providers.settings_config`, and extracts the OpenAI-compatible base URL, model, masked API key preview, credential reference, and description. Claude, Gemini, OpenCode, OpenClaw, Hermes, and other app configs are not shown in this import list.
+Snapshots are stored under the desktop app config directory:
+
+```text
+<ModelGate app config dir>/ccswitch-snapshots/<snapshot_id>/
+```
+
+The snapshot contains copied files such as `cc-switch.db`, `auth/auth.json`, optional `auth/codex_oauth_auth.json`, a non-sensitive `manifest.json`, and a local `auth/provider-auth.json` runtime index used by the self-contained Node backend. This snapshot directory is user-local app data and should not be committed or uploaded.
+
+The scanner is based on the current CC Switch SQLite schema. It first looks for the real `providers` / `provider_endpoints` schema in the copied snapshot, reads Codex rows from `providers.settings_config`, and extracts the OpenAI-compatible base URL, model, masked auth preview, credential reference, and description. Claude, Gemini, OpenCode, OpenClaw, Hermes, and other app configs are not shown in this import list.
 
 Model order is preserved from CC Switch as closely as possible. The current schema uses `sort_index`, `sort_order`, `position`, `order`, `created_at`, then `id`; ModelGate writes imported aliases in that order so the Account Switcher follows the same order.
 
@@ -736,7 +746,7 @@ OpenAI Official configs are recognized when the CC Switch provider name or id lo
 https://api.openai.com/v1
 ```
 
-OpenAI Official configs are imported as CC Switch credential references when possible. ModelGate recognizes Codex `auth.OPENAI_API_KEY`, provider-scoped `experimental_bearer_token`, and official auth material in the CC Switch provider config. If no usable credential is found, the item remains importable and falls back to an environment-variable reference such as `${OPENAI_API_KEY}`. Missing credentials are warnings; they do not stop the ModelGate backend from starting.
+OpenAI Official and HardyAI configs are imported as `auth.type = ccswitch-snapshot` when the snapshot has a usable credential reference. ModelGate recognizes Codex `auth.OPENAI_API_KEY`, provider-scoped `experimental_bearer_token`, copied Codex `auth.json`, and official auth material in the CC Switch provider config. If no usable credential is found, the item remains importable and can fall back to an environment-variable reference such as `${OPENAI_API_KEY}`. Missing credentials are warnings; they do not stop the ModelGate backend from starting.
 
 The desktop app first looks for:
 
@@ -758,17 +768,22 @@ CC Switch database was not found. Select cc-switch.db manually.
 
 Then use **Select Database** to choose `cc-switch.db` manually. The scanner opens SQLite in read-only mode. Parser tables and scan-report details are not shown in the main import list; warning details are available from each item's edit view.
 
-API keys are never imported as plaintext. If a key or token is detected, ModelGate only shows a masked preview and suggests an environment variable name. The saved ModelGate YAML uses this form:
+API keys are never written as plaintext into the ModelGate YAML. If a key or token is detected, ModelGate only shows a masked preview and saves a snapshot reference. The saved ModelGate YAML uses this form:
 
 ```yaml
 providers:
   deepseek:
     type: openai-compatible
     base_url: https://api.deepseek.com/v1
-    api_key: ${DEEPSEEK_API_KEY}
+    auth:
+      type: ccswitch-snapshot
+      snapshot_id: snapshot-...
+      snapshot_path: ...
+      provider_id: deepseek-...
+      credential_path: /auth/OPENAI_API_KEY
 ```
 
-Set the environment variable before using the provider:
+Only providers that cannot use snapshot auth fall back to an environment variable reference:
 
 ```powershell
 $env:DEEPSEEK_API_KEY="your-api-key"

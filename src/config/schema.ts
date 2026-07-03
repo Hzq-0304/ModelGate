@@ -25,6 +25,20 @@ export const providerAuthSchema = z.union([
     scheme: z.string().optional().default("Bearer")
   }),
   z.object({
+    type: z.literal("ccswitch-snapshot"),
+    source: z.string().min(1).default("CC Switch snapshot"),
+    app: z.string().min(1).default("codex"),
+    snapshot_id: z.string().min(1),
+    snapshot_path: z.string().optional(),
+    provider_id: z.string().min(1),
+    credential_id: z.string().optional(),
+    credential_ref: z.string().optional(),
+    credential_path: z.string().optional(),
+    fallback_env: z.string().regex(envNamePattern).optional(),
+    header: z.string().min(1).default("Authorization"),
+    scheme: z.string().optional().default("Bearer")
+  }),
+  z.object({
     type: z.literal("static-header-ref"),
     header: z.string().min(1).default("Authorization"),
     scheme: z.string().optional().default("Bearer"),

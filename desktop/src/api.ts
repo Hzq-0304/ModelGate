@@ -99,6 +99,19 @@ export type ProviderConfig =
       header?: string;
       scheme?: string;
     } | {
+      type: "ccswitch-snapshot";
+      source?: string;
+      app?: string;
+      snapshot_id: string;
+      snapshot_path?: string;
+      provider_id: string;
+      credential_id?: string;
+      credential_ref?: string;
+      credential_path?: string;
+      fallback_env?: string;
+      header?: string;
+      scheme?: string;
+    } | {
       type: "static-header-ref";
       header?: string;
       scheme?: string;
@@ -308,7 +321,9 @@ export type CcSwitchImportCandidate = {
   api_key_env?: string;
   api_key_detected: boolean;
   api_key_preview?: string;
-  auth_type?: "env" | "ccswitch" | "static-header-ref";
+  auth_type?: "env" | "ccswitch" | "ccswitch-snapshot" | "static-header-ref";
+  snapshot_id?: string;
+  snapshot_path?: string;
   auth_source?: string;
   auth_status?: "imported" | "fallback" | "missing";
   credential_id?: string;
@@ -335,6 +350,10 @@ export type CcSwitchImportCandidate = {
 
 export type CcSwitchImportReport = {
   dbPath: string;
+  snapshotId?: string;
+  snapshotPath?: string;
+  copiedFiles?: string[];
+  missingFiles?: string[];
   tables: Array<{
     name: string;
     rowCount?: number;
@@ -348,6 +367,10 @@ export type CcSwitchImportReport = {
 
 export type CcSwitchScanResult = {
   path: string;
+  snapshot_id?: string;
+  snapshot_path?: string;
+  copied_files?: string[];
+  missing_files?: string[];
   candidates: CcSwitchImportCandidate[];
   skipped_modelgate_managed: number;
   warnings: string[];
@@ -591,6 +614,34 @@ async function collectOfflineConfigWarnings(config: EditableConfig) {
       const fallbackEnv = provider.auth.fallback_env;
       const source = provider.auth.source;
       const credentialRef = provider.auth.credential_ref ?? provider.auth.credential_id ?? provider.auth.provider_id;
+      if (fallbackEnv) {
+        envNames.push(fallbackEnv);
+      }
+      pending.push(() => fallbackEnv && envStatus[fallbackEnv]
+        ? null
+        : missingCredentialWarning(
+          `providers.${providerName}.auth`,
+          source,
+          providerName,
+          credentialRef,
+          fallbackEnv
+        ));
+      continue;
+    }
+
+    if (provider.auth?.type === "ccswitch-snapshot") {
+      const hasReference = Boolean(provider.auth.snapshot_id && provider.auth.provider_id);
+      if (hasReference) {
+        continue;
+      }
+
+      const fallbackEnv = provider.auth.fallback_env;
+      const source = provider.auth.source ?? "CC Switch snapshot";
+      const credentialRef = provider.auth.credential_ref
+        ?? provider.auth.credential_id
+        ?? provider.auth.credential_path
+        ?? provider.auth.provider_id
+        ?? provider.auth.snapshot_id;
       if (fallbackEnv) {
         envNames.push(fallbackEnv);
       }

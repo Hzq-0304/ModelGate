@@ -1,4 +1,9 @@
 import type { ModelGateConfig } from "./schema.js";
+import {
+  hasSnapshotAuthIndex,
+  resolveCcSwitchSnapshotAuth,
+  type CcSwitchSnapshotAuthConfig
+} from "./ccswitchSnapshot.js";
 
 export type MissingEnvWarning = {
   type: "missing_env";
@@ -31,7 +36,7 @@ export type ProviderAuthResolution =
     ok: true;
     headers: Record<string, string>;
     secret?: string;
-    source: "api_key" | "env" | "ccswitch" | "static-header-ref";
+    source: "api_key" | "env" | "ccswitch" | "ccswitch-snapshot" | "static-header-ref";
     envName?: string;
   }
   | { ok: false; warning: ConfigWarning };
@@ -60,6 +65,7 @@ type ProviderAuthConfigLike =
     header?: string;
     scheme?: string;
   }
+  | CcSwitchSnapshotAuthConfig
   | {
     type: "static-header-ref";
     header?: string;
@@ -234,6 +240,27 @@ function collectAuthWarning(providerName: string, auth: ProviderAuthConfigLike):
         auth.credential_ref ?? auth.credential_id ?? auth.provider_id,
         auth.fallback_env
       );
+    case "ccswitch-snapshot":
+      if (hasSnapshotAuthIndex(auth)) {
+        const resolved = resolveCcSwitchSnapshotAuth(providerName, auth);
+        if (resolved.ok) {
+          return null;
+        }
+        if (auth.fallback_env && process.env[auth.fallback_env]) {
+          return null;
+        }
+        return resolved.warning;
+      }
+      if (auth.fallback_env && process.env[auth.fallback_env]) {
+        return null;
+      }
+      return createMissingCredentialWarning(
+        `providers.${providerName}.auth`,
+        auth.source ?? "CC Switch snapshot",
+        providerName,
+        auth.credential_ref ?? auth.credential_id ?? auth.credential_path ?? auth.provider_id ?? auth.snapshot_id,
+        auth.fallback_env
+      );
   }
 
   return null;
@@ -342,6 +369,36 @@ function resolveExplicitProviderAuth(providerName: string, auth: ProviderAuthCon
         headers: {
           [authHeaderName(auth)]: headerValue(value, auth.scheme)
         }
+      };
+    }
+    case "ccswitch-snapshot": {
+      const snapshot = resolveCcSwitchSnapshotAuth(providerName, auth);
+      if (snapshot.ok) {
+        return {
+          ok: true,
+          source: "ccswitch-snapshot",
+          envName: auth.fallback_env,
+          secret: snapshot.secret,
+          headers: snapshot.headers
+        };
+      }
+
+      const fallback = auth.fallback_env ? process.env[auth.fallback_env] : undefined;
+      if (fallback) {
+        return {
+          ok: true,
+          source: "ccswitch-snapshot",
+          envName: auth.fallback_env,
+          secret: fallback,
+          headers: {
+            [authHeaderName(auth)]: headerValue(fallback, auth.scheme)
+          }
+        };
+      }
+
+      return {
+        ok: false,
+        warning: snapshot.warning
       };
     }
   }

@@ -13,7 +13,9 @@ export type CcSwitchImportDraft = {
   description?: string;
   api_key_detected: boolean;
   api_key_preview?: string;
-  auth_type?: "env" | "ccswitch" | "static-header-ref";
+  auth_type?: "env" | "ccswitch" | "ccswitch-snapshot" | "static-header-ref";
+  snapshot_id?: string;
+  snapshot_path?: string;
   auth_source?: string;
   auth_status?: "imported" | "fallback" | "missing";
   credential_id?: string;
@@ -200,7 +202,7 @@ export function CcSwitchImportModal({
                   )}
                   {!draft.api_key_detected && (
                     <span className="ccswitch-import-warning-line">
-                      {draft.auth_type === "ccswitch"
+                      {draft.auth_type === "ccswitch" || draft.auth_type === "ccswitch-snapshot"
                         ? t("ccswitchImport.item.missingCredential", { env: draft.envName })
                         : t("ccswitchImport.item.missingApiKey", { env: draft.envName })}
                     </span>

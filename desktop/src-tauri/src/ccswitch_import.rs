@@ -6,9 +6,11 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    env,
+    env, fs,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
+use tauri::{AppHandle, Manager};
 
 #[derive(Serialize)]
 pub struct CcSwitchDatabaseDetection {
@@ -32,9 +34,13 @@ pub struct CcSwitchImportCandidate {
     api_key_env: Option<String>,
     api_key_detected: bool,
     api_key_preview: Option<String>,
+    #[serde(skip_serializing)]
+    auth_secret: Option<String>,
     auth_type: Option<String>,
     auth_source: Option<String>,
     auth_status: Option<String>,
+    snapshot_id: Option<String>,
+    snapshot_path: Option<String>,
     credential_id: Option<String>,
     credential_ref: Option<String>,
     credential_path: Option<String>,
@@ -63,6 +69,10 @@ pub struct CcSwitchTableInfo {
 #[serde(rename_all = "camelCase")]
 pub struct CcSwitchImportReport {
     db_path: String,
+    snapshot_id: Option<String>,
+    snapshot_path: Option<String>,
+    copied_files: Vec<String>,
+    missing_files: Vec<String>,
     tables: Vec<CcSwitchTableInfo>,
     candidates_found: usize,
     skipped_modelgate_managed: usize,
@@ -73,6 +83,10 @@ pub struct CcSwitchImportReport {
 #[derive(Serialize)]
 pub struct CcSwitchScanResult {
     path: String,
+    snapshot_id: Option<String>,
+    snapshot_path: Option<String>,
+    copied_files: Vec<String>,
+    missing_files: Vec<String>,
     candidates: Vec<CcSwitchImportCandidate>,
     skipped_modelgate_managed: usize,
     warnings: Vec<String>,
@@ -92,6 +106,40 @@ struct SchemaCandidateRow {
 struct TableScanResult {
     candidates: Vec<CcSwitchImportCandidate>,
     skipped_modelgate_managed: usize,
+}
+
+struct SnapshotContext {
+    id: String,
+    path: PathBuf,
+}
+
+#[derive(Serialize)]
+struct SnapshotManifest {
+    source: String,
+    created_at: String,
+    db_path: String,
+    copied_files: Vec<String>,
+    missing_files: Vec<String>,
+    app: String,
+    snapshot_id: String,
+    schema_version: u8,
+}
+
+#[derive(Serialize)]
+struct SnapshotAuthIndex {
+    schema_version: u8,
+    snapshot_id: String,
+    providers: BTreeMap<String, SnapshotProviderAuth>,
+}
+
+#[derive(Clone, Serialize)]
+struct SnapshotProviderAuth {
+    provider_id: String,
+    app: String,
+    credential_id: Option<String>,
+    credential_ref: Option<String>,
+    credential_path: Option<String>,
+    headers: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Default)]
@@ -158,13 +206,13 @@ pub fn detect_ccswitch_database() -> CcSwitchDatabaseDetection {
 }
 
 #[tauri::command]
-pub fn scan_ccswitch_database(show_managed: Option<bool>) -> Result<CcSwitchScanResult, String> {
-    scan_database(&default_database_path(), show_managed.unwrap_or(false))
+pub fn scan_ccswitch_database(app: AppHandle, show_managed: Option<bool>) -> Result<CcSwitchScanResult, String> {
+    scan_database(&app, &default_database_path(), show_managed.unwrap_or(false))
 }
 
 #[tauri::command]
-pub fn scan_selected_ccswitch_database(path: String, show_managed: Option<bool>) -> Result<CcSwitchScanResult, String> {
-    scan_database(Path::new(&path), show_managed.unwrap_or(false))
+pub fn scan_selected_ccswitch_database(app: AppHandle, path: String, show_managed: Option<bool>) -> Result<CcSwitchScanResult, String> {
+    scan_database(&app, Path::new(&path), show_managed.unwrap_or(false))
 }
 
 fn default_database_path() -> PathBuf {
@@ -176,18 +224,218 @@ fn default_database_path() -> PathBuf {
     home.join(".cc-switch").join("cc-switch.db")
 }
 
-fn scan_database(path: &Path, show_managed: bool) -> Result<CcSwitchScanResult, String> {
+fn user_home_dir() -> PathBuf {
+    env::var_os("USERPROFILE")
+        .or_else(|| env::var_os("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn snapshot_id() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+    format!("snapshot-{millis}")
+}
+
+fn copy_if_exists(source: PathBuf, target: PathBuf, label: &str, copied: &mut Vec<String>, missing: &mut Vec<String>) -> Result<(), String> {
+    if !source.is_file() {
+        missing.push(label.to_string());
+        return Ok(());
+    }
+
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|error| format!("Failed to create snapshot directory: {error}"))?;
+    }
+    fs::copy(&source, &target)
+        .map_err(|error| format!("Failed to copy {} into snapshot: {error}", source.display()))?;
+    copied.push(label.to_string());
+    Ok(())
+}
+
+fn possible_codex_oauth_paths() -> Vec<PathBuf> {
+    let home = user_home_dir();
+    let mut paths = vec![
+        home.join(".cc-switch").join("codex_oauth_auth.json"),
+    ];
+
+    if let Some(app_data) = env::var_os("APPDATA") {
+        paths.push(PathBuf::from(app_data.clone()).join("CC Switch").join("codex_oauth_auth.json"));
+        paths.push(PathBuf::from(app_data).join("cc-switch").join("codex_oauth_auth.json"));
+    }
+    if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
+        paths.push(PathBuf::from(local_app_data.clone()).join("CC Switch").join("codex_oauth_auth.json"));
+        paths.push(PathBuf::from(local_app_data).join("cc-switch").join("codex_oauth_auth.json"));
+    }
+
+    paths
+}
+
+fn copy_ccswitch_snapshot(app: &AppHandle, db_path: &Path) -> Result<(SnapshotContext, Vec<String>, Vec<String>), String> {
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| format!("Failed to resolve ModelGate config directory: {error}"))?;
+    let id = snapshot_id();
+    let snapshot = SnapshotContext {
+        id: id.clone(),
+        path: config_dir.join("ccswitch-snapshots").join(id),
+    };
+    fs::create_dir_all(&snapshot.path)
+        .map_err(|error| format!("Failed to create CC Switch snapshot directory: {error}"))?;
+
+    let mut copied_files = Vec::new();
+    let mut missing_files = Vec::new();
+    copy_if_exists(
+        db_path.to_path_buf(),
+        snapshot.path.join("cc-switch.db"),
+        "cc-switch.db",
+        &mut copied_files,
+        &mut missing_files,
+    )?;
+    copy_if_exists(
+        user_home_dir().join(".codex").join("auth.json"),
+        snapshot.path.join("auth").join("auth.json"),
+        "auth/auth.json",
+        &mut copied_files,
+        &mut missing_files,
+    )?;
+
+    let oauth_source = possible_codex_oauth_paths().into_iter().find(|path| path.is_file());
+    if let Some(path) = oauth_source {
+        copy_if_exists(
+            path,
+            snapshot.path.join("auth").join("codex_oauth_auth.json"),
+            "auth/codex_oauth_auth.json",
+            &mut copied_files,
+            &mut missing_files,
+        )?;
+    } else {
+        missing_files.push("auth/codex_oauth_auth.json".to_string());
+    }
+
+    let manifest = SnapshotManifest {
+        source: "ccswitch".to_string(),
+        created_at: format!("{:?}", SystemTime::now()),
+        db_path: db_path.to_string_lossy().to_string(),
+        copied_files: copied_files.clone(),
+        missing_files: missing_files.clone(),
+        app: "codex".to_string(),
+        snapshot_id: snapshot.id.clone(),
+        schema_version: 1,
+    };
+    fs::write(
+        snapshot.path.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| format!("Failed to write CC Switch snapshot manifest: {error}"))?;
+
+    Ok((snapshot, copied_files, missing_files))
+}
+
+fn read_snapshot_codex_auth_api_key(snapshot: &SnapshotContext) -> Option<String> {
+    let auth_path = snapshot.path.join("auth").join("auth.json");
+    let raw = fs::read_to_string(auth_path).ok()?;
+    let json = serde_json::from_str::<Value>(&raw).ok()?;
+    json.get("OPENAI_API_KEY")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(String::from)
+}
+
+fn candidate_looks_openai_official(candidate: &CcSwitchImportCandidate) -> bool {
+    provider_looks_openai_official(&candidate.name)
+        || provider_looks_openai_official(&candidate.provider_name)
+        || candidate
+            .source_id
+            .as_deref()
+            .map(provider_looks_openai_official)
+            .unwrap_or(false)
+}
+
+fn usable_snapshot_secret(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty()
+        && !(extract_env_name(trimmed).is_some() && !looks_secret_value(trimmed))
+        && !trimmed.starts_with("${")
+}
+
+fn snapshot_secret_for_candidate(candidate: &CcSwitchImportCandidate, codex_auth_api_key: Option<&str>) -> Option<String> {
+    candidate
+        .auth_secret
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| usable_snapshot_secret(value))
+        .map(String::from)
+        .or_else(|| {
+            candidate_looks_openai_official(candidate)
+                .then_some(codex_auth_api_key?)
+                .filter(|value| usable_snapshot_secret(value))
+                .map(String::from)
+        })
+}
+
+fn write_snapshot_auth_index(snapshot: &SnapshotContext, candidates: &[CcSwitchImportCandidate]) -> Result<(), String> {
+    let auth_dir = snapshot.path.join("auth");
+    fs::create_dir_all(&auth_dir)
+        .map_err(|error| format!("Failed to create snapshot auth directory: {error}"))?;
+
+    let mut providers = BTreeMap::new();
+    let codex_auth_api_key = read_snapshot_codex_auth_api_key(snapshot);
+    for candidate in candidates {
+        let Some(secret) = snapshot_secret_for_candidate(candidate, codex_auth_api_key.as_deref()) else {
+            continue;
+        };
+        let Some(provider_id) = candidate.source_id.clone() else {
+            continue;
+        };
+
+        let mut headers = BTreeMap::new();
+        headers.insert("Authorization".to_string(), format!("Bearer {}", secret.trim()));
+        let entry = SnapshotProviderAuth {
+            provider_id: provider_id.clone(),
+            app: candidate.app.clone(),
+            credential_id: candidate.credential_id.clone(),
+            credential_ref: candidate.credential_ref.clone(),
+            credential_path: candidate.credential_path.clone(),
+            headers,
+        };
+
+        providers.insert(provider_id.clone(), entry.clone());
+        providers.insert(format!("{}:{provider_id}", candidate.app), entry);
+    }
+
+    let index = SnapshotAuthIndex {
+        schema_version: 1,
+        snapshot_id: snapshot.id.clone(),
+        providers,
+    };
+    fs::write(
+        auth_dir.join("provider-auth.json"),
+        serde_json::to_string_pretty(&index).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| format!("Failed to write snapshot auth index: {error}"))?;
+
+    Ok(())
+}
+
+fn scan_database(app: &AppHandle, path: &Path, show_managed: bool) -> Result<CcSwitchScanResult, String> {
     if !path.is_file() {
         return Err(format!("CC Switch database not found: {}", path.display()));
     }
 
+    let (snapshot, copied_files, missing_files) = copy_ccswitch_snapshot(app, path)?;
+    let scan_path = snapshot.path.join("cc-switch.db");
+
     let connection = Connection::open_with_flags(
-        path,
+        &scan_path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|error| format!("Failed to open SQLite database read-only: {error}"))?;
 
-    let db_path = path.to_string_lossy().to_string();
+    let db_path = scan_path.to_string_lossy().to_string();
     let tables = describe_tables(&connection)?;
     let mut warnings = Vec::new();
 
@@ -209,7 +457,14 @@ fn scan_database(path: &Path, show_managed: bool) -> Result<CcSwitchScanResult, 
     dedupe_candidates(&mut candidates);
     for candidate in &mut candidates {
         candidate.db_path = Some(db_path.clone());
+        candidate.snapshot_id = Some(snapshot.id.clone());
+        candidate.snapshot_path = Some(snapshot.path.to_string_lossy().to_string());
+        if matches!(candidate.auth_type.as_deref(), Some("ccswitch" | "ccswitch-snapshot")) {
+            candidate.auth_type = Some("ccswitch-snapshot".to_string());
+            candidate.auth_source = Some("CC Switch snapshot".to_string());
+        }
     }
+    write_snapshot_auth_index(&snapshot, &candidates)?;
 
     if candidates.is_empty() {
         warnings.push("Scanned database, but no importable Codex model configs were recognized.".to_string());
@@ -218,6 +473,10 @@ fn scan_database(path: &Path, show_managed: bool) -> Result<CcSwitchScanResult, 
 
     let report = CcSwitchImportReport {
         db_path,
+        snapshot_id: Some(snapshot.id.clone()),
+        snapshot_path: Some(snapshot.path.to_string_lossy().to_string()),
+        copied_files: copied_files.clone(),
+        missing_files: missing_files.clone(),
         tables,
         candidates_found: candidates.len(),
         skipped_modelgate_managed,
@@ -227,6 +486,10 @@ fn scan_database(path: &Path, show_managed: bool) -> Result<CcSwitchScanResult, 
 
     Ok(CcSwitchScanResult {
         path: report.db_path.clone(),
+        snapshot_id: Some(snapshot.id),
+        snapshot_path: Some(snapshot.path.to_string_lossy().to_string()),
+        copied_files,
+        missing_files,
         candidates,
         skipped_modelgate_managed,
         warnings,
@@ -520,7 +783,17 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
         warnings.push("Official/default provider; review before importing.".to_string());
     }
 
-    let source_config_hash = Some(stable_hash(&canonicalize_for_hash(&row.settings_config)));
+    let auth_source_type = if auth_detected { "ccswitch-snapshot" } else { "env" };
+    let source_config_hash = Some(stable_hash(&format!(
+        "provider_id={}|app={}|base_url={}|model={}|auth_type={}|credential={}|config={}",
+        row.id,
+        row.app_type,
+        base_url.as_deref().unwrap_or_default().trim_end_matches('/'),
+        model.as_deref().unwrap_or_default(),
+        auth_source_type,
+        credential.id.as_deref().or(credential.path.as_deref()).or(auth_path.as_deref()).unwrap_or_default(),
+        canonicalize_for_hash(&row.settings_config)
+    )));
     let credential_ref = credential_id.as_ref().map(|id| {
         if credential.id.is_some() {
             format!("ccswitch://credentials/{}/{id}", row.app_type)
@@ -528,7 +801,6 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
             format!("ccswitch://providers/{}/{id}/auth", row.app_type)
         }
     });
-    let auth_source_type = if auth_detected { "ccswitch" } else { "env" };
     let fingerprint = Some(stable_hash(&format!(
         "app={}|provider_id={}|name={}|base_url={}|model={}|auth_type={}|credential={}|config={}",
         row.app_type,
@@ -557,8 +829,9 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
         api_key_env: Some(env_name.clone()),
         api_key_detected: auth_detected,
         api_key_preview: api_key.as_deref().map(mask_secret),
+        auth_secret: api_key.clone(),
         auth_type: if auth_detected {
-            Some("ccswitch".to_string())
+            Some("ccswitch-snapshot".to_string())
         } else {
             Some("env".to_string())
         },
@@ -576,6 +849,8 @@ fn candidate_from_current_schema(row: &SchemaCandidateRow, endpoints: Vec<String
         } else {
             "missing".to_string()
         }),
+        snapshot_id: None,
+        snapshot_path: None,
         credential_id,
         credential_ref,
         credential_path: credential.path.or_else(|| auth_path.filter(|_| auth_detected)),
@@ -1266,9 +1541,12 @@ fn candidate_from_fields(
         api_key_env: Some(env_name.clone()),
         api_key_detected: api_key.is_some(),
         api_key_preview: api_key.as_deref().map(mask_secret),
+        auth_secret: api_key.clone(),
         auth_type: Some("env".to_string()),
         auth_source: None,
         auth_status: Some(if api_key.is_some() { "imported".to_string() } else { "missing".to_string() }),
+        snapshot_id: None,
+        snapshot_path: None,
         credential_id: None,
         credential_ref: None,
         credential_path: None,
@@ -1670,7 +1948,7 @@ mod tests {
         assert_eq!(candidate.model.as_deref(), Some("gpt-5.5"));
         assert_eq!(candidate.api_key_env.as_deref(), Some("HARDYAI_API_KEY"));
         assert!(candidate.api_key_detected);
-        assert_eq!(candidate.auth_type.as_deref(), Some("ccswitch"));
+        assert_eq!(candidate.auth_type.as_deref(), Some("ccswitch-snapshot"));
         assert_eq!(candidate.auth_status.as_deref(), Some("imported"));
         assert_eq!(candidate.credential_id.as_deref(), Some("hardyai-1782220605678"));
         assert_eq!(

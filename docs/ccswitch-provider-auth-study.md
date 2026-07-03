@@ -21,7 +21,7 @@ OpenAI Official can be represented differently from third-party providers. Depen
 - represented by `requires_openai_auth = true` in the Codex config;
 - absent from the provider row, in which case ModelGate keeps an env fallback such as `${OPENAI_API_KEY}`.
 
-ModelGate stores a non-secret `auth.type = ccswitch` reference when CC Switch has auth material or a reliable credential reference. If no reference exists, ModelGate falls back to env auth and reports a warning only for that provider.
+ModelGate now stores a non-secret `auth.type = ccswitch-snapshot` reference when the copied CC Switch snapshot has auth material or a reliable credential reference. If no reference exists, ModelGate can keep an env fallback and reports a warning only for that provider.
 
 ## 3. Generic OpenAI-compatible auth locations
 
@@ -47,14 +47,15 @@ The UI then saw the missing local environment variable and reported `HARDYAI_API
 
 ## 5. New import priority
 
-ModelGate now treats all Codex providers uniformly:
+ModelGate now treats all Codex providers uniformly through the copied CC Switch snapshot:
 
-1. Prefer explicit CC Switch/Codex credential references.
-2. Detect key or token material in `settings_config.auth`.
-3. Detect bearer/API key material in `settings_config.config`.
-4. Use provider endpoint / credential table metadata when available.
-5. Keep OpenAI Official auth references when login material is present.
-6. Only if no CC Switch credential evidence exists, fall back to `${PROVIDER_API_KEY}`.
+1. Copy the CC Switch database and available Codex auth files into a ModelGate snapshot directory.
+2. Prefer explicit CC Switch/Codex credential references from the snapshot.
+3. Detect key or token material in `settings_config.auth`.
+4. Detect bearer/API key material in `settings_config.config`.
+5. Use provider endpoint / credential table metadata when available.
+6. Keep OpenAI Official auth references when login material is present.
+7. Only if no CC Switch credential evidence exists, fall back to `${PROVIDER_API_KEY}`.
 
 Imported providers and aliases also receive non-secret metadata:
 

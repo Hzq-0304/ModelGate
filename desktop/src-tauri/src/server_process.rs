@@ -726,10 +726,18 @@ fn begin_start(
     };
 
     let (mut command, command_line) = build_start_command(&root);
+    let config_dir = config_path
+        .parent()
+        .map(|path| path.to_path_buf())
+        .unwrap_or_else(|| root.clone());
     command
         .current_dir(&root)
         .env("MODELGATE_CONFIG", &config_path)
         .env("MODEL_GATE_CONFIG", &config_path)
+        .env("MODELGATE_CONFIG_DIR", &config_dir)
+        .env("MODEL_GATE_CONFIG_DIR", &config_dir)
+        .env("MODELGATE_SNAPSHOT_DIR", &config_dir)
+        .env("MODEL_GATE_SNAPSHOT_DIR", &config_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());

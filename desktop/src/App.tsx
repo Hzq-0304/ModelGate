@@ -167,6 +167,27 @@ function draftLooksLikeOpenAIOfficial(draft: Pick<ImportDraft, "name" | "provide
 }
 
 function buildProviderAuthFromDraft(draft: ImportDraft, providerName: string, envName: string) {
+  const hasSnapshotCredential = draft.auth_type === "ccswitch-snapshot"
+    && draft.auth_status === "imported"
+    && Boolean(draft.snapshot_id && (draft.source_id || draft.credential_id || draft.credential_ref || draft.credential_path));
+
+  if (hasSnapshotCredential) {
+    return {
+      type: "ccswitch-snapshot" as const,
+      source: draft.auth_source ?? "CC Switch snapshot",
+      app: draft.app || "codex",
+      snapshot_id: draft.snapshot_id as string,
+      snapshot_path: draft.snapshot_path,
+      provider_id: draft.source_id ?? draft.credential_id ?? providerName,
+      credential_id: draft.credential_id ?? draft.source_id,
+      credential_ref: draft.credential_ref ?? (draft.source_id ? `ccswitch://providers/${draft.app || "codex"}/${draft.source_id}/auth` : undefined),
+      credential_path: draft.credential_path ?? "/auth/OPENAI_API_KEY",
+      fallback_env: envName,
+      header: "Authorization",
+      scheme: "Bearer"
+    };
+  }
+
   const hasCcSwitchCredential = draft.auth_type === "ccswitch"
     && draft.auth_status === "imported"
     && Boolean(draft.credential_ref || draft.credential_path || draft.credential_id || draft.source_id);
@@ -337,7 +358,9 @@ export function App() {
       const existingProviderId = metadataString(providerMetadata, "source_provider_id") || metadataString(aliasMetadata, "source_provider_id");
       const existingCredential = provider.auth?.type === "ccswitch"
         ? provider.auth.credential_ref ?? provider.auth.credential_id ?? provider.auth.credential_path ?? ""
-        : "";
+        : provider.auth?.type === "ccswitch-snapshot"
+          ? provider.auth.credential_ref ?? provider.auth.credential_id ?? provider.auth.credential_path ?? provider.auth.provider_id ?? provider.auth.snapshot_id ?? ""
+          : "";
 
       if (sourceHash && existingHash === sourceHash) {
         return { existing_alias: aliasName, existing_provider: alias.provider, reason: "source_config_hash", match: "source_config_hash" };
@@ -1063,6 +1086,9 @@ export function App() {
     if (explicitAuth?.type === "ccswitch") {
       return explicitAuth.fallback_env ?? "";
     }
+    if (explicitAuth?.type === "ccswitch-snapshot") {
+      return explicitAuth.fallback_env ?? "";
+    }
     if (explicitAuth?.type === "static-header-ref") {
       return explicitAuth.value_env ?? "";
     }
@@ -1081,13 +1107,21 @@ export function App() {
       return `Missing ${warning.envName ?? warning.env ?? "API_KEY"}`;
     }
     if (warning?.type === "missing_credential") {
-      return "CC Switch auth missing";
+      const providerAuth = provider.auth;
+      return providerAuth?.type === "ccswitch-snapshot"
+        ? "CC Switch snapshot unavailable"
+        : "CC Switch auth missing";
     }
 
     if (provider.auth?.type === "ccswitch") {
       return provider.auth.credential_ref || provider.auth.credential_path
         ? "CC Switch auth imported"
         : "CC Switch auth";
+    }
+    if (provider.auth?.type === "ccswitch-snapshot") {
+      return provider.auth.snapshot_id
+        ? "CC Switch snapshot"
+        : "CC Switch snapshot auth";
     }
     if (provider.auth?.type === "env") {
       return `${provider.auth.env}${provider.api_key_resolved ? " OK" : ""}`.trim();
@@ -1142,31 +1176,41 @@ export function App() {
     const previousAuth = previousProvider?.type === "openai-compatible" ? previousProvider.auth : undefined;
     const previousMetadata = previousProvider?.metadata;
     const description = providerForm.description.trim();
+    const preservedAuth = previousAuth?.type === "ccswitch" || previousAuth?.type === "ccswitch-snapshot"
+      ? {
+        ...previousAuth,
+        fallback_env: providerForm.envName.trim() || previousAuth.fallback_env
+      }
+      : undefined;
     const provider: ProviderConfig = providerForm.type === "mock"
       ? {
         type: "mock",
         ...(description ? { description } : {}),
         ...(previousMetadata ? { metadata: previousMetadata } : {})
       }
-      : {
-        type: "openai-compatible",
-        base_url: providerForm.baseUrl.trim(),
-        api_key: `\${${providerForm.envName.trim()}}`,
-        auth: previousAuth?.type === "ccswitch"
-          ? {
-            ...previousAuth,
-            fallback_env: providerForm.envName.trim() || previousAuth.fallback_env
-          }
-          : {
+      : preservedAuth
+        ? {
+          type: "openai-compatible",
+          base_url: providerForm.baseUrl.trim(),
+          auth: preservedAuth,
+          responses_api: providerForm.responsesApi,
+          ...(description ? { description } : {}),
+          ...(previousMetadata ? { metadata: previousMetadata } : {})
+        }
+        : {
+          type: "openai-compatible",
+          base_url: providerForm.baseUrl.trim(),
+          api_key: `\${${providerForm.envName.trim()}}`,
+          auth: {
             type: "env",
             header: "Authorization",
             scheme: "Bearer",
             env: providerForm.envName.trim()
           },
-        responses_api: providerForm.responsesApi,
-        ...(description ? { description } : {}),
-        ...(previousMetadata ? { metadata: previousMetadata } : {})
-      };
+          responses_api: providerForm.responsesApi,
+          ...(description ? { description } : {}),
+          ...(previousMetadata ? { metadata: previousMetadata } : {})
+        };
 
     const providers = { ...editableConfig.providers };
     if (providerForm.editingName && providerForm.editingName !== name) {
@@ -1497,16 +1541,18 @@ export function App() {
           imported_from: "ccswitch",
           source_app: item.draft.app,
           source_provider_id: item.draft.source_id,
+          snapshot_id: item.draft.snapshot_id,
           source_config_hash: item.draft.source_config_hash,
           source_fingerprint: item.draft.source_fingerprint,
           source_order: item.draft.source_order
         };
+        const auth = buildProviderAuthFromDraft(item.draft, providerName, item.envName);
 
         providers[providerName] = {
           type: "openai-compatible",
           base_url: item.baseUrl,
-          api_key: `\${${item.envName}}`,
-          auth: buildProviderAuthFromDraft(item.draft, providerName, item.envName),
+          ...(auth.type === "env" ? { api_key: `\${${item.envName}}` } : {}),
+          auth,
           ...(description ? { description } : {}),
           metadata
         };

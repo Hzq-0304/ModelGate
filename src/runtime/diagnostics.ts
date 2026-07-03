@@ -85,6 +85,8 @@ function authCheck(_runtime: RuntimeState, providerName: string, provider: Provi
         ? `${auth.envName} is set.`
         : auth.source === "ccswitch"
           ? "CC Switch credential reference is available."
+          : auth.source === "ccswitch-snapshot"
+            ? "CC Switch snapshot credential is available."
           : "Provider auth is configured."
     } satisfies DiagnosticCheck,
     auth
