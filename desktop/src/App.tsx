@@ -43,7 +43,6 @@ import {
 } from "./api";
 import { SettingsIcon } from "./components/icons/SettingsIcon";
 import { LanguageSelector } from "./components/LanguageSelector";
-import { PageHeader } from "./components/PageHeader";
 import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
 import type { ConnectionState } from "./features/account-switcher/accountTypes";
 import type { CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
@@ -54,7 +53,6 @@ import type { SettingsSectionId } from "./features/settings/settingsRoutes";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
 import { useI18n } from "./i18n/i18n";
 import type { AppRouteId } from "./routes/routeTypes";
-import { primaryRoutes } from "./routes/routes";
 
 type ActiveTab = AppRouteId;
 type ConfigSection = SettingsSectionId;
@@ -218,7 +216,7 @@ function buildProviderAuthFromDraft(draft: ImportDraft, providerName: string, en
 export function App() {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>("switcher");
-  const [configSection, setConfigSection] = useState<ConfigSection>("providers");
+  const [configSection, setConfigSection] = useState<ConfigSection>("common");
   const [connection, setConnection] = useState<ConnectionState>("checking");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [aliases, setAliases] = useState<AliasesResponse | null>(null);
@@ -585,7 +583,7 @@ export function App() {
     }, 0);
   }
 
-  function openSettings(section: ConfigSection = "integrations") {
+  function openSettings(section: ConfigSection = "common") {
     setActiveTab("settings");
     setConfigSection(section);
     if (!editableConfig) {
@@ -615,7 +613,7 @@ export function App() {
   }
 
   function openLogsPage() {
-    setActiveTab("logs");
+    openSettings("records");
     void loadLogs().catch((error) => setLogsMessage(`Failed to load logs: ${getErrorMessage(error)}`));
   }
 
@@ -883,7 +881,7 @@ export function App() {
   }, [serverProcess?.status, syncServerState]);
 
   useEffect(() => {
-    if (activeTab !== "logs") {
+    if (activeTab !== "settings" || configSection !== "records") {
       return;
     }
 
@@ -893,7 +891,7 @@ export function App() {
     }, 3000);
 
     return () => window.clearInterval(timer);
-  }, [activeTab]);
+  }, [activeTab, configSection]);
 
   async function handleSwitch(aliasName: string) {
     setBusyAction(`switch:${aliasName}`);
@@ -1919,44 +1917,12 @@ export function App() {
       <header className="topbar">
         <div className="brand-block">
           <h1>{t("app.title")}</h1>
-        </div>
-        <nav className="tabs primary-tabs" aria-label="Primary">
-          {primaryRoutes.map((route) => (
-            <button
-              className={activeTab === route.id ? "tab active" : "tab"}
-              key={route.id}
-              onClick={route.id === "logs" ? openLogsPage : () => setActiveTab(route.id)}
-            >
-              {t(route.i18nKey)}
-            </button>
-          ))}
-        </nav>
-        <div className="topbar-tools">
-          <div className="connection compact">
+          <span className="header-status-text">
             <span className={`status-dot ${connection}`} />
-            <strong>{connection === "connected" ? t("app.connected") : connection === "checking" ? t("app.checking") : t("app.disconnected")}</strong>
-          </div>
-          {serverRunning ? (
-            <button
-              className="server-toggle"
-              disabled={serverControlBusy || !canStopServer}
-              onClick={() => void handleStopServer()}
-              title={serverLifecycle === "external-running" ? t("advanced.externalStopUnavailable") : t("advanced.stopServer")}
-              type="button"
-            >
-              {isServerStopping ? t("advanced.stopping") : t("advanced.stopServer")}
-            </button>
-          ) : (
-            <button
-              className="server-toggle"
-              disabled={serverControlBusy || !canStartServer}
-              onClick={() => void handleStartServer()}
-              type="button"
-            >
-              {isServerStarting ? t("advanced.starting") : t("advanced.startServer")}
-            </button>
-          )}
-          <LanguageSelector />
+            {connection === "connected" ? t("app.connected") : connection === "checking" ? t("app.checking") : t("app.disconnected")}
+          </span>
+        </div>
+        <div className="topbar-tools">
           <button
             aria-label={t("settings.title")}
             className={activeTab === "settings" ? "settings-button active" : "settings-button"}
@@ -1969,26 +1935,25 @@ export function App() {
         </div>
       </header>
 
-      {activeTab === "switcher" ? (
-        <section className="switcher-page">
-          <section id="account-switcher">
-            <AccountSwitcher
-              accounts={aliasesList}
-              activeAliasName={displayActiveAliasName}
-              connection={connection}
-              configWarnings={displayConfigWarnings}
-              endpoint={serverUrl}
-              message={message}
-              switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
-              onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
-              onDeleteAccount={(alias) => void handleDeleteAccount(alias)}
-              onEditAccount={handleEditAccount}
-              onGoToIntegrations={() => openSettings("integrations")}
-              onSelectAccount={(alias) => void handleSwitch(alias)}
-            />
-          </section>
+      <section className="switcher-page">
+        <section id="account-switcher">
+          <AccountSwitcher
+            accounts={aliasesList}
+            activeAliasName={displayActiveAliasName}
+            connection={connection}
+            configWarnings={displayConfigWarnings}
+            message={message}
+            switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
+            onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
+            onDeleteAccount={(alias) => void handleDeleteAccount(alias)}
+            onEditAccount={handleEditAccount}
+            onGoToIntegrations={() => openSettings("integrations")}
+            onSelectAccount={(alias) => void handleSwitch(alias)}
+          />
         </section>
-      ) : activeTab === "advanced" ? (
+      </section>
+
+      {activeTab === "advanced" ? (
         <>
 
       {disconnected && (
@@ -2088,52 +2053,175 @@ export function App() {
       </section>
         </>
       ) : activeTab === "settings" ? (
-        <section className="config-page">
-          <PageHeader
-            title={t("settings.title")}
-            subtitle={t("settings.subtitle")}
-            actions={(
+        <section className="config-page settings-drawer" aria-label={t("settings.title")}>
+          <div className="settings-drawer-heading">
+            <div>
+              <h2>{t("settings.title")}</h2>
               <span className={configMessage.startsWith("Save failed") || configMessage.startsWith("Validation failed") ? "action-message bad" : "action-message"}>
                 {configMessage}
               </span>
-            )}
-          />
-
-          <section className="card config-card">
-            <div className="card-heading">
-              <span>{t("config.title")}</span>
-              <strong>{configPath || t("config.notLoaded")}</strong>
             </div>
-            <div className="config-summary">
-              <label>
-                {t("config.activeAlias")}
-                <select
-                  value={editableConfig?.active ?? ""}
-                  onChange={(event) => editableConfig && void setActiveAlias(event.target.value)}
-                  disabled={!editableConfig || configBusy}
-                >
-                  {aliasNames.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </label>
-              <span className="muted">{configPath || t("config.notLoaded")}</span>
-            </div>
-          </section>
+            <button className="secondary" onClick={() => setActiveTab("switcher")} type="button">
+              {t("common.close")}
+            </button>
+          </div>
 
           <SettingsPanel
             activeSection={configSection}
-            busyAction={busyAction}
             configPath={configPath}
-            disconnected={disconnected}
-            onOpenCcSwitchImport={openCcSwitchImportModal}
-            onOpenCodexImport={openCodexImportPanel}
-            onOpenLogs={openLogsPage}
-            onReload={() => void handleReload()}
             onSelectSection={setConfigSection}
           />
 
-          {renderDiagnosticResult()}
+          {configSection === "common" && (
+            <>
+              <ServerControl
+                busyAction={busyAction}
+                serverProcess={serverProcess}
+                serverUrl={serverUrl}
+                onRefresh={() => void refresh()}
+                onRestart={() => void handleRestartServer()}
+                onStart={() => void handleStartServer()}
+                onStop={() => void handleStopServer()}
+              />
+              <section className="card config-card compact-config-card">
+                <div className="card-heading">
+                  <span>{t("settings.server")}</span>
+                  <strong>{serverRunning ? t("common.running") : t("app.disconnected")}</strong>
+                </div>
+                <dl className="server-details">
+                  <div>
+                    <dt>{t("config.endpoint")}</dt>
+                    <dd>{serverProcess?.endpoint ?? `${serverUrl}/v1`}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("config.activeAlias")}</dt>
+                    <dd>{displayActiveAliasName ?? "-"}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("settings.configFile")}</dt>
+                    <dd>{configPath || t("config.notLoaded")}</dd>
+                  </div>
+                </dl>
+              </section>
+            </>
+          )}
+
+          {configSection === "records" && (
+            <section className="records-panel">
+              <UsageOverview activeModel={activeAlias?.model} disconnected={disconnected} />
+              <section className="actions">
+                <button onClick={() => void handleRefreshLogs()} disabled={busyAction !== null || disconnected}>
+                  {busyAction === "logs:refresh" ? t("common.refreshing") : t("common.refresh")}
+                </button>
+                <button className="secondary danger" onClick={() => void handleClearLogs()} disabled={busyAction !== null || disconnected}>
+                  {busyAction === "logs:clear" ? t("logs.clearing") : t("logs.clearLogs")}
+                </button>
+                <span className={logsMessage.startsWith("Failed") ? "action-message bad" : "action-message"}>
+                  {logsMessage}
+                </span>
+              </section>
+              <section className="card table-card">
+                <div className="card-heading">
+                  <span>{t("logs.recentRequests")}</span>
+                  <strong>{requestLogs.length}</strong>
+                </div>
+                <div className="request-log-table">
+                  <div className="request-log-row request-log-head">
+                    <span>{t("usage.time")}</span>
+                    <span>{t("logs.kind")}</span>
+                    <span>API</span>
+                    <span>{t("common.status")}</span>
+                    <span>{t("common.alias")}</span>
+                    <span>{t("common.provider")}</span>
+                    <span>{t("common.duration")}</span>
+                  </div>
+                  {requestLogs.map((entry) => (
+                    <div className={entry.ok ? "request-log-row compact ok" : "request-log-row compact failed"} key={entry.id}>
+                      <span>{formatLogTime(entry.started_at)}</span>
+                      <span>{entry.kind === "diagnostic" ? t("logs.diagnostic") : t("logs.normal")}</span>
+                      <span>{entry.api_type === "responses" ? "responses" : "chat"}</span>
+                      <span><span className={entry.ok ? "pill" : "pill bad"}>{entry.ok ? "OK" : entry.status_code ?? "ERR"}</span></span>
+                      <span>{entry.resolved_alias ?? "-"}</span>
+                      <span>{entry.provider ?? "-"}</span>
+                      <span>{entry.duration_ms ?? 0}ms</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </section>
+          )}
+
+          {configSection === "advanced" && (
+            <>
+              <section className="actions">
+                <button onClick={() => void refresh()} disabled={busyAction !== null}>
+                  {busyAction === "refresh" ? t("common.refreshing") : t("common.refresh")}
+                </button>
+                <button onClick={() => void handleReload()} disabled={busyAction !== null || disconnected}>
+                  {busyAction === "reload" ? t("config.reloading") : t("settings.reloadConfig")}
+                </button>
+                <span className={message.startsWith("Failed") || disconnected ? "action-message bad" : "action-message"}>
+                  {message}
+                </span>
+              </section>
+              <section className="card active-card">
+                <div className="card-heading">
+                  <span>{t("advanced.activeAlias")}</span>
+                  {displayActiveAliasName && <strong>{displayActiveAliasName}</strong>}
+                </div>
+                {activeAlias ? (
+                  <>
+                    <dl>
+                      <div>
+                        <dt>{t("common.provider")}</dt>
+                        <dd>{activeAlias.provider}</dd>
+                      </div>
+                      <div>
+                        <dt>{t("config.upstreamModel")}</dt>
+                        <dd>{activeAlias.model}</dd>
+                      </div>
+                    </dl>
+                    <div className="diagnostic-actions">
+                      <button onClick={() => void runDiagnostic("diagnostic:active", () => testActive(false))} disabled={busyAction !== null || disconnected}>
+                        {busyAction === "diagnostic:active" ? t("common.testing") : t("advanced.testActive")}
+                      </button>
+                      <button className="secondary" onClick={() => void runDiagnostic("diagnostic:active-stream", () => testActive(true))} disabled={busyAction !== null || disconnected}>
+                        {busyAction === "diagnostic:active-stream" ? t("common.testing") : t("advanced.testActiveStream")}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="muted">{t("switcher.noActive")}</p>
+                )}
+              </section>
+              {renderDiagnosticResult()}
+              <section className="card codex-card">
+                <div className="card-heading">
+                  <span>{t("advanced.codexConfiguration")}</span>
+                  <button className="secondary" onClick={() => void handleCopy()}>
+                    {copyOk ? t("common.copied") : t("common.copy")}
+                  </button>
+                </div>
+                <pre>{codexConfig}</pre>
+              </section>
+            </>
+          )}
+
+          {configSection === "language" && (
+            <section className="card config-card compact-config-card">
+              <div className="card-heading">
+                <span>{t("settings.language")}</span>
+                <strong>{t("settings.application")}</strong>
+              </div>
+              <div className="settings-inline-controls">
+                <LanguageSelector />
+                <button className="secondary" type="button" onClick={() => void handleReload()} disabled={busyAction !== null || disconnected}>
+                  {busyAction === "reload" ? t("config.reloading") : t("settings.reloadConfig")}
+                </button>
+              </div>
+              <span className="muted">{configPath || t("config.notLoaded")}</span>
+            </section>
+          )}
 
           {configSection === "providers" && (
           <>
@@ -2393,7 +2481,7 @@ export function App() {
             </button>
           </section>
         </section>
-      ) : (
+      ) : activeTab === "logs" ? (
         <section className="logs-page">
           {disconnected && (
             <section className="notice error">
@@ -2509,7 +2597,7 @@ export function App() {
             </div>
           </section>
         </section>
-      )}
+      ) : null}
       <CcSwitchImportModal
         busyAction={busyAction}
         configLoaded={Boolean(editableConfig)}

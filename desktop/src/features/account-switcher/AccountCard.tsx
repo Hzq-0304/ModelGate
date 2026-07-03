@@ -81,8 +81,8 @@ export function AccountCard({
             connectionState !== "connected" && !authWarning ? "offline" : ""
           ].filter(Boolean).join(" ")}
           >
-            {statusText}
-          </span>
+          {statusText}
+        </span>
         </span>
         <span className="account-card-subtitle" title={subtitle}>{subtitle}</span>
         <span className="account-card-meta">
@@ -93,19 +93,33 @@ export function AccountCard({
       </span>
       {active && <span className="account-card-active-dot" title={t("switcher.activeHint")} aria-hidden="true" />}
       <details className="account-card-menu" onClick={(event) => event.stopPropagation()}>
-        <summary aria-label={t("common.actions")} title={t("common.actions")}>...</summary>
+        <summary aria-label={t("provider.more")} title={t("provider.more")}>...</summary>
         <div className="account-card-menu-popover">
           <button disabled={disabled || active} onClick={() => onSelect(account.name)} type="button">
-            {t("config.setActive")}
+            {t("provider.setActive")}
+          </button>
+          <button
+            onClick={() => {
+              void navigator.clipboard?.writeText([
+                `Alias: ${account.name}`,
+                `Provider: ${account.provider}`,
+                `Model: ${account.model}`,
+                account.baseUrl ? `Base URL: ${account.baseUrl}` : undefined,
+                account.description ? `Description: ${account.description}` : undefined
+              ].filter(Boolean).join("\n"));
+            }}
+            type="button"
+          >
+            {t("provider.copyInfo")}
           </button>
           {onEdit && (
             <button onClick={() => onEdit(account.name)} type="button">
-              {t("common.edit")}
+              {t("provider.edit")}
             </button>
           )}
           {onDelete && (
             <button className="danger" onClick={() => onDelete(account.name)} type="button">
-              {t("common.delete")}
+              {t("provider.delete")}
             </button>
           )}
         </div>

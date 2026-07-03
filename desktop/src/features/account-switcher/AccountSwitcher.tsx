@@ -10,7 +10,6 @@ import "./accountSwitcher.css";
 
 type AccountSwitcherProps = {
   connection: ConnectionState;
-  endpoint: string;
   activeAliasName?: string;
   accounts: AccountAlias[];
   configWarnings?: ConfigWarning[];
@@ -25,7 +24,6 @@ type AccountSwitcherProps = {
 
 export function AccountSwitcher({
   connection,
-  endpoint,
   activeAliasName,
   accounts,
   configWarnings = [],
@@ -68,7 +66,6 @@ export function AccountSwitcher({
             <span>{t("switcher.providerList")}</span>
             <strong>{accounts.length}</strong>
           </div>
-          <code>{endpoint}/v1</code>
         </div>
         {accounts.length > 0 ? (
           <div className="account-list">

@@ -104,9 +104,10 @@ button.danger {
   align-items: center;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(120px, 1fr) auto minmax(260px, 1fr);
-  min-height: 56px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 48px;
   padding: 8px 10px 8px 14px;
+  box-shadow: none;
 }
 
 .topbar-tools {
@@ -120,8 +121,18 @@ button.danger {
 .brand-block {
   align-items: center;
   display: flex;
-  gap: 8px;
+  gap: 12px;
   min-width: 0;
+}
+
+.header-status-text {
+  align-items: center;
+  color: #667085;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .settings-button {
@@ -131,9 +142,9 @@ button.danger {
   color: #344054;
   display: inline-flex;
   justify-content: center;
-  min-height: 38px;
+  min-height: 34px;
   padding: 0;
-  width: 38px;
+  width: 34px;
 }
 
 .settings-button:hover:not(:disabled),
@@ -144,8 +155,8 @@ button.danger {
 }
 
 .settings-button-icon {
-  height: 17px;
-  width: 17px;
+  height: 16px;
+  width: 16px;
 }
 
 .language-selector {
@@ -595,24 +606,89 @@ code {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.settings-drawer {
+  background: #f5f7fb;
+  border-left: 1px solid #d8dee8;
+  box-shadow: -18px 0 42px rgba(15, 23, 42, 0.16);
+  display: grid;
+  gap: 12px;
+  grid-auto-rows: max-content;
+  height: 100vh;
+  max-width: 760px;
+  overflow-y: auto;
+  padding: 14px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: min(760px, calc(100vw - 42px));
+  z-index: 80;
+}
+
+.settings-drawer-heading {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.settings-drawer-heading h2 {
+  color: #101828;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.settings-drawer .settings-groups {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .settings-group-card {
   background: #ffffff;
   border: 1px solid #e4e9f2;
   border-radius: 8px;
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 8px;
+  padding: 10px;
 }
 
 .settings-group-card strong {
   color: #101828;
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .settings-group-card div {
   display: flex;
   flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-group-card button {
+  font-size: 12px;
+  min-height: 30px;
+  padding: 5px 9px;
+}
+
+.settings-config-path {
+  color: #667085;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-inline-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.compact-config-card {
+  gap: 10px;
+}
+
+.records-panel {
+  display: grid;
+  gap: 12px;
 }
 
 .settings-group-card span {
@@ -1047,6 +1123,11 @@ select:disabled {
   grid-template-columns: 155px 95px 90px 145px 72px 90px 130px 130px 100px 150px 85px minmax(160px, 1fr);
 }
 
+.request-log-row.compact,
+.records-panel .request-log-head {
+  grid-template-columns: 145px 90px 80px 72px 110px 110px 80px;
+}
+
 @media (max-width: 980px) {
   .ccswitch-export-form,
   .integration-card-grid,
@@ -1070,13 +1151,7 @@ select:disabled {
 
 @media (max-width: 760px) {
   .topbar {
-    grid-template-columns: minmax(180px, 1fr) auto;
-  }
-
-  .primary-tabs {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-self: start;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .topbar-tools {
@@ -1099,7 +1174,7 @@ select:disabled {
   }
 
   .topbar {
-    grid-template-columns: minmax(110px, 0.8fr) auto minmax(220px, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .page-header {
@@ -1113,12 +1188,6 @@ select:disabled {
     grid-column: auto;
     grid-row: auto;
     justify-content: flex-end;
-  }
-
-  .primary-tabs {
-    grid-column: auto;
-    grid-row: auto;
-    justify-self: center;
   }
 
   .connection {
