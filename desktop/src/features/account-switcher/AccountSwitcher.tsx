@@ -1,5 +1,5 @@
 import type { ConfigWarning } from "../../api";
-import { ProviderList } from "../provider-list/ProviderList";
+import { CcSwitchProviderList } from "../ccswitch-style/CcSwitchProviderList";
 import {
   type AccountAlias,
   type ConnectionState
@@ -45,14 +45,19 @@ export function AccountSwitcher({
     onSelectAccount(alias);
   }
 
+  const normalizedMessage = message.toLowerCase();
+  const isBackgroundRefreshMessage = normalizedMessage.includes("modelgate server is not running")
+    || normalizedMessage.includes("local configuration is available")
+    || normalizedMessage === "failed to fetch";
   const showToast = message
     && message !== "Status refreshed"
     && message !== t("advanced.statusRefreshed")
-    && message !== t("config.notLoaded");
+    && message !== t("config.notLoaded")
+    && !isBackgroundRefreshMessage;
 
   return (
     <section className="switcher-page" aria-label={t("switcher.providerList")}>
-      <ProviderList
+      <CcSwitchProviderList
         activeAliasName={activeName}
         configWarnings={configWarnings}
         connection={connection}

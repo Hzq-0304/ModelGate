@@ -1,10 +1,9 @@
 import type { ConfigWarning } from "../../api";
 import type { AccountAlias, ConnectionState } from "../account-switcher/accountTypes";
 import { useI18n } from "../../i18n/i18n";
-import { ProviderCard } from "./ProviderCard";
-import "./providerList.css";
+import { CcSwitchProviderCard } from "./CcSwitchProviderCard";
 
-type ProviderListProps = {
+type CcSwitchProviderListProps = {
   connection: ConnectionState;
   activeAliasName?: string;
   providers: AccountAlias[];
@@ -16,7 +15,17 @@ type ProviderListProps = {
   onEditProvider?: (alias: string) => void;
 };
 
-export function ProviderList({
+function copyProviderInfo(provider: AccountAlias) {
+  void navigator.clipboard?.writeText([
+    `Alias: ${provider.name}`,
+    `Provider: ${provider.provider}`,
+    `Model: ${provider.model}`,
+    provider.baseUrl ? `Base URL: ${provider.baseUrl}` : undefined,
+    provider.description ? `Description: ${provider.description}` : undefined
+  ].filter(Boolean).join("\n"));
+}
+
+export function CcSwitchProviderList({
   connection,
   activeAliasName,
   providers,
@@ -26,7 +35,7 @@ export function ProviderList({
   onDeleteProvider,
   onEditProvider,
   onSelectProvider
-}: ProviderListProps) {
+}: CcSwitchProviderListProps) {
   const { t } = useI18n();
   const missingAuthByProvider = new Map(
     configWarnings
@@ -41,7 +50,7 @@ export function ProviderList({
 
   if (providers.length === 0) {
     return (
-      <div className="provider-empty-state">
+      <div className="ccs-empty-state">
         <strong>{t("switcher.noAccounts")}</strong>
         {onGoToIntegrations && (
           <>
@@ -56,18 +65,19 @@ export function ProviderList({
   }
 
   return (
-    <section className="provider-list" aria-label={t("switcher.providerList")}>
+    <section className="ccs-provider-list" aria-label={t("switcher.providerList")}>
       {providers.map((provider) => (
-        <ProviderCard
-          account={provider}
-          active={provider.name === activeAliasName}
+        <CcSwitchProviderCard
           authWarning={missingAuthByProvider.get(provider.provider)}
           connectionState={connection}
           disabled={Boolean(switchingAlias)}
+          isCurrent={provider.name === activeAliasName}
           key={provider.name}
+          onCopy={copyProviderInfo}
           onDelete={onDeleteProvider}
           onEdit={onEditProvider}
-          onSelect={onSelectProvider}
+          onSwitch={onSelectProvider}
+          provider={provider}
           switching={switchingAlias === provider.name}
         />
       ))}

@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { I18nProvider } from "./i18n/i18n";
 import "./styles.css";
+import "./features/ccswitch-style/ccswitchStyle.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

@@ -41,12 +41,13 @@ import {
   validateModelGateConfigOffline,
   writeModelGateConfig
 } from "./api";
-import { SettingsIcon } from "./components/icons/SettingsIcon";
 import { LanguageSelector } from "./components/LanguageSelector";
 import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
 import type { ConnectionState } from "./features/account-switcher/accountTypes";
 import type { CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
 import { CcSwitchImportModal } from "./features/ccswitch-import/CcSwitchImportModal";
+import { CcSwitchSettingsDrawer } from "./features/ccswitch-style/CcSwitchSettingsDrawer";
+import { CcSwitchShell } from "./features/ccswitch-style/CcSwitchShell";
 import { ServerControl } from "./features/server-control/ServerControl";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
 import type { SettingsSectionId } from "./features/settings/settingsRoutes";
@@ -1913,27 +1914,16 @@ export function App() {
   const codexDeepLink = buildCcSwitchDeepLink("codex");
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div className="brand-block">
-          <h1>{t("app.title")}</h1>
-          <span className="header-status-text">
-            <span className={`status-dot ${connection}`} />
-            {connection === "connected" ? t("app.connected") : connection === "checking" ? t("app.checking") : t("app.disconnected")}
-          </span>
-        </div>
-        <div className="topbar-tools">
-          <button
-            aria-label={t("settings.title")}
-            className={activeTab === "settings" ? "settings-button active" : "settings-button"}
-            onClick={() => openSettings()}
-            title={t("settings.title")}
-            type="button"
-          >
-            <SettingsIcon className="settings-button-icon" />
-          </button>
-        </div>
-      </header>
+    <CcSwitchShell
+      checkingLabel={t("app.checking")}
+      connectedLabel={t("app.connected")}
+      connection={connection}
+      disconnectedLabel={t("app.disconnected")}
+      onOpenSettings={() => openSettings()}
+      settingsActive={activeTab === "settings"}
+      settingsLabel={t("settings.title")}
+      title={t("app.title")}
+    >
 
       <section className="switcher-page">
         <section id="account-switcher">
@@ -2053,18 +2043,13 @@ export function App() {
       </section>
         </>
       ) : activeTab === "settings" ? (
-        <section className="config-page settings-drawer" aria-label={t("settings.title")}>
-          <div className="settings-drawer-heading">
-            <div>
-              <h2>{t("settings.title")}</h2>
-              <span className={configMessage.startsWith("Save failed") || configMessage.startsWith("Validation failed") ? "action-message bad" : "action-message"}>
-                {configMessage}
-              </span>
-            </div>
-            <button className="secondary" onClick={() => setActiveTab("switcher")} type="button">
-              {t("common.close")}
-            </button>
-          </div>
+        <CcSwitchSettingsDrawer
+          closeLabel={t("common.close")}
+          message={configMessage}
+          messageBad={configMessage.startsWith("Save failed") || configMessage.startsWith("Validation failed")}
+          onClose={() => setActiveTab("switcher")}
+          title={t("settings.title")}
+        >
 
           <SettingsPanel
             activeSection={configSection}
@@ -2480,7 +2465,7 @@ export function App() {
               {busyAction === "config:reset" ? t("config.resetting") : t("config.reset")}
             </button>
           </section>
-        </section>
+        </CcSwitchSettingsDrawer>
       ) : activeTab === "logs" ? (
         <section className="logs-page">
           {disconnected && (
@@ -2613,6 +2598,6 @@ export function App() {
         onSelectDatabase={() => void handleSelectCcSwitch()}
         onUpdateDraft={updateImportDraft}
       />
-    </main>
+    </CcSwitchShell>
   );
 }
