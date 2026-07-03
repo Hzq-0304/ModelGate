@@ -5,6 +5,9 @@ export type AccountAlias = {
   provider: string;
   model: string;
   description?: string;
+  providerDescription?: string;
+  baseUrl?: string;
+  providerType?: string;
 };
 
 export type EntrypointStatusMap = Record<string, {

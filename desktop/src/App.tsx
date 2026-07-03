@@ -48,7 +48,6 @@ import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
 import type { ConnectionState } from "./features/account-switcher/accountTypes";
 import type { CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
 import { CcSwitchImportModal } from "./features/ccswitch-import/CcSwitchImportModal";
-import { QuickStart } from "./features/quick-start/QuickStart";
 import { ServerControl } from "./features/server-control/ServerControl";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
 import type { SettingsSectionId } from "./features/settings/settingsRoutes";
@@ -284,15 +283,48 @@ export function App() {
       return [];
     }
 
-    return Object.entries(editableConfig.aliases).map(([name, alias]) => ({
-      name,
-      provider: alias.provider,
-      model: alias.model,
-      description: alias.description
-    }));
+    return Object.entries(editableConfig.aliases).map(([name, alias]) => {
+      const provider = editableConfig.providers[alias.provider];
+
+      return {
+        name,
+        provider: alias.provider,
+        model: alias.model,
+        description: alias.description,
+        providerDescription: provider?.description,
+        baseUrl: provider?.type === "openai-compatible"
+          ? provider.base_url
+          : provider?.type === "mock"
+            ? "Managed by ModelGate"
+            : undefined,
+        providerType: provider?.type
+      };
+    });
   }, [editableConfig]);
 
-  const displayAliases = aliases?.aliases ?? localAliases;
+  const displayAliases = useMemo(() => {
+    const sourceAliases = aliases?.aliases ?? localAliases;
+
+    return sourceAliases.map((alias) => {
+      const localAlias = editableConfig?.aliases[alias.name];
+      const providerName = localAlias?.provider ?? alias.provider;
+      const provider = editableConfig?.providers[providerName];
+
+      return {
+        ...alias,
+        provider: providerName,
+        model: localAlias?.model ?? alias.model,
+        description: localAlias?.description ?? alias.description,
+        providerDescription: provider?.description,
+        baseUrl: provider?.type === "openai-compatible"
+          ? provider.base_url
+          : provider?.type === "mock"
+            ? "Managed by ModelGate"
+            : undefined,
+        providerType: provider?.type
+      };
+    });
+  }, [aliases, editableConfig, localAliases]);
   const displayActiveAliasName = status?.active ?? editableConfig?.active;
   const displayConfigWarnings = status?.config_warnings ?? configWarnings;
   const configWarningByProvider = useMemo(() => {
@@ -1846,9 +1878,17 @@ export function App() {
     ] as const);
   const aliasesList = displayAliases;
   const disconnected = connection === "disconnected";
-  const serverLifecycle = serverProcess?.status ?? (connection === "connected" ? "external-running" : "stopped");
+  const reportedServerLifecycle = serverProcess?.status;
+  const serverLifecycle = connection === "connected"
+    && (!reportedServerLifecycle || reportedServerLifecycle === "stopped" || reportedServerLifecycle === "failed")
+    ? "external-running"
+    : reportedServerLifecycle ?? "stopped";
   const isServerStarting = serverLifecycle === "starting";
-  const quickStartBusyAction = isServerStarting ? "server:start" : busyAction;
+  const isServerStopping = serverLifecycle === "stopping";
+  const serverRunning = serverLifecycle === "running" || serverLifecycle === "external-running";
+  const canStartServer = serverLifecycle === "stopped" || serverLifecycle === "failed";
+  const canStopServer = Boolean(serverProcess?.canStop);
+  const serverControlBusy = (busyAction?.startsWith("server:") ?? false) || isServerStarting || isServerStopping;
   const providerEntries = editableConfig ? Object.entries(editableConfig.providers) : [];
   const aliasEntries = editableConfig ? Object.entries(editableConfig.aliases) : [];
   const entrypointEntries = editableConfig ? Object.entries(editableConfig.entrypoints) : [];
@@ -1877,9 +1917,8 @@ export function App() {
   return (
     <main className="shell">
       <header className="topbar">
-        <div>
+        <div className="brand-block">
           <h1>{t("app.title")}</h1>
-          <p>{t("app.subtitle")}</p>
         </div>
         <nav className="tabs primary-tabs" aria-label="Primary">
           {primaryRoutes.map((route) => (
@@ -1893,6 +1932,30 @@ export function App() {
           ))}
         </nav>
         <div className="topbar-tools">
+          <div className="connection compact">
+            <span className={`status-dot ${connection}`} />
+            <strong>{connection === "connected" ? t("app.connected") : connection === "checking" ? t("app.checking") : t("app.disconnected")}</strong>
+          </div>
+          {serverRunning ? (
+            <button
+              className="server-toggle"
+              disabled={serverControlBusy || !canStopServer}
+              onClick={() => void handleStopServer()}
+              title={serverLifecycle === "external-running" ? t("advanced.externalStopUnavailable") : t("advanced.stopServer")}
+              type="button"
+            >
+              {isServerStopping ? t("advanced.stopping") : t("advanced.stopServer")}
+            </button>
+          ) : (
+            <button
+              className="server-toggle"
+              disabled={serverControlBusy || !canStartServer}
+              onClick={() => void handleStartServer()}
+              type="button"
+            >
+              {isServerStarting ? t("advanced.starting") : t("advanced.startServer")}
+            </button>
+          )}
           <LanguageSelector />
           <button
             aria-label={t("settings.title")}
@@ -1903,36 +1966,14 @@ export function App() {
           >
             <SettingsIcon className="settings-button-icon" />
           </button>
-          <div className="connection">
-            <span className={`status-dot ${connection}`} />
-            <strong>{connection === "connected" ? t("app.connected") : connection === "checking" ? t("app.checking") : t("app.disconnected")}</strong>
-            <span>{serverUrl}</span>
-          </div>
         </div>
       </header>
 
       {activeTab === "switcher" ? (
         <section className="switcher-page">
-          {disconnected && (
-            <section className="notice error disconnected-guide">
-              <div>
-                <strong>{t("home.serverNotRunning")}</strong>
-                <span>{t("home.serverGuidance")}</span>
-              </div>
-            </section>
-          )}
-          <QuickStart
-            busyAction={quickStartBusyAction}
-            hasAccounts={aliasesList.length > 0}
-            serverRunning={serverLifecycle === "running" || serverLifecycle === "external-running"}
-            onOpenSettings={() => openSettings()}
-            onStartServer={() => void handleStartServer()}
-            onSwitchAccount={() => scrollToElement("account-switcher")}
-          />
           <section id="account-switcher">
             <AccountSwitcher
               accounts={aliasesList}
-              activeAlias={activeAlias}
               activeAliasName={displayActiveAliasName}
               connection={connection}
               configWarnings={displayConfigWarnings}
@@ -1946,7 +1987,6 @@ export function App() {
               onSelectAccount={(alias) => void handleSwitch(alias)}
             />
           </section>
-          <UsageOverview activeModel={activeAlias?.model} disconnected={disconnected} />
         </section>
       ) : activeTab === "advanced" ? (
         <>
@@ -2361,6 +2401,8 @@ export function App() {
               <span>{t("logs.startToView")}</span>
             </section>
           )}
+
+          <UsageOverview activeModel={activeAlias?.model} disconnected={disconnected} />
 
           <section className="grid">
             <article className="card stats-card">

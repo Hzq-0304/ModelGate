@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { ConfigWarning } from "../../api";
 import { AccountCard } from "./AccountCard";
 import {
-  formatAliasTitle,
   type AccountAlias,
   type ConnectionState
 } from "./accountTypes";
@@ -13,7 +12,6 @@ type AccountSwitcherProps = {
   connection: ConnectionState;
   endpoint: string;
   activeAliasName?: string;
-  activeAlias?: AccountAlias | null;
   accounts: AccountAlias[];
   configWarnings?: ConfigWarning[];
   message: string;
@@ -29,7 +27,6 @@ export function AccountSwitcher({
   connection,
   endpoint,
   activeAliasName,
-  activeAlias,
   accounts,
   configWarnings = [],
   message,
@@ -41,9 +38,7 @@ export function AccountSwitcher({
   onAlreadyActive
 }: AccountSwitcherProps) {
   const { t } = useI18n();
-  const disconnected = connection === "disconnected";
-  const activeName = activeAliasName ?? activeAlias?.name;
-  const [selectedAliasName, setSelectedAliasName] = useState<string | undefined>(activeName);
+  const activeName = activeAliasName;
   const missingEnvByProvider = useMemo(() => {
     const entries = configWarnings
       .filter((warning) => warning.provider)
@@ -55,21 +50,8 @@ export function AccountSwitcher({
       ] as const);
     return new Map(entries);
   }, [configWarnings, t]);
-  const selectedAlias = accounts.find((account) => account.name === selectedAliasName)
-    ?? activeAlias
-    ?? accounts[0]
-    ?? null;
-  const selectedMissingEnv = selectedAlias ? missingEnvByProvider.get(selectedAlias.provider) : undefined;
-
-  useEffect(() => {
-    setSelectedAliasName((current) => current && accounts.some((account) => account.name === current)
-      ? current
-      : activeName ?? accounts[0]?.name);
-  }, [accounts, activeName]);
 
   function handleSelect(alias: string) {
-    setSelectedAliasName(alias);
-
     if (alias === activeName) {
       onAlreadyActive();
       return;
@@ -80,127 +62,47 @@ export function AccountSwitcher({
 
   return (
     <section className="switcher-page">
-      <section className="switcher-console">
-        <div>
-          <span className="switcher-kicker">{t("switcher.title")}</span>
-          <h2>{activeName ? formatAliasTitle(activeName) : t("switcher.noActive")}</h2>
-          <p>{activeAlias ? `${activeAlias.provider} / ${activeAlias.model}` : t("switcher.description")}</p>
-        </div>
-        <div className="switcher-status">
-          <span className={`status-dot ${connection}`} />
-          <strong>{connection === "connected" ? t("app.connected") : connection === "checking" ? t("app.checking") : t("switcher.serverNotRunning")}</strong>
-          <span>{endpoint}/v1</span>
-        </div>
-      </section>
-
-      {disconnected && (
-        <section className="switcher-notice">
-          {t("switcher.connectToSwitch")}
-        </section>
-      )}
-
-      <section className="switcher-workbench">
-        <section className="account-list-panel" aria-label="Accounts">
-          <div className="panel-heading compact">
-            <span>{t("switcher.accounts")}</span>
+      <section className="account-list-panel" aria-label="Accounts">
+        <div className="provider-list-toolbar">
+          <div>
+            <span>{t("switcher.providerList")}</span>
             <strong>{accounts.length}</strong>
           </div>
-          {accounts.length > 0 ? (
-            <div className="account-list">
-              {accounts.map((account) => (
-                <AccountCard
-                  account={account}
-                  active={account.name === activeName}
-                  disabled={Boolean(switchingAlias)}
-                  key={account.name}
-                  authWarning={missingEnvByProvider.get(account.provider)}
-                  onDelete={onDeleteAccount}
-                  onEdit={onEditAccount}
-                  selected={account.name === selectedAlias?.name}
-                  switching={switchingAlias === account.name}
-                  onSelect={handleSelect}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state switcher-empty">
-              <strong>{t("switcher.noAccounts")}</strong>
-              {onGoToIntegrations && (
-                <>
-                  <p>{t("empty.noAccounts.goToIntegrations")}</p>
-                  <button className="secondary" onClick={onGoToIntegrations} type="button">
-                    {t("empty.noAccounts.integrationsLink")}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </section>
-
-        <aside className="account-detail-panel">
-          <div className="panel-heading compact">
-            <span>{t("switcher.details")}</span>
-            {selectedAlias?.name === activeName && <strong>{t("common.active")}</strong>}
+          <code>{endpoint}/v1</code>
+        </div>
+        {accounts.length > 0 ? (
+          <div className="account-list">
+            {accounts.map((account) => (
+              <AccountCard
+                account={account}
+                active={account.name === activeName}
+                connectionState={connection}
+                disabled={Boolean(switchingAlias)}
+                key={account.name}
+                authWarning={missingEnvByProvider.get(account.provider)}
+                onDelete={onDeleteAccount}
+                onEdit={onEditAccount}
+                switching={switchingAlias === account.name}
+                onSelect={handleSelect}
+              />
+            ))}
           </div>
-          {selectedAlias ? (
-            <>
-              <div className="account-detail-title">
-                <strong>{formatAliasTitle(selectedAlias.name)}</strong>
-                <span className={selectedMissingEnv ? "pill bad" : selectedAlias.name === activeName ? "pill" : "pill neutral"}>
-                  {selectedMissingEnv ? t("switcher.missingAuth") : selectedAlias.name === activeName ? t("switcher.currentlyUsing") : t("common.available")}
-                </span>
-              </div>
-              {selectedAlias.description && <p>{selectedAlias.description}</p>}
-              <dl>
-                <div>
-                  <dt>{t("common.alias")}</dt>
-                  <dd>{selectedAlias.name}</dd>
-                </div>
-                <div>
-                  <dt>{t("common.provider")}</dt>
-                  <dd>{selectedAlias.provider}</dd>
-                </div>
-                <div>
-                  <dt>{t("common.model")}</dt>
-                  <dd>{selectedAlias.model}</dd>
-                </div>
-                <div>
-                  <dt>{t("common.status")}</dt>
-                  <dd>{selectedMissingEnv ?? t("common.available")}</dd>
-                </div>
-              </dl>
-              <div className="account-detail-actions">
-                <button
-                  disabled={Boolean(switchingAlias) || selectedAlias.name === activeName}
-                  onClick={() => handleSelect(selectedAlias.name)}
-                  type="button"
-                >
-                  {switchingAlias === selectedAlias.name ? t("common.switching") : t("switcher.switchToAlias")}
+        ) : (
+          <div className="empty-state switcher-empty">
+            <strong>{t("switcher.noAccounts")}</strong>
+            {onGoToIntegrations && (
+              <>
+                <p>{t("empty.noAccounts.goToIntegrations")}</p>
+                <button className="secondary" onClick={onGoToIntegrations} type="button">
+                  {t("empty.noAccounts.integrationsLink")}
                 </button>
-                {onGoToIntegrations && (
-                  <button className="secondary" onClick={onGoToIntegrations} type="button">
-                    {t("quickStart.configureProviders")}
-                  </button>
-                )}
-                {onEditAccount && (
-                  <button className="secondary" onClick={() => onEditAccount(selectedAlias.name)} type="button">
-                    {t("common.edit")}
-                  </button>
-                )}
-                {onDeleteAccount && (
-                  <button className="secondary danger" onClick={() => onDeleteAccount(selectedAlias.name)} type="button">
-                    {t("common.delete")}
-                  </button>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="usage-empty">{t("switcher.noAccounts")}</div>
-          )}
-        </aside>
+              </>
+            )}
+          </div>
+        )}
       </section>
 
-      <span className={message.startsWith("Failed") ? "switcher-message bad" : "switcher-message"}>
+      <span className={message.startsWith("Failed") || message.includes("failed") ? "switcher-message bad" : "switcher-message"}>
         {message}
       </span>
     </section>
