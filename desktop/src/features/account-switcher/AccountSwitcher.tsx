@@ -1,12 +1,10 @@
-import { useMemo } from "react";
 import type { ConfigWarning } from "../../api";
-import { AccountCard } from "./AccountCard";
+import { ProviderList } from "../provider-list/ProviderList";
 import {
   type AccountAlias,
   type ConnectionState
 } from "./accountTypes";
 import { useI18n } from "../../i18n/i18n";
-import "./accountSwitcher.css";
 
 type AccountSwitcherProps = {
   connection: ConnectionState;
@@ -37,17 +35,6 @@ export function AccountSwitcher({
 }: AccountSwitcherProps) {
   const { t } = useI18n();
   const activeName = activeAliasName;
-  const missingEnvByProvider = useMemo(() => {
-    const entries = configWarnings
-      .filter((warning) => warning.provider)
-      .map((warning) => [
-        warning.provider as string,
-        warning.type === "missing_credential"
-          ? t("switcher.missingCredentialShort", { source: warning.source ?? "CC Switch" })
-          : t("switcher.missingApiKeyShort", { env: warning.envName ?? warning.env ?? "API_KEY" })
-      ] as const);
-    return new Map(entries);
-  }, [configWarnings, t]);
 
   function handleSelect(alias: string) {
     if (alias === activeName) {
@@ -58,50 +45,30 @@ export function AccountSwitcher({
     onSelectAccount(alias);
   }
 
-  return (
-    <section className="switcher-page">
-      <section className="account-list-panel" aria-label="Accounts">
-        <div className="provider-list-toolbar">
-          <div>
-            <span>{t("switcher.providerList")}</span>
-            <strong>{accounts.length}</strong>
-          </div>
-        </div>
-        {accounts.length > 0 ? (
-          <div className="account-list">
-            {accounts.map((account) => (
-              <AccountCard
-                account={account}
-                active={account.name === activeName}
-                connectionState={connection}
-                disabled={Boolean(switchingAlias)}
-                key={account.name}
-                authWarning={missingEnvByProvider.get(account.provider)}
-                onDelete={onDeleteAccount}
-                onEdit={onEditAccount}
-                switching={switchingAlias === account.name}
-                onSelect={handleSelect}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state switcher-empty">
-            <strong>{t("switcher.noAccounts")}</strong>
-            {onGoToIntegrations && (
-              <>
-                <p>{t("empty.noAccounts.goToIntegrations")}</p>
-                <button className="secondary" onClick={onGoToIntegrations} type="button">
-                  {t("empty.noAccounts.integrationsLink")}
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </section>
+  const showToast = message
+    && message !== "Status refreshed"
+    && message !== t("advanced.statusRefreshed")
+    && message !== t("config.notLoaded");
 
-      <span className={message.startsWith("Failed") || message.includes("failed") ? "switcher-message bad" : "switcher-message"}>
-        {message}
-      </span>
+  return (
+    <section className="switcher-page" aria-label={t("switcher.providerList")}>
+      <ProviderList
+        activeAliasName={activeName}
+        configWarnings={configWarnings}
+        connection={connection}
+        onDeleteProvider={onDeleteAccount}
+        onEditProvider={onEditAccount}
+        onGoToIntegrations={onGoToIntegrations}
+        onSelectProvider={handleSelect}
+        providers={accounts}
+        switchingAlias={switchingAlias}
+      />
+
+      {showToast && (
+        <span className={message.startsWith("Failed") || message.includes("failed") ? "switcher-toast bad" : "switcher-toast"} role="status">
+          {message}
+        </span>
+      )}
     </section>
   );
 }
