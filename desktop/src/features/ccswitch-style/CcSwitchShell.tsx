@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { SettingsIcon } from "../../components/icons/SettingsIcon";
+import { Settings } from "lucide-react";
 import { CcSwitchServiceToggle } from "./CcSwitchServiceToggle";
 
 type ServerLifecycle =
@@ -48,7 +48,7 @@ export function CcSwitchShell({
             title={settingsLabel}
             type="button"
           >
-            <SettingsIcon className="ccs-icon" />
+            <Settings className="ccs-icon" />
           </button>
           <CcSwitchServiceToggle
             lifecycle={serverLifecycle}

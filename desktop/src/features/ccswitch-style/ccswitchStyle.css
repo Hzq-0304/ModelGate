@@ -95,8 +95,8 @@ body {
 }
 
 .ccs-icon {
-  height: 18px;
-  width: 18px;
+  height: 16px;
+  width: 16px;
 }
 
 /* ---- service toggle (ported from CC Switch ProxyToggle) ---- */
@@ -118,7 +118,9 @@ body {
 .ccs-toggle-icon {
   color: var(--ccs-muted-foreground);
   flex-shrink: 0;
+  height: 16px;
   transition: color 200ms ease;
+  width: 16px;
 }
 
 .ccs-toggle-icon.is-active {
@@ -135,6 +137,8 @@ body {
   animation: ccs-spin 0.7s linear infinite;
   color: var(--ccs-muted-foreground);
   flex-shrink: 0;
+  height: 16px;
+  width: 16px;
 }
 
 @keyframes ccs-spin {
