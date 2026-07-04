@@ -13,12 +13,13 @@
     "windows": [
       {
         "title": "ModelGate",
-        "titleBarStyle": "Overlay",
         "width": 900,
         "height": 620,
         "minWidth": 800,
         "minHeight": 560,
-        "visible": false,
+        "visible": true,
+        "decorations": true,
+        "transparent": false,
         "resizable": true,
         "fullscreen": false,
         "center": true
