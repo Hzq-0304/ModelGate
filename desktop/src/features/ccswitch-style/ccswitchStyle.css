@@ -273,29 +273,24 @@ body {
 
 .ccs-drag-handle {
   align-items: center;
-  color: color-mix(in srgb, var(--ccs-muted-foreground) 45%, transparent);
+  color: color-mix(in srgb, var(--ccs-muted-foreground) 72%, transparent);
   display: inline-flex;
   flex: 0 0 auto;
   height: 32px;
   justify-content: center;
   margin-left: -6px;
   padding: 6px;
+  transition: color 160ms ease;
   width: 24px;
 }
 
-.ccs-action-main svg,
-.ccs-action-icon svg {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2;
+.ccs-provider-card:hover .ccs-drag-handle,
+.ccs-provider-card:focus-within .ccs-drag-handle {
+  color: var(--ccs-muted-foreground);
 }
 
 .ccs-drag-handle svg {
-  fill: currentColor;
   height: 16px;
-  stroke: none;
   width: 16px;
 }
 
