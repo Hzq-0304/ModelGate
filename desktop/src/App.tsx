@@ -41,24 +41,24 @@ import {
   validateModelGateConfigOffline,
   writeModelGateConfig
 } from "./api";
-import { LanguageSelector } from "./components/LanguageSelector";
 import { AccountSwitcher } from "./features/account-switcher/AccountSwitcher";
 import type { ConnectionState, ProviderAuthKind } from "./features/account-switcher/accountTypes";
 import type { CcSwitchExportDraft } from "./features/ccswitch/CcSwitchExportPanel";
 import { CcSwitchImportModal } from "./features/ccswitch-import/CcSwitchImportModal";
 import { CcSwitchConfirmModal } from "./features/ccswitch-style/CcSwitchConfirmModal";
 import { CcSwitchProviderEditModal, type ProviderEditPatch } from "./features/ccswitch-style/CcSwitchProviderEditModal";
-import { CcSwitchSettingsDrawer } from "./features/ccswitch-style/CcSwitchSettingsDrawer";
+import { CcSwitchSettingsPage, type SettingsPageTabId } from "./features/ccswitch-style/CcSwitchSettingsPage";
 import { CcSwitchShell } from "./features/ccswitch-style/CcSwitchShell";
 import { ServerControl } from "./features/server-control/ServerControl";
-import { SettingsPanel } from "./features/settings/SettingsPanel";
 import type { SettingsSectionId } from "./features/settings/settingsRoutes";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
-import { useI18n } from "./i18n/i18n";
+import { useI18n, type Language, type TranslationKey } from "./i18n/i18n";
 import type { AppRouteId } from "./routes/routeTypes";
+import desktopPackage from "../package.json";
 
 type ActiveTab = AppRouteId;
 type ConfigSection = SettingsSectionId;
+type RecordsSection = "logs" | "usage";
 
 type ImportDraft = CcSwitchImportCandidate & {
   selected: boolean;
@@ -81,9 +81,33 @@ type PresetDraft = {
 };
 
 const serverUrl = getBaseUrl();
+const appVersion = desktopPackage.version;
 const OPENAI_OFFICIAL_BASE_URL = "https://api.openai.com/v1";
 const envNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const configKeyPattern = /^[A-Za-z0-9_-]+$/;
+const settingsPageTabs = [
+  { id: "general", i18nKey: "settings.general" },
+  { id: "integrations", i18nKey: "settings.integrations" },
+  { id: "modelRouting", i18nKey: "settings.modelRouting" },
+  { id: "records", i18nKey: "settings.records" },
+  { id: "advanced", i18nKey: "settings.advanced" },
+  { id: "about", i18nKey: "settings.about" }
+] satisfies Array<{ id: SettingsPageTabId; i18nKey: TranslationKey }>;
+
+const routingSections = ["providers", "aliases", "entrypoints", "pricing"] as const;
+
+function isRoutingSection(section: ConfigSection): section is typeof routingSections[number] {
+  return routingSections.includes(section as typeof routingSections[number]);
+}
+
+function settingsPageTabFromSection(section: ConfigSection): SettingsPageTabId {
+  if (section === "integrations") return "integrations";
+  if (isRoutingSection(section)) return "modelRouting";
+  if (section === "records") return "records";
+  if (section === "advanced") return "advanced";
+  if (section === "about") return "about";
+  return "general";
+}
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -265,9 +289,10 @@ function metadataDisplayName(metadata: unknown) {
 }
 
 export function App() {
-  const { t } = useI18n();
+  const { language, setLanguage, t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>("switcher");
   const [configSection, setConfigSection] = useState<ConfigSection>("common");
+  const [recordsSection, setRecordsSection] = useState<RecordsSection>("logs");
   const [connection, setConnection] = useState<ConnectionState>("checking");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [aliases, setAliases] = useState<AliasesResponse | null>(null);
@@ -645,8 +670,53 @@ export function App() {
   function openSettings(section: ConfigSection = "common") {
     setActiveTab("settings");
     setConfigSection(section);
+    if (section === "records") {
+      setRecordsSection("logs");
+    }
     if (!editableConfig) {
       void loadConfiguration().catch((error) => setConfigMessage(`Failed to load configuration: ${getErrorMessage(error)}`));
+    }
+  }
+
+  function selectSettingsTab(tab: SettingsPageTabId) {
+    if (tab === "general") {
+      setConfigSection("common");
+      return;
+    }
+    if (tab === "integrations") {
+      setConfigSection("integrations");
+      return;
+    }
+    if (tab === "modelRouting") {
+      setConfigSection(isRoutingSection(configSection) ? configSection : "providers");
+      return;
+    }
+    if (tab === "records") {
+      setConfigSection("records");
+      return;
+    }
+    if (tab === "advanced") {
+      setConfigSection("advanced");
+      return;
+    }
+    setConfigSection("about");
+  }
+
+  function selectLanguage(nextLanguage: Language) {
+    setLanguage(nextLanguage);
+  }
+
+  async function handleCopyConfigPath() {
+    if (!configPath) {
+      setConfigMessage(t("config.notLoaded"));
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(configPath);
+      setConfigMessage(t("settings.configPathCopied"));
+    } catch {
+      setConfigMessage(t("settings.configPathCopyFailed"));
     }
   }
 
@@ -2004,33 +2074,37 @@ export function App() {
     const deepLink = buildCcSwitchDeepLink();
 
     return (
-      <section className="ccswitch-integration">
-        <section className="integration-card-grid">
-          <section className="card config-card integration-action-card">
-            <div className="card-heading">
-              <span>{t("settings.importFromCcSwitch")}</span>
-              <strong>{t("config.import")}</strong>
+      <section className="ccswitch-integration ccs-settings-sections">
+        <section className="ccs-settings-section">
+          <header className="ccs-settings-section-header">
+            <h2>CC Switch</h2>
+            <p>{t("ccswitch.import.description")}</p>
+          </header>
+          <div className="ccs-setting-row">
+            <div>
+              <strong>{t("settings.importFromCcSwitch")}</strong>
+              <span>{t("ccswitchImport.shortDescription")}</span>
             </div>
-            <p className="muted">{t("ccswitchImport.shortDescription")}</p>
-            <div className="server-actions">
-              <button type="button" onClick={openCcSwitchImportModal} disabled={busyAction !== null}>
-                {t("settings.importFromCcSwitch")}
-              </button>
-            </div>
-          </section>
+            <button type="button" onClick={openCcSwitchImportModal} disabled={busyAction !== null}>
+              {t("config.import")}
+            </button>
+          </div>
+        </section>
 
-          <section className="card config-card integration-action-card">
-            <div className="card-heading">
-              <span>{t("settings.importToCodex")}</span>
-              <strong>Codex</strong>
+        <section className="ccs-settings-section">
+          <header className="ccs-settings-section-header">
+            <h2>Codex</h2>
+            <p>{t("codexImport.description")}</p>
+          </header>
+          <div className="ccs-setting-row">
+            <div>
+              <strong>{t("settings.importToCodex")}</strong>
+              <span>{t("config.integrations.importModelGateToCodex")}</span>
             </div>
-            <p className="muted">{t("codexImport.description")}</p>
-            <div className="server-actions">
-              <button type="button" onClick={openCodexImportPanel} disabled={busyAction !== null}>
-                {t("settings.importToCodex")}
-              </button>
-            </div>
-          </section>
+            <button type="button" onClick={openCodexImportPanel} disabled={busyAction !== null}>
+              {t("settings.importToCodex")}
+            </button>
+          </div>
         </section>
 
         {showCodexImportPanel && (
@@ -2115,10 +2189,13 @@ export function App() {
       preset.suggested_alias
     ].some((value) => value.toLowerCase().includes(normalizedPresetSearch));
   });
-  const codexDeepLink = buildCcSwitchDeepLink("codex");
+  const settingsTopTab = settingsPageTabFromSection(configSection);
   const editingAlias = editAliasName
     ? displayAliases.find((alias) => alias.name === editAliasName) ?? null
     : null;
+  const configMessageIsError = configMessage.startsWith("Save failed")
+    || configMessage.startsWith("Validation failed")
+    || configMessage.startsWith("Failed");
   const deletingAlias = deleteAliasName ? editableConfig?.aliases[deleteAliasName] : undefined;
   const deleteProviderOrphaned = Boolean(
     deleteAliasName
@@ -2132,52 +2209,150 @@ export function App() {
   const editSaving = busyAction === `provider-edit:${editAliasName}`;
 
   return (
-    <CcSwitchShell
-      onOpenSettings={() => openSettings()}
-      onStartServer={() => void handleStartServer()}
-      onStopServer={() => void handleStopServer()}
-      serverBusy={serverControlBusy}
-      serverLifecycle={serverLifecycle}
-      settingsActive={activeTab === "settings"}
-      settingsLabel={t("settings.title")}
-      title={t("app.title")}
-    >
-
-      <section className="switcher-page">
-        <section id="account-switcher">
-          <AccountSwitcher
-            accounts={aliasesList}
-            activeAliasName={displayActiveAliasName}
-            connection={connection}
-            configWarnings={displayConfigWarnings}
-            message={message}
-            switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
-            onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
-            onDeleteAccount={(alias) => void handleDeleteAccount(alias)}
-            onEditAccount={handleEditAccount}
-            onGoToIntegrations={() => openSettings("integrations")}
-            onSelectAccount={(alias) => void handleSwitch(alias)}
-          />
-        </section>
-      </section>
-
+    <>
       {activeTab === "settings" ? (
-        <CcSwitchSettingsDrawer
-          closeLabel={t("common.close")}
-          message={configMessage}
-          messageBad={configMessage.startsWith("Save failed") || configMessage.startsWith("Validation failed")}
-          onClose={() => setActiveTab("switcher")}
+        <CcSwitchSettingsPage
+          activeTab={settingsTopTab}
+          message={configMessageIsError ? configMessage : undefined}
+          messageBad={configMessageIsError}
+          onBack={() => setActiveTab("switcher")}
+          onSelectTab={selectSettingsTab}
+          tabs={settingsPageTabs}
           title={t("settings.title")}
         >
 
-          <SettingsPanel
-            activeSection={configSection}
-            configPath={configPath}
-            onSelectSection={setConfigSection}
-          />
-
           {configSection === "common" && (
-            <>
+            <div className="ccs-settings-sections">
+              <section className="ccs-settings-section">
+                <header className="ccs-settings-section-header">
+                  <h2>{t("settings.interfaceLanguage")}</h2>
+                  <p>{t("settings.interfaceLanguageHint")}</p>
+                </header>
+                <div className="ccs-setting-row">
+                  <div>
+                    <strong>{t("settings.language")}</strong>
+                    <span>{t("settings.languageDescription")}</span>
+                  </div>
+                  <div className="ccs-segmented-control" role="group" aria-label={t("settings.language")}>
+                    <button className={language === "zh-CN" ? "is-active" : ""} onClick={() => selectLanguage("zh-CN")} type="button">
+                      {t("language.zhCN")}
+                    </button>
+                    <button className={language === "en" ? "is-active" : ""} onClick={() => selectLanguage("en")} type="button">
+                      {t("language.en")}
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="ccs-settings-section">
+                <header className="ccs-settings-section-header">
+                  <h2>{t("settings.service")}</h2>
+                  <p>{t("settings.serviceDescription")}</p>
+                </header>
+                <div className="ccs-setting-row">
+                  <div>
+                    <strong>{t("common.status")}</strong>
+                    <span>{serverRunning ? t("common.running") : t("app.disconnected")}</span>
+                  </div>
+                  <span className={serverRunning ? "ccs-status-badge is-running" : "ccs-status-badge"}>{serverRunning ? t("common.running") : t("app.disconnected")}</span>
+                </div>
+                <div className="ccs-setting-row">
+                  <div>
+                    <strong>{t("config.endpoint")}</strong>
+                    <span className="ccs-path-text">{serverProcess?.endpoint ?? `${serverUrl}/v1`}</span>
+                  </div>
+                </div>
+                <div className="ccs-setting-actions">
+                  <button onClick={() => void handleStartServer()} disabled={busyAction !== null || !canStartServer}>
+                    {busyAction === "server:start" || isServerStarting ? t("advanced.starting") : t("advanced.startServer")}
+                  </button>
+                  <button className="secondary" onClick={() => void handleStopServer()} disabled={busyAction !== null || !canStopServer || isServerStopping}>
+                    {busyAction === "server:stop" || isServerStopping ? t("advanced.stopping") : t("advanced.stopServer")}
+                  </button>
+                  <button className="secondary" onClick={() => void handleRestartServer()} disabled={busyAction !== null || !canStopServer || isServerStarting || isServerStopping}>
+                    {busyAction === "server:restart" ? t("advanced.restarting") : t("advanced.restartServer")}
+                  </button>
+                </div>
+              </section>
+
+              <section className="ccs-settings-section">
+                <header className="ccs-settings-section-header">
+                  <h2>{t("settings.configFile")}</h2>
+                  <p>{t("settings.configFileDescription")}</p>
+                </header>
+                <div className="ccs-setting-row">
+                  <div>
+                    <strong>{t("settings.configFile")}</strong>
+                    <span className="ccs-path-text">{configPath || t("config.notLoaded")}</span>
+                  </div>
+                  <button className="secondary" onClick={() => void handleCopyConfigPath()} disabled={!configPath} type="button">
+                    {t("settings.copyPath")}
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {configSection === "records" && (
+            <section className="records-panel">
+              <div className="ccs-segmented-control ccs-sub-tabs" role="tablist" aria-label={t("settings.records")}>
+                <button className={recordsSection === "logs" ? "is-active" : ""} onClick={() => setRecordsSection("logs")} type="button">
+                  {t("settings.logs")}
+                </button>
+                <button className={recordsSection === "usage" ? "is-active" : ""} onClick={() => setRecordsSection("usage")} type="button">
+                  {t("settings.usage")}
+                </button>
+              </div>
+              {recordsSection === "usage" ? (
+                <UsageOverview activeModel={activeAlias?.model} disconnected={disconnected} />
+              ) : (
+                <>
+                  <section className="actions">
+                    <button onClick={() => void handleRefreshLogs()} disabled={busyAction !== null || disconnected}>
+                      {busyAction === "logs:refresh" ? t("common.refreshing") : t("common.refresh")}
+                    </button>
+                    <button className="secondary danger" onClick={() => void handleClearLogs()} disabled={busyAction !== null || disconnected}>
+                      {busyAction === "logs:clear" ? t("logs.clearing") : t("logs.clearLogs")}
+                    </button>
+                    <span className={logsMessage.startsWith("Failed") ? "action-message bad" : "action-message"}>
+                      {logsMessage}
+                    </span>
+                  </section>
+                  <section className="card table-card">
+                    <div className="card-heading">
+                      <span>{t("logs.recentRequests")}</span>
+                      <strong>{requestLogs.length}</strong>
+                    </div>
+                    <div className="request-log-table">
+                      <div className="request-log-row request-log-head">
+                        <span>{t("usage.time")}</span>
+                        <span>{t("logs.kind")}</span>
+                        <span>API</span>
+                        <span>{t("common.status")}</span>
+                        <span>{t("common.alias")}</span>
+                        <span>{t("common.provider")}</span>
+                        <span>{t("common.duration")}</span>
+                      </div>
+                      {requestLogs.map((entry) => (
+                        <div className={entry.ok ? "request-log-row compact ok" : "request-log-row compact failed"} key={entry.id}>
+                          <span>{formatLogTime(entry.started_at)}</span>
+                          <span>{entry.kind === "diagnostic" ? t("logs.diagnostic") : t("logs.normal")}</span>
+                          <span>{entry.api_type === "responses" ? "responses" : "chat"}</span>
+                          <span><span className={entry.ok ? "pill" : "pill bad"}>{entry.ok ? "OK" : entry.status_code ?? "ERR"}</span></span>
+                          <span>{entry.resolved_alias ?? "-"}</span>
+                          <span>{entry.provider ?? "-"}</span>
+                          <span>{entry.duration_ms ?? 0}ms</span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </>
+              )}
+            </section>
+          )}
+
+          {configSection === "advanced" && (
+            <div className="ccs-settings-sections">
               <ServerControl
                 busyAction={busyAction}
                 serverProcess={serverProcess}
@@ -2187,76 +2362,6 @@ export function App() {
                 onStart={() => void handleStartServer()}
                 onStop={() => void handleStopServer()}
               />
-              <section className="card config-card compact-config-card">
-                <div className="card-heading">
-                  <span>{t("settings.server")}</span>
-                  <strong>{serverRunning ? t("common.running") : t("app.disconnected")}</strong>
-                </div>
-                <dl className="server-details">
-                  <div>
-                    <dt>{t("config.endpoint")}</dt>
-                    <dd>{serverProcess?.endpoint ?? `${serverUrl}/v1`}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("config.activeAlias")}</dt>
-                    <dd>{displayActiveAliasName ?? "-"}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("settings.configFile")}</dt>
-                    <dd>{configPath || t("config.notLoaded")}</dd>
-                  </div>
-                </dl>
-              </section>
-            </>
-          )}
-
-          {configSection === "records" && (
-            <section className="records-panel">
-              <UsageOverview activeModel={activeAlias?.model} disconnected={disconnected} />
-              <section className="actions">
-                <button onClick={() => void handleRefreshLogs()} disabled={busyAction !== null || disconnected}>
-                  {busyAction === "logs:refresh" ? t("common.refreshing") : t("common.refresh")}
-                </button>
-                <button className="secondary danger" onClick={() => void handleClearLogs()} disabled={busyAction !== null || disconnected}>
-                  {busyAction === "logs:clear" ? t("logs.clearing") : t("logs.clearLogs")}
-                </button>
-                <span className={logsMessage.startsWith("Failed") ? "action-message bad" : "action-message"}>
-                  {logsMessage}
-                </span>
-              </section>
-              <section className="card table-card">
-                <div className="card-heading">
-                  <span>{t("logs.recentRequests")}</span>
-                  <strong>{requestLogs.length}</strong>
-                </div>
-                <div className="request-log-table">
-                  <div className="request-log-row request-log-head">
-                    <span>{t("usage.time")}</span>
-                    <span>{t("logs.kind")}</span>
-                    <span>API</span>
-                    <span>{t("common.status")}</span>
-                    <span>{t("common.alias")}</span>
-                    <span>{t("common.provider")}</span>
-                    <span>{t("common.duration")}</span>
-                  </div>
-                  {requestLogs.map((entry) => (
-                    <div className={entry.ok ? "request-log-row compact ok" : "request-log-row compact failed"} key={entry.id}>
-                      <span>{formatLogTime(entry.started_at)}</span>
-                      <span>{entry.kind === "diagnostic" ? t("logs.diagnostic") : t("logs.normal")}</span>
-                      <span>{entry.api_type === "responses" ? "responses" : "chat"}</span>
-                      <span><span className={entry.ok ? "pill" : "pill bad"}>{entry.ok ? "OK" : entry.status_code ?? "ERR"}</span></span>
-                      <span>{entry.resolved_alias ?? "-"}</span>
-                      <span>{entry.provider ?? "-"}</span>
-                      <span>{entry.duration_ms ?? 0}ms</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </section>
-          )}
-
-          {configSection === "advanced" && (
-            <>
               <section className="actions">
                 <button onClick={() => void refresh()} disabled={busyAction !== null}>
                   {busyAction === "refresh" ? t("common.refreshing") : t("common.refresh")}
@@ -2308,23 +2413,51 @@ export function App() {
                 </div>
                 <pre>{codexConfig}</pre>
               </section>
-            </>
+            </div>
           )}
 
-          {configSection === "language" && (
-            <section className="card config-card compact-config-card">
-              <div className="card-heading">
-                <span>{t("settings.language")}</span>
-                <strong>{t("settings.application")}</strong>
-              </div>
-              <div className="settings-inline-controls">
-                <LanguageSelector />
-                <button className="secondary" type="button" onClick={() => void handleReload()} disabled={busyAction !== null || disconnected}>
-                  {busyAction === "reload" ? t("config.reloading") : t("settings.reloadConfig")}
-                </button>
-              </div>
-              <span className="muted">{configPath || t("config.notLoaded")}</span>
-            </section>
+          {configSection === "about" && (
+            <div className="ccs-settings-sections">
+              <section className="ccs-settings-section about-section">
+                <header className="ccs-settings-section-header">
+                  <h2>ModelGate</h2>
+                  <p>{t("app.subtitle")}</p>
+                </header>
+                <div className="ccs-setting-row">
+                  <div>
+                    <strong>{t("settings.version")}</strong>
+                    <span>{appVersion}</span>
+                  </div>
+                </div>
+                <div className="ccs-setting-row">
+                  <div>
+                    <strong>GitHub</strong>
+                    <span>Hzq-0304/ModelGate</span>
+                  </div>
+                  <a className="ccs-link-button" href="https://github.com/Hzq-0304/ModelGate" target="_blank" rel="noreferrer">
+                    GitHub
+                  </a>
+                </div>
+                <p className="muted">{t("settings.ccSwitchAttribution")}</p>
+              </section>
+            </div>
+          )}
+
+          {isRoutingSection(configSection) && (
+            <div className="ccs-segmented-control ccs-sub-tabs" role="tablist" aria-label={t("settings.modelRouting")}>
+              <button className={configSection === "providers" ? "is-active" : ""} onClick={() => setConfigSection("providers")} type="button">
+                {t("settings.providers")}
+              </button>
+              <button className={configSection === "aliases" ? "is-active" : ""} onClick={() => setConfigSection("aliases")} type="button">
+                {t("settings.aliases")}
+              </button>
+              <button className={configSection === "entrypoints" ? "is-active" : ""} onClick={() => setConfigSection("entrypoints")} type="button">
+                {t("settings.entrypoints")}
+              </button>
+              <button className={configSection === "pricing" ? "is-active" : ""} onClick={() => setConfigSection("pricing")} type="button">
+                {t("settings.pricing")}
+              </button>
+            </div>
           )}
 
           {configSection === "providers" && (
@@ -2573,19 +2706,50 @@ export function App() {
             </section>
           )}
 
-          <section className="actions config-actions">
-            <button onClick={() => void handleValidateConfig()} disabled={!editableConfig || busyAction !== null}>
-              {busyAction === "config:validate" ? t("config.validating") : t("config.validate")}
-            </button>
-            <button onClick={() => void handleSaveConfig()} disabled={!editableConfig || busyAction !== null}>
-              {busyAction === "config:save" ? t("config.saving") : t("config.saveReload")}
-            </button>
-            <button className="secondary" onClick={() => void handleResetConfig()} disabled={busyAction !== null}>
-              {busyAction === "config:reset" ? t("config.resetting") : t("config.reset")}
-            </button>
+          {isRoutingSection(configSection) && (
+            <section className="actions config-actions">
+              <button onClick={() => void handleValidateConfig()} disabled={!editableConfig || busyAction !== null}>
+                {busyAction === "config:validate" ? t("config.validating") : t("config.validate")}
+              </button>
+              <button onClick={() => void handleSaveConfig()} disabled={!editableConfig || busyAction !== null}>
+                {busyAction === "config:save" ? t("config.saving") : t("config.saveReload")}
+              </button>
+              <button className="secondary" onClick={() => void handleResetConfig()} disabled={busyAction !== null}>
+                {busyAction === "config:reset" ? t("config.resetting") : t("config.reset")}
+              </button>
+            </section>
+          )}
+        </CcSwitchSettingsPage>
+      ) : (
+        <CcSwitchShell
+          onOpenSettings={() => openSettings()}
+          onStartServer={() => void handleStartServer()}
+          onStopServer={() => void handleStopServer()}
+          serverBusy={serverControlBusy}
+          serverLifecycle={serverLifecycle}
+          settingsActive={false}
+          settingsLabel={t("settings.title")}
+          title={t("app.title")}
+        >
+          <section className="switcher-page">
+            <section id="account-switcher">
+              <AccountSwitcher
+                accounts={aliasesList}
+                activeAliasName={displayActiveAliasName}
+                connection={connection}
+                configWarnings={displayConfigWarnings}
+                message={message}
+                switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
+                onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
+                onDeleteAccount={(alias) => void handleDeleteAccount(alias)}
+                onEditAccount={handleEditAccount}
+                onGoToIntegrations={() => openSettings("integrations")}
+                onSelectAccount={(alias) => void handleSwitch(alias)}
+              />
+            </section>
           </section>
-        </CcSwitchSettingsDrawer>
-      ) : null}
+        </CcSwitchShell>
+      )}
       <CcSwitchImportModal
         busyAction={busyAction}
         configLoaded={Boolean(editableConfig)}
@@ -2624,6 +2788,6 @@ export function App() {
         onCancel={() => setDeleteAliasName(null)}
         onConfirm={(checked) => void confirmDeleteAccount(checked)}
       />
-    </CcSwitchShell>
+    </>
   );
 }

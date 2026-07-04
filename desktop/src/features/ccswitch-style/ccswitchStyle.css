@@ -529,75 +529,293 @@ body {
   background: #b42318;
 }
 
-.ccs-settings-drawer {
+.ccs-settings-page {
   background: var(--ccs-background);
-  border-left: 1px solid var(--ccs-border);
-  box-shadow: -20px 0 48px rgba(15, 23, 42, 0.14);
-  display: grid;
-  gap: 12px;
-  grid-auto-rows: max-content;
+  color: var(--ccs-foreground);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--ccs-font);
   height: 100vh;
-  max-width: 760px;
-  overflow-y: auto;
-  padding: 18px;
-  position: fixed;
-  right: 0;
-  top: 0;
-  width: min(760px, calc(100vw - 38px));
-  z-index: 80;
+  min-width: 800px;
+  overflow: hidden;
+  padding: 18px 24px 0;
+  width: 100vw;
 }
 
-.ccs-settings-heading {
+.ccs-settings-page-header {
   align-items: center;
   display: flex;
-  justify-content: space-between;
-  min-height: 42px;
+  gap: 10px;
+  min-height: 40px;
 }
 
-.ccs-settings-heading h2 {
+.ccs-settings-back {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--ccs-border);
+  border-radius: 8px;
+  color: var(--ccs-muted-foreground);
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0;
+  width: 32px;
+}
+
+.ccs-settings-back:hover {
+  background: var(--ccs-muted);
+  color: var(--ccs-foreground);
+}
+
+.ccs-settings-back svg {
+  height: 16px;
+  width: 16px;
+}
+
+.ccs-settings-title {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ccs-settings-title h1 {
   color: var(--ccs-foreground);
   font-size: 20px;
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
-  margin: 0 0 4px;
+  margin: 0;
 }
 
-.ccs-drawer-message {
+.ccs-settings-message {
   color: var(--ccs-muted-foreground);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.ccs-drawer-message.bad {
+.ccs-settings-message.bad {
   color: #b42318;
 }
 
-.ccs-drawer-close {
+.ccs-settings-tabs {
+  background: var(--ccs-muted);
+  border-radius: 8px;
+  display: grid;
+  flex: 0 0 auto;
+  gap: 2px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin: 18px 0 16px;
+  padding: 4px;
+}
+
+.ccs-settings-tabs button,
+.ccs-segmented-control button {
   background: transparent;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   color: var(--ccs-muted-foreground);
   font-size: 13px;
   font-weight: 600;
-  min-height: 34px;
+  min-height: 32px;
   padding: 6px 10px;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
 }
 
-.ccs-drawer-close:hover {
-  background: var(--ccs-muted);
+.ccs-settings-tabs button:hover,
+.ccs-segmented-control button:hover {
   color: var(--ccs-foreground);
 }
 
-.ccs-settings-drawer .settings-groups {
-  gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.ccs-settings-tabs button.is-active,
+.ccs-segmented-control button.is-active {
+  background: var(--ccs-card);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  color: var(--ccs-primary);
 }
 
-.ccs-settings-drawer .settings-group-card {
-  background: var(--ccs-card);
-  border-color: var(--ccs-border);
-  border-radius: 12px;
+.ccs-settings-page-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 2px 28px;
+}
+
+.ccs-settings-sections {
+  display: grid;
+  gap: 18px;
+}
+
+.ccs-settings-section {
+  display: grid;
+  gap: 10px;
+  max-width: 920px;
+}
+
+.ccs-settings-section-header {
+  display: grid;
+  gap: 4px;
+}
+
+.ccs-settings-section-header h2 {
+  color: var(--ccs-foreground);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.ccs-settings-section-header p {
+  color: var(--ccs-muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.ccs-setting-row {
+  align-items: center;
+  border-top: 1px solid var(--ccs-border);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 12px 0;
+}
+
+.ccs-setting-row > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ccs-setting-row strong {
+  color: var(--ccs-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.ccs-setting-row span {
+  color: var(--ccs-muted-foreground);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ccs-setting-actions {
+  align-items: center;
+  border-top: 1px solid var(--ccs-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.ccs-segmented-control {
+  align-items: center;
+  background: var(--ccs-muted);
+  border-radius: 8px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 4px;
+}
+
+.ccs-sub-tabs {
+  margin: 0 0 14px;
+}
+
+.ccs-status-badge {
+  background: rgb(241 245 249);
+  border-radius: 999px;
+  color: rgb(71 85 105);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  padding: 6px 9px;
+}
+
+.ccs-status-badge.is-running {
+  background: rgb(220 252 231);
+  color: rgb(22 101 52);
+}
+
+.ccs-path-text {
+  display: block;
+  max-width: min(560px, 55vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ccs-link-button {
+  align-items: center;
+  background: var(--ccs-muted);
+  border-radius: 8px;
+  color: var(--ccs-foreground);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 32px;
+  padding: 6px 10px;
+  text-decoration: none;
+}
+
+.ccs-link-button:hover {
+  background: color-mix(in srgb, var(--ccs-muted) 70%, var(--ccs-foreground) 6%);
+}
+
+.ccs-settings-page .config-card,
+.ccs-settings-page .table-card,
+.ccs-settings-page .active-card,
+.ccs-settings-page .codex-card {
+  background: transparent;
+  border: 0;
   box-shadow: none;
+  max-width: 920px;
+  padding: 0;
+}
+
+.ccs-settings-page .card-heading {
+  border-bottom: 1px solid var(--ccs-border);
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+}
+
+.ccs-settings-page .config-table,
+.ccs-settings-page .request-log-table {
+  border-top: 1px solid var(--ccs-border);
+  gap: 0;
+}
+
+.ccs-settings-page .config-row,
+.ccs-settings-page .request-log-row {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ccs-border);
+  border-radius: 0;
+  min-height: 44px;
+  padding: 10px 0;
+}
+
+.ccs-settings-page .config-head,
+.ccs-settings-page .request-log-head {
+  color: var(--ccs-muted-foreground);
+  font-size: 11px;
+  min-height: 34px;
+  text-transform: uppercase;
+}
+
+.ccs-settings-page .preset-card .muted {
+  margin-bottom: 10px;
+  max-width: 720px;
 }
 
 .ccs-modal-backdrop {
@@ -857,9 +1075,5 @@ body {
 
   .ccs-edit-grid {
     grid-template-columns: 1fr;
-  }
-
-  .ccs-settings-drawer {
-    width: min(720px, calc(100vw - 24px));
   }
 }
