@@ -2133,10 +2133,6 @@ export function App() {
 
   return (
     <CcSwitchShell
-      checkingLabel={t("app.checking")}
-      connectedLabel={t("app.connected")}
-      connection={connection}
-      disconnectedLabel={t("app.disconnected")}
       onOpenSettings={() => openSettings()}
       onStartServer={() => void handleStartServer()}
       onStopServer={() => void handleStopServer()}

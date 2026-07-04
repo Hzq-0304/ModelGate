@@ -22,7 +22,7 @@ type CcSwitchServiceToggleProps = {
 };
 
 function RadioIcon({ active, className }: { active: boolean; className?: string }) {
-  // Signal/radio SVG — equivalent to lucide Radio icon
+  // Signal/radio SVG equivalent to lucide Radio icon.
   return (
     <svg
       aria-hidden="true"
@@ -102,6 +102,7 @@ export function CcSwitchServiceToggle({
   return (
     <div
       className={["ccs-service-toggle", isExternal ? "is-external" : ""].filter(Boolean).join(" ")}
+      data-tauri-no-drag
       title={tooltipText}
     >
       {isTransitioning || busy ? (
@@ -109,16 +110,18 @@ export function CcSwitchServiceToggle({
       ) : (
         <RadioIcon active={isRunning && !isExternal} />
       )}
-      {/* CSS-only toggle switch */}
       <button
         aria-checked={checked}
         aria-label={tooltipText}
         className={["ccs-toggle-switch", checked ? "is-on" : ""].filter(Boolean).join(" ")}
         disabled={isDisabled}
+        data-tauri-no-drag
         onClick={handleChange}
         role="switch"
         type="button"
-      />
+      >
+        <span className="ccs-toggle-thumb" />
+      </button>
     </div>
   );
 }

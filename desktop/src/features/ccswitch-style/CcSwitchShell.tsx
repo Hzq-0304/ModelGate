@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { SettingsIcon } from "../../components/icons/SettingsIcon";
-import type { ConnectionState } from "../account-switcher/accountTypes";
 import { CcSwitchServiceToggle } from "./CcSwitchServiceToggle";
 
 type ServerLifecycle =
@@ -13,10 +12,6 @@ type ServerLifecycle =
 
 type CcSwitchShellProps = {
   title: string;
-  connection: ConnectionState;
-  connectedLabel: string;
-  checkingLabel: string;
-  disconnectedLabel: string;
   settingsLabel: string;
   settingsActive: boolean;
   onOpenSettings: () => void;
@@ -29,10 +24,6 @@ type CcSwitchShellProps = {
 
 export function CcSwitchShell({
   title,
-  connection,
-  connectedLabel,
-  checkingLabel,
-  disconnectedLabel,
   settingsLabel,
   settingsActive,
   onOpenSettings,
@@ -42,26 +33,17 @@ export function CcSwitchShell({
   onStopServer,
   children
 }: CcSwitchShellProps) {
-  const statusText = connection === "connected"
-    ? connectedLabel
-    : connection === "checking"
-      ? checkingLabel
-      : disconnectedLabel;
-
   return (
     <main className="ccs-shell">
       <header className="ccs-header" data-tauri-drag-region>
-        <div className="ccs-brand">
-          <h1>{title}</h1>
-          <span className="ccs-status-text">
-            <span className={`status-dot ${connection}`} />
-            {statusText}
-          </span>
-        </div>
-        <div className="ccs-header-actions">
+        <div className="ccs-header-left">
+          <div className="ccs-brand">
+            <h1>{title}</h1>
+          </div>
           <button
             aria-label={settingsLabel}
             className={settingsActive ? "ccs-icon-button is-active" : "ccs-icon-button"}
+            data-tauri-no-drag
             onClick={onOpenSettings}
             title={settingsLabel}
             type="button"
