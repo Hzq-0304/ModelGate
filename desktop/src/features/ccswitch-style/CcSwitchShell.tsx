@@ -1,6 +1,15 @@
 import type { ReactNode } from "react";
 import { SettingsIcon } from "../../components/icons/SettingsIcon";
 import type { ConnectionState } from "../account-switcher/accountTypes";
+import { CcSwitchServiceToggle } from "./CcSwitchServiceToggle";
+
+type ServerLifecycle =
+  | "stopped"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "failed"
+  | "external-running";
 
 type CcSwitchShellProps = {
   title: string;
@@ -11,6 +20,10 @@ type CcSwitchShellProps = {
   settingsLabel: string;
   settingsActive: boolean;
   onOpenSettings: () => void;
+  serverLifecycle: ServerLifecycle;
+  serverBusy: boolean;
+  onStartServer: () => void;
+  onStopServer: () => void;
   children: ReactNode;
 };
 
@@ -23,6 +36,10 @@ export function CcSwitchShell({
   settingsLabel,
   settingsActive,
   onOpenSettings,
+  serverLifecycle,
+  serverBusy,
+  onStartServer,
+  onStopServer,
   children
 }: CcSwitchShellProps) {
   const statusText = connection === "connected"
@@ -41,15 +58,23 @@ export function CcSwitchShell({
             {statusText}
           </span>
         </div>
-        <button
-          aria-label={settingsLabel}
-          className={settingsActive ? "ccs-icon-button is-active" : "ccs-icon-button"}
-          onClick={onOpenSettings}
-          title={settingsLabel}
-          type="button"
-        >
-          <SettingsIcon className="ccs-icon" />
-        </button>
+        <div className="ccs-header-actions">
+          <button
+            aria-label={settingsLabel}
+            className={settingsActive ? "ccs-icon-button is-active" : "ccs-icon-button"}
+            onClick={onOpenSettings}
+            title={settingsLabel}
+            type="button"
+          >
+            <SettingsIcon className="ccs-icon" />
+          </button>
+          <CcSwitchServiceToggle
+            lifecycle={serverLifecycle}
+            busy={serverBusy}
+            onStart={onStartServer}
+            onStop={onStopServer}
+          />
+        </div>
       </header>
       <div className="ccs-main">{children}</div>
     </main>

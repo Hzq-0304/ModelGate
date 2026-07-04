@@ -16,11 +16,14 @@
   --ccs-primary: hsl(210 100% 56%);
   --ccs-primary-foreground: hsl(0 0% 100%);
   --ccs-ring: hsl(210 100% 56%);
+  --ccs-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
 }
 
 body {
   background: var(--ccs-background);
-  min-width: 760px;
+  font-family: var(--ccs-font);
+  font-size: 14px;
+  min-width: 800px;
 }
 
 .ccs-shell {
@@ -28,8 +31,9 @@ body {
   color: var(--ccs-foreground);
   display: flex;
   flex-direction: column;
+  font-family: var(--ccs-font);
   min-height: 100vh;
-  padding: 18px 24px;
+  padding: 16px 20px;
 }
 
 .ccs-header {
@@ -37,7 +41,14 @@ body {
   display: flex;
   justify-content: space-between;
   min-height: 44px;
-  padding: 0 0 18px;
+  padding: 0 0 16px;
+}
+
+.ccs-header-actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
 }
 
 .ccs-brand {
@@ -49,9 +60,10 @@ body {
 
 .ccs-brand h1 {
   color: var(--ccs-foreground);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0;
+  font-family: var(--ccs-font);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   line-height: 1;
   margin: 0;
 }
@@ -93,6 +105,92 @@ body {
   height: 18px;
   width: 18px;
 }
+
+/* ---- service toggle (ported from CC Switch ProxyToggle) ---- */
+.ccs-service-toggle {
+  align-items: center;
+  background: var(--ccs-muted);
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 5px;
+  height: 32px;
+  padding: 0 8px;
+  transition: background 160ms ease;
+}
+
+.ccs-service-toggle.is-external {
+  opacity: 0.7;
+}
+
+.ccs-toggle-icon {
+  color: var(--ccs-muted-foreground);
+  flex-shrink: 0;
+  transition: color 200ms ease;
+}
+
+.ccs-toggle-icon.is-active {
+  animation: ccs-pulse 2s ease-in-out infinite;
+  color: rgb(34 197 94);
+}
+
+@keyframes ccs-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.ccs-toggle-spinner {
+  animation: ccs-spin 0.7s linear infinite;
+  color: var(--ccs-muted-foreground);
+  flex-shrink: 0;
+}
+
+@keyframes ccs-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* iOS-style switch button */
+.ccs-toggle-switch {
+  background: rgb(209 213 219);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  height: 20px;
+  padding: 0;
+  position: relative;
+  transition: background 200ms ease;
+  width: 36px;
+}
+
+.ccs-toggle-switch::after {
+  background: #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  content: "";
+  height: 16px;
+  left: 2px;
+  position: absolute;
+  top: 2px;
+  transition: transform 200ms ease;
+  width: 16px;
+}
+
+.ccs-toggle-switch.is-on {
+  background: var(--ccs-primary);
+}
+
+.ccs-toggle-switch.is-on::after {
+  transform: translateX(16px);
+}
+
+.ccs-toggle-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ccs-toggle-switch:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+/* ---- end service toggle ---- */
 
 .ccs-main {
   flex: 1;
@@ -154,9 +252,9 @@ body {
 .ccs-provider-content {
   align-items: center;
   display: flex;
-  gap: 16px;
+  gap: 12px;
   justify-content: space-between;
-  min-height: 44px;
+  min-height: 36px;
   position: relative;
 }
 

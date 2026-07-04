@@ -2138,6 +2138,10 @@ export function App() {
       connection={connection}
       disconnectedLabel={t("app.disconnected")}
       onOpenSettings={() => openSettings()}
+      onStartServer={() => void handleStartServer()}
+      onStopServer={() => void handleStopServer()}
+      serverBusy={serverControlBusy}
+      serverLifecycle={serverLifecycle}
       settingsActive={activeTab === "settings"}
       settingsLabel={t("settings.title")}
       title={t("app.title")}

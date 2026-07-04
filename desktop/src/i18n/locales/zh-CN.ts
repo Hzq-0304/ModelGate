@@ -108,6 +108,7 @@ export const zhCN: typeof en = {
 
   "provider.more": "更多操作",
   "provider.setActive": "设为当前",
+  "provider.enable": "启用",
   "provider.edit": "编辑",
   "provider.delete": "删除",
   "provider.copyInfo": "复制信息",
@@ -115,6 +116,12 @@ export const zhCN: typeof en = {
   "provider.missingAuth": "缺认证",
   "provider.offline": "离线",
   "provider.unavailable": "不可用",
+
+  "serviceToggle.stopped": "服务已停止 — 点击启动",
+  "serviceToggle.running": "服务运行中 — 点击停止",
+  "serviceToggle.transitioning": "服务启动或停止中...",
+  "serviceToggle.external": "外部服务 — 无法在此处停止",
+  "serviceToggle.label": "服务",
 
   "providerEdit.title": "编辑供应商",
   "providerEdit.titleAlias": "编辑别名",

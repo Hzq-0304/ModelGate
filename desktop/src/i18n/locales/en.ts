@@ -106,6 +106,7 @@ export const en = {
 
   "provider.more": "More actions",
   "provider.setActive": "Set Active",
+  "provider.enable": "Enable",
   "provider.edit": "Edit",
   "provider.delete": "Delete",
   "provider.copyInfo": "Copy Info",
@@ -113,6 +114,12 @@ export const en = {
   "provider.missingAuth": "Missing Auth",
   "provider.offline": "Offline",
   "provider.unavailable": "Unavailable",
+
+  "serviceToggle.stopped": "Server stopped — click to start",
+  "serviceToggle.running": "Server running — click to stop",
+  "serviceToggle.transitioning": "Server is starting or stopping...",
+  "serviceToggle.external": "External server — cannot stop from here",
+  "serviceToggle.label": "Server",
 
   "providerEdit.title": "Edit Provider",
   "providerEdit.titleAlias": "Edit Alias",

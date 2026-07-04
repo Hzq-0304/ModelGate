@@ -95,10 +95,6 @@ export function CcSwitchProviderCard({
             )}
           </div>
           <div className="ccs-provider-url" title={subtitle}>{subtitle}</div>
-          <div className="ccs-provider-meta">
-            <span>{provider.provider}</span>
-            <span>{provider.model}</span>
-          </div>
         </div>
         </div>
 
@@ -113,11 +109,11 @@ export function CcSwitchProviderCard({
                 className="ccs-action-main"
                 disabled={!canSwitch}
                 onClick={() => onSwitch(provider.name)}
-                title={t("provider.setActive")}
+                title={t("provider.enable")}
                 type="button"
               >
                 <Icon name="play" />
-                <span>{switching ? t("common.switching") : t("provider.setActive")}</span>
+                <span>{switching ? t("common.switching") : t("provider.enable")}</span>
               </button>
             )}
             {onEdit && (
