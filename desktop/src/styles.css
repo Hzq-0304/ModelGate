@@ -997,6 +997,90 @@ code {
   grid-template-columns: 1fr 1fr auto;
 }
 
+.ratio-monitor-section {
+  gap: 12px;
+}
+
+.ratio-section-header {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.ratio-source-form {
+  background: #f8fafc;
+  border: 1px solid #e4e9f2;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 12px;
+}
+
+.ratio-source-form label {
+  color: #667085;
+  display: grid;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.ratio-enabled-field,
+.ratio-form-actions {
+  align-self: end;
+}
+
+.ratio-form-actions,
+.ratio-row-actions,
+.ratio-binding-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ratio-source-list,
+.ratio-binding-list {
+  border-top: 1px solid #e5e7eb;
+  display: grid;
+  gap: 0;
+}
+
+.ratio-source-row,
+.ratio-binding-row {
+  align-items: center;
+}
+
+.ratio-source-row .inline-error {
+  color: #b42318;
+}
+
+.ratio-binding-controls select {
+  min-width: 168px;
+}
+
+.ratio-status-ok {
+  background: rgb(220 252 231);
+  color: rgb(22 101 52);
+}
+
+.ratio-status-warning {
+  background: #fffaeb;
+  color: #93370d;
+}
+
+.ratio-status-failed {
+  background: #fef3f2;
+  color: #b42318;
+}
+
+.ratio-status-fetching {
+  background: #eef4ff;
+  color: #1d4ed8;
+}
+
 input,
 select,
 textarea {

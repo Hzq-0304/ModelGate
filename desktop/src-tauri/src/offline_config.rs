@@ -24,6 +24,13 @@ pub struct OfflineConfigWriteResponse {
 }
 
 #[derive(Serialize)]
+pub struct OfflineRatioDataResponse {
+    root: String,
+    sources_raw: String,
+    cache_raw: String,
+}
+
+#[derive(Serialize)]
 pub struct OfflineValidationResponse {
     ok: bool,
     errors: Vec<String>,
@@ -46,6 +53,24 @@ pub fn read_modelgate_config(app: AppHandle) -> Result<OfflineConfigTextResponse
         raw,
     })
 }
+
+#[tauri::command]
+pub fn read_ratio_data(app: AppHandle) -> Result<OfflineRatioDataResponse, String> {
+    let root = resolve_ratio_data_dir(&app)?;
+    let sources_path = root.join("sources.json");
+    let cache_path = root.join("cache.json");
+    let sources_raw = fs::read_to_string(&sources_path)
+        .unwrap_or_else(|_| "{\"schema_version\":1,\"sources\":[]}".to_string());
+    let cache_raw = fs::read_to_string(&cache_path)
+        .unwrap_or_else(|_| "{\"schema_version\":1,\"entries\":{}}".to_string());
+
+    Ok(OfflineRatioDataResponse {
+        root: path_to_string(&root),
+        sources_raw,
+        cache_raw,
+    })
+}
+
 
 #[tauri::command]
 pub fn write_modelgate_config(
@@ -139,6 +164,29 @@ fn resolve_modelgate_config_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| format!("Failed to resolve ModelGate config directory: {error}"))?;
     Ok(config_dir.join(USER_CONFIG_FILE))
 }
+
+fn resolve_ratio_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Ok(value) = env::var("MODELGATE_RATIO_DIR") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Ok(absolutize(PathBuf::from(trimmed)));
+        }
+    }
+
+    if let Ok(value) = env::var("MODELGATE_DATA_DIR") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Ok(absolutize(PathBuf::from(trimmed)).join("ratio"));
+        }
+    }
+
+    let config_path = resolve_modelgate_config_path(app)?;
+    Ok(config_path
+        .parent()
+        .map(|parent| parent.join("ratio"))
+        .unwrap_or_else(|| PathBuf::from("ratio")))
+}
+
 
 fn ensure_modelgate_config(app: &AppHandle) -> Result<PathBuf, String> {
     let config_path = resolve_modelgate_config_path(app)?;

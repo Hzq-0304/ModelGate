@@ -10,6 +10,7 @@ import {
 import { providerPresets } from "../config/providerPresets.js";
 import { createCcSwitchProviderLink, isCcSwitchApp } from "../integrations/ccswitchLink.js";
 import { createOpenAICompatibleError } from "../providers/openaiCompatible.js";
+import { RatioSourceError, type RatioBinding, type RatioSourceAuth, type RatioSourceType } from "../ratio-sources/types.js";
 import { addDiagnosticLog, testActiveAlias, testAlias, testProvider } from "../runtime/diagnostics.js";
 import type { RuntimeState } from "../runtime/state.js";
 import type { UsageKindFilter, UsageRange, UsageTimelineBucket } from "../runtime/usageStore.js";
@@ -20,6 +21,31 @@ type SwitchBody = {
 
 type ConfigBody = {
   config?: unknown;
+};
+
+type RatioSourceBody = {
+  id?: string;
+  name?: string;
+  baseUrl?: string;
+  base_url?: string;
+  type?: RatioSourceType;
+  enabled?: boolean;
+  refreshIntervalMinutes?: number;
+  refresh_interval_minutes?: number;
+  auth?: RatioSourceAuth;
+};
+
+type RatioSourceParams = {
+  id: string;
+};
+
+type RatioBindingsBody = {
+  bindings?: Record<string, {
+    sourceId?: string;
+    source_id?: string;
+    groupId?: string;
+    group_id?: string;
+  } | null>;
 };
 
 type LogsQuery = {
@@ -82,6 +108,48 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function ratioAdminError(error: unknown) {
+  const code = error instanceof RatioSourceError ? error.code : "invalid_response";
+  const status = error instanceof RatioSourceError && error.statusCode
+    ? error.statusCode
+    : code === "endpoint_not_found"
+      ? 404
+      : code === "authentication_required" || code === "authentication_failed"
+        ? 401
+        : 400;
+  return {
+    status,
+    body: {
+      ok: false,
+      error: {
+        type: code,
+        message: getErrorMessage(error)
+      }
+    }
+  };
+}
+
+function normalizeRatioSourceBody(body: RatioSourceBody) {
+  return {
+    id: body.id,
+    name: body.name,
+    baseUrl: body.baseUrl ?? body.base_url,
+    type: body.type,
+    enabled: body.enabled,
+    refreshIntervalMinutes: body.refreshIntervalMinutes ?? body.refresh_interval_minutes,
+    auth: body.auth
+  };
+}
+
+function normalizeBinding(value: NonNullable<RatioBindingsBody["bindings"]>[string]): RatioBinding | null {
+  if (!value) {
+    return null;
+  }
+  const sourceId = value.sourceId ?? value.source_id;
+  const groupId = value.groupId ?? value.group_id;
+  return sourceId && groupId ? { sourceId, groupId } : null;
+}
+
 function usageRange(value: string | undefined, fallback: UsageRange): UsageRange {
   return value === "today" || value === "24h" || value === "7d" || value === "all" ? value : fallback;
 }
@@ -131,6 +199,108 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
   server.get("/admin/provider-presets", async () => ({
     presets: providerPresets
   }));
+
+  server.get("/admin/ratio-sources", async () => ({
+    sources: runtime.ratioSources.listSources(),
+    cache: runtime.ratioSources.getCacheEntries(),
+    paths: runtime.ratioSources.store.paths
+  }));
+
+  server.post<{ Body: RatioSourceBody }>("/admin/ratio-sources", async (request, reply) => {
+    try {
+      const source = runtime.ratioSources.createSource(normalizeRatioSourceBody(request.body ?? {}));
+      return reply.status(201).send({
+        ok: true,
+        source
+      });
+    } catch (error) {
+      const normalized = ratioAdminError(error);
+      return reply.status(normalized.status).send(normalized.body);
+    }
+  });
+
+  server.patch<{ Params: RatioSourceParams; Body: RatioSourceBody }>("/admin/ratio-sources/:id", async (request, reply) => {
+    try {
+      const source = runtime.ratioSources.updateSource(request.params.id, normalizeRatioSourceBody(request.body ?? {}));
+      return {
+        ok: true,
+        source
+      };
+    } catch (error) {
+      const normalized = ratioAdminError(error);
+      return reply.status(normalized.status).send(normalized.body);
+    }
+  });
+
+  server.delete<{ Params: RatioSourceParams }>("/admin/ratio-sources/:id", async (request, reply) => {
+    try {
+      runtime.ratioSources.deleteSource(request.params.id);
+      return { ok: true };
+    } catch (error) {
+      const normalized = ratioAdminError(error);
+      return reply.status(normalized.status).send(normalized.body);
+    }
+  });
+
+  server.post<{ Params: RatioSourceParams }>("/admin/ratio-sources/:id/refresh", async (request, reply) => {
+    try {
+      const source = await runtime.ratioSources.refreshSource(request.params.id);
+      return {
+        ok: source.status === "ok" || source.status === "warning",
+        source,
+        groups: runtime.ratioSources.getGroups(source.id)
+      };
+    } catch (error) {
+      const normalized = ratioAdminError(error);
+      return reply.status(normalized.status).send(normalized.body);
+    }
+  });
+
+  server.get<{ Params: RatioSourceParams }>("/admin/ratio-sources/:id/groups", async (request) => ({
+    sourceId: request.params.id,
+    groups: runtime.ratioSources.getGroups(request.params.id)
+  }));
+
+  server.get("/admin/ratio-bindings", async () => ({
+    bindings: runtime.ratioSources.buildBindings(runtime.config)
+  }));
+
+  server.post<{ Body: RatioBindingsBody }>("/admin/ratio-bindings", async (request, reply) => {
+    const rawBindings = request.body?.bindings ?? {};
+    const rawConfig = readConfigObject(runtime.configPath) as Record<string, unknown>;
+    const aliases = rawConfig.aliases && typeof rawConfig.aliases === "object"
+      ? rawConfig.aliases as Record<string, Record<string, unknown>>
+      : {};
+
+    for (const [aliasName, rawBinding] of Object.entries(rawBindings)) {
+      if (!aliases[aliasName]) {
+        continue;
+      }
+
+      const binding = normalizeBinding(rawBinding);
+      if (!binding) {
+        delete aliases[aliasName].ratio_binding;
+      } else {
+        aliases[aliasName].ratio_binding = {
+          source_id: binding.sourceId,
+          group_id: binding.groupId
+        };
+      }
+    }
+
+    rawConfig.aliases = aliases;
+    const validation = writeConfigObject(rawConfig, runtime.configPath);
+    if (!validation.ok) {
+      return reply.status(400).send(validation);
+    }
+
+    await runtime.reload();
+    return {
+      ok: true,
+      warnings: validation.warnings,
+      bindings: runtime.ratioSources.buildBindings(runtime.config)
+    };
+  });
 
   server.get<{ Querystring: CcSwitchLinkQuery }>("/admin/ccswitch-link", async (request, reply) => {
     const app = request.query.app ?? "codex";

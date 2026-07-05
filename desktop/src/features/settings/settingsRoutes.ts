@@ -5,6 +5,7 @@ export type SettingsSectionId =
   | "aliases"
   | "entrypoints"
   | "pricing"
+  | "ratios"
   | "records"
   | "advanced"
   | "language"

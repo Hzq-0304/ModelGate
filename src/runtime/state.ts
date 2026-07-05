@@ -1,5 +1,6 @@
 import { getConfigPathFromEnv, loadConfig } from "../config/loadConfig.js";
 import type { ModelGateConfig } from "../config/schema.js";
+import { RatioSourceManager } from "../ratio-sources/ratioSourceManager.js";
 import { createRequestLogStore } from "./requestLog.js";
 import { createUsageStore } from "./usageStore.js";
 
@@ -13,12 +14,14 @@ export class RuntimeState {
   #activeAlias: string;
   readonly requestLogs = createRequestLogStore(200);
   readonly usageStore = createUsageStore();
+  readonly ratioSources: RatioSourceManager;
   readonly configPath?: string;
 
   constructor(config: ModelGateConfig, configPath = getConfigPathFromEnv()) {
     this.#config = config;
     this.#activeAlias = config.active;
     this.configPath = configPath;
+    this.ratioSources = new RatioSourceManager(configPath);
   }
 
   get config() {

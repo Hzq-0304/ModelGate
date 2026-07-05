@@ -1,12 +1,14 @@
 import Fastify from "fastify";
 import { registerAdminRouter } from "../router/adminRouter.js";
 import { registerModelRouter } from "../router/modelRouter.js";
+import { RatioRefreshScheduler } from "../runtime/ratioRefreshScheduler.js";
 import type { RuntimeState } from "../runtime/state.js";
 
 export async function createServer(runtime: RuntimeState) {
   const server = Fastify({
     logger: false
   });
+  const ratioScheduler = new RatioRefreshScheduler(runtime);
 
   server.addHook("onRequest", async (request, reply) => {
     const origin = request.headers.origin;
@@ -17,7 +19,7 @@ export async function createServer(runtime: RuntimeState) {
     if (origin && isLocalOrigin) {
       reply.header("access-control-allow-origin", origin);
       reply.header("vary", "origin");
-      reply.header("access-control-allow-methods", "GET,POST,DELETE,OPTIONS");
+      reply.header("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
       reply.header("access-control-allow-headers", "content-type,authorization");
     }
 
@@ -37,6 +39,14 @@ export async function createServer(runtime: RuntimeState) {
 
   await registerModelRouter(server, runtime);
   await registerAdminRouter(server, runtime);
+
+  server.addHook("onReady", async () => {
+    ratioScheduler.start();
+  });
+
+  server.addHook("onClose", async () => {
+    ratioScheduler.stop();
+  });
 
   return server;
 }

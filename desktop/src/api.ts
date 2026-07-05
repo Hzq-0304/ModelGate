@@ -44,6 +44,80 @@ export type AliasesResponse = {
   }>;
 };
 
+export type RatioSourceType = "new-api" | "one-api" | "sub2api" | "new-api-compatible";
+
+export type RatioSourceAuth =
+  | { type: "none" }
+  | { type: "bearer"; token_env: string }
+  | { type: "api-token"; token_env: string; header?: string; scheme?: string };
+
+export type RatioSource = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  type: RatioSourceType;
+  enabled: boolean;
+  refreshIntervalMinutes: number;
+  auth?: RatioSourceAuth;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
+  nextRefreshAt?: string;
+  status: "never" | "fetching" | "ok" | "warning" | "failed";
+  lastError?: string;
+  lastErrorCode?: string;
+};
+
+export type RatioModel = {
+  model: string;
+  ratio: number;
+  sourceValue?: unknown;
+  fetchedAt: string;
+};
+
+export type RatioGroup = {
+  sourceId: string;
+  groupId: string;
+  name: string;
+  description?: string;
+  sourceOrder: number;
+  groupRatio?: number;
+  unsupportedReason?: "no_model_ratio";
+  models: RatioModel[];
+};
+
+export type RatioCacheEntry = {
+  sourceId: string;
+  groups: RatioGroup[];
+  fetchedAt?: string;
+  etag?: string;
+  lastModified?: string;
+};
+
+export type RatioSourcesResponse = {
+  sources: RatioSource[];
+  cache: Record<string, RatioCacheEntry>;
+  paths?: {
+    root: string;
+    sources: string;
+    cache: string;
+  };
+  offline?: boolean;
+};
+
+export type RatioBindingItem = {
+  alias: string;
+  provider: string;
+  model: string;
+  binding?: {
+    sourceId: string;
+    groupId: string;
+  };
+  currentRatio?: number;
+  sourceName?: string;
+  groupName?: string;
+  status: "bound" | "unbound" | "missing_source" | "missing_group" | "missing_model_ratio" | "unsupported";
+};
+
 type SwitchResponse = {
   ok: boolean;
   active: string;
@@ -137,6 +211,10 @@ export type EditableConfig = {
   aliases: Record<string, {
     provider: string;
     model: string;
+    ratio_binding?: {
+      source_id: string;
+      group_id: string;
+    };
     description?: string;
     metadata?: ConfigMetadata;
   }>;
@@ -159,6 +237,12 @@ export type OfflineConfigResponse = AdminConfigResponse;
 type OfflineConfigTextResponse = {
   path: string;
   raw: string;
+};
+
+type OfflineRatioDataTextResponse = {
+  root: string;
+  sources_raw: string;
+  cache_raw: string;
 };
 
 export type ConfigValidationResponse = {
@@ -878,6 +962,83 @@ export async function getUsageRecords(params: {
 export async function getProviderPresets() {
   const response = await fetch(`${baseUrl}/admin/provider-presets`);
   return parseJson<{ presets: ProviderPreset[] }>(response);
+}
+
+export async function getRatioSources() {
+  try {
+    const response = await fetch(`${baseUrl}/admin/ratio-sources`);
+    return parseJson<RatioSourcesResponse>(response);
+  } catch (error) {
+    if (!isTauriRuntime()) {
+      throw error;
+    }
+    const offline = await invoke<OfflineRatioDataTextResponse>("read_ratio_data");
+    const sourcesFile = JSON.parse(offline.sources_raw) as { sources?: RatioSource[] };
+    const cacheFile = JSON.parse(offline.cache_raw) as { entries?: Record<string, RatioCacheEntry> };
+    return {
+      sources: sourcesFile.sources ?? [],
+      cache: cacheFile.entries ?? {},
+      paths: {
+        root: offline.root,
+        sources: "",
+        cache: ""
+      },
+      offline: true
+    } satisfies RatioSourcesResponse;
+  }
+}
+
+export async function createRatioSource(source: {
+  name: string;
+  baseUrl: string;
+  type: RatioSourceType;
+  enabled?: boolean;
+  refreshIntervalMinutes?: number;
+  auth?: RatioSourceAuth;
+}) {
+  const response = await fetch(`${baseUrl}/admin/ratio-sources`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(source)
+  });
+  return parseJson<{ ok: boolean; source: RatioSource }>(response);
+}
+
+export async function updateRatioSource(id: string, patch: Partial<RatioSource>) {
+  const response = await fetch(`${baseUrl}/admin/ratio-sources/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+  return parseJson<{ ok: boolean; source: RatioSource }>(response);
+}
+
+export async function deleteRatioSource(id: string) {
+  const response = await fetch(`${baseUrl}/admin/ratio-sources/${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+  return parseJson<{ ok: boolean }>(response);
+}
+
+export async function refreshRatioSource(id: string) {
+  const response = await fetch(`${baseUrl}/admin/ratio-sources/${encodeURIComponent(id)}/refresh`, {
+    method: "POST"
+  });
+  return parseJson<{ ok: boolean; source: RatioSource; groups: RatioGroup[] }>(response);
+}
+
+export async function getRatioBindings() {
+  const response = await fetch(`${baseUrl}/admin/ratio-bindings`);
+  return parseJson<{ bindings: RatioBindingItem[] }>(response);
+}
+
+export async function saveRatioBindings(bindings: Record<string, { sourceId: string; groupId: string } | null>) {
+  const response = await fetch(`${baseUrl}/admin/ratio-bindings`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ bindings })
+  });
+  return parseJson<{ ok: boolean; bindings: RatioBindingItem[]; warnings?: string[] }>(response);
 }
 
 export async function getCcSwitchLink(app = "codex") {

@@ -88,6 +88,10 @@ export const providerSchema = z.union([
 export const aliasSchema = z.object({
   provider: z.string().min(1),
   model: z.string().min(1),
+  ratio_binding: z.object({
+    source_id: z.string().min(1),
+    group_id: z.string().min(1)
+  }).optional(),
   description: z.string().optional(),
   metadata: metadataSchema
 });
