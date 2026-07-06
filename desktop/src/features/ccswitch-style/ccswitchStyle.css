@@ -17,6 +17,8 @@
   --ccs-primary-foreground: hsl(0 0% 100%);
   --ccs-ring: hsl(210 100% 56%);
   --ccs-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ccs-content-max: 1280px;
+  --ccs-settings-max: 1120px;
 }
 
 html {
@@ -101,7 +103,7 @@ select {
   -webkit-app-region: no-drag;
 }
 
-.ccs-icon-button:hover,
+.ccs-icon-button:hover:not(:disabled),
 .ccs-icon-button.is-active {
   background: var(--ccs-muted);
   color: var(--ccs-foreground);
@@ -213,6 +215,37 @@ select {
 .ccs-main {
   flex: 1;
   min-height: 0;
+}
+
+.home-dashboard {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(360px, 0.82fr) minmax(520px, 1.18fr);
+  margin: 0 auto;
+  max-width: var(--ccs-content-max);
+  width: 100%;
+}
+
+.home-dashboard > section {
+  min-width: 0;
+}
+
+.home-dashboard #account-switcher {
+  position: sticky;
+  top: 16px;
+}
+
+.home-dashboard .ccs-provider-list {
+  padding-bottom: 20px;
+}
+
+.home-usage-panel {
+  min-width: 0;
+}
+
+.home-usage-panel .usage-overview {
+  box-shadow: none;
 }
 
 .switcher-page {
@@ -560,7 +593,10 @@ select {
   align-items: center;
   display: flex;
   gap: 10px;
+  margin: 0 auto;
+  max-width: var(--ccs-settings-max);
   min-height: 40px;
+  width: 100%;
 }
 
 .ccs-settings-back {
@@ -577,8 +613,10 @@ select {
   width: 32px;
 }
 
-.ccs-settings-back:hover {
+.ccs-settings-back:hover:not(:disabled),
+.ccs-settings-back:focus-visible {
   background: var(--ccs-muted);
+  border-color: var(--ccs-border);
   color: var(--ccs-foreground);
 }
 
@@ -621,8 +659,10 @@ select {
   flex: 0 0 auto;
   gap: 2px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  margin: 18px 0 16px;
+  margin: 18px auto 16px;
+  max-width: var(--ccs-settings-max);
   padding: 4px;
+  width: 100%;
 }
 
 .ccs-settings-tabs button,
@@ -641,8 +681,10 @@ select {
     box-shadow 160ms ease;
 }
 
-.ccs-settings-tabs button:hover,
-.ccs-segmented-control button:hover {
+.ccs-settings-tabs button:hover:not(:disabled),
+.ccs-segmented-control button:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
   color: var(--ccs-foreground);
 }
 
@@ -655,10 +697,13 @@ select {
 
 .ccs-settings-page-content {
   flex: 1 1 auto;
+  margin: 0 auto;
+  max-width: var(--ccs-settings-max);
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   padding: 0 2px 28px;
+  width: 100%;
 }
 
 .ccs-settings-sections {
@@ -669,7 +714,7 @@ select {
 .ccs-settings-section {
   display: grid;
   gap: 10px;
-  max-width: 920px;
+  max-width: 100%;
 }
 
 .ccs-settings-section-header {
@@ -793,7 +838,7 @@ select {
   background: transparent;
   border: 0;
   box-shadow: none;
-  max-width: 920px;
+  max-width: 100%;
   padding: 0;
 }
 
@@ -1065,6 +1110,15 @@ select {
 @media (max-width: 860px) {
   .ccs-shell {
     padding: 14px 16px;
+  }
+
+  .home-dashboard {
+    gap: 14px;
+    grid-template-columns: 1fr;
+  }
+
+  .home-dashboard #account-switcher {
+    position: static;
   }
 
   .ccs-provider-card {

@@ -3267,7 +3267,7 @@ export function App() {
           settingsLabel={t("settings.title")}
           title={t("app.title")}
         >
-          <section className="switcher-page">
+          <section className="home-dashboard">
             <section id="account-switcher">
               <AccountSwitcher
                 accounts={aliasesList}
@@ -3281,6 +3281,12 @@ export function App() {
                 onEditAccount={handleEditAccount}
                 onGoToIntegrations={() => openSettings("integrations")}
                 onSelectAccount={(alias) => void handleSwitch(alias)}
+              />
+            </section>
+            <section className="home-usage-panel" id="usage-overview">
+              <UsageOverview
+                activeModel={activeAlias?.model}
+                disconnected={disconnected}
               />
             </section>
           </section>
