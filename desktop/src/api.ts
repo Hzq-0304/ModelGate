@@ -557,6 +557,9 @@ function unavailableServerProcessStatus(): ServerProcessStatus {
 }
 
 const envRefPattern = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+const envOnlyPattern = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+const envNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const configKeyPattern = /^[A-Za-z0-9_-]+$/;
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -598,6 +601,15 @@ function normalizeConfigObject(value: unknown): EditableConfig {
 
 function collectEnvRefs(value: string) {
   return [...value.matchAll(envRefPattern)].map((match) => match[1]);
+}
+
+function isValidHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function missingEnvWarning(path: string, envName: string, provider?: string): ConfigWarning {
@@ -759,6 +771,78 @@ async function validateConfigOfflineLocal(config: EditableConfig): Promise<Confi
   const errors: string[] = [];
   const providers = config.providers ?? {};
   const aliases = config.aliases ?? {};
+  const entrypoints = config.entrypoints ?? {};
+  const pricing = config.pricing ?? {};
+
+  if (!config.server || typeof config.server.host !== "string" || !config.server.host.trim()) {
+    errors.push("server.host is required.");
+  }
+  if (!Number.isInteger(config.server?.port) || config.server.port <= 0) {
+    errors.push("server.port must be a positive integer.");
+  }
+
+  for (const [name, provider] of Object.entries(providers)) {
+    if (!configKeyPattern.test(name)) {
+      errors.push(`Provider name "${name}" may only contain letters, numbers, "-" and "_".`);
+    }
+
+    if (!provider || typeof provider !== "object") {
+      errors.push(`Provider "${name}" must be an object.`);
+      continue;
+    }
+
+    if (provider.type === "mock") {
+      continue;
+    }
+
+    if (provider.type !== "openai-compatible") {
+      errors.push(`Provider "${name}" has unsupported type "${(provider as { type?: string }).type ?? ""}".`);
+      continue;
+    }
+
+    if (!isValidHttpUrl(provider.base_url)) {
+      errors.push(`Provider "${name}" base_url must be a valid HTTP or HTTPS URL.`);
+    }
+
+    const auth = provider.auth;
+    if (!auth && !provider.api_key) {
+      errors.push(`Provider "${name}" requires either api_key or auth.`);
+    }
+
+    if (!auth && provider.api_key && !envOnlyPattern.test(provider.api_key)) {
+      errors.push(`Provider "${name}" api_key must be stored as an environment variable expression like \${ENV_NAME}.`);
+    }
+
+    if (auth?.type === "env" && !envNamePattern.test(auth.env)) {
+      errors.push(`Provider "${name}" auth.env must be a valid environment variable name.`);
+    } else if (auth?.type === "ccswitch") {
+      if (!auth.source?.trim()) {
+        errors.push(`Provider "${name}" ccswitch auth.source is required.`);
+      }
+      if (auth.fallback_env && !envNamePattern.test(auth.fallback_env)) {
+        errors.push(`Provider "${name}" ccswitch auth.fallback_env must be a valid environment variable name.`);
+      }
+    } else if (auth?.type === "ccswitch-snapshot") {
+      if (!auth.snapshot_id?.trim()) {
+        errors.push(`Provider "${name}" ccswitch-snapshot auth.snapshot_id is required.`);
+      }
+      if (!auth.provider_id?.trim()) {
+        errors.push(`Provider "${name}" ccswitch-snapshot auth.provider_id is required.`);
+      }
+      if (auth.fallback_env && !envNamePattern.test(auth.fallback_env)) {
+        errors.push(`Provider "${name}" ccswitch-snapshot auth.fallback_env must be a valid environment variable name.`);
+      }
+    } else if (auth?.type === "static-header-ref") {
+      if (!auth.value && !auth.value_env && !auth.value_ref) {
+        errors.push(`Provider "${name}" static-header-ref auth requires value_ref, value_env, or value.`);
+      }
+      if (auth.value_env && !envNamePattern.test(auth.value_env)) {
+        errors.push(`Provider "${name}" static-header-ref auth.value_env must be a valid environment variable name.`);
+      }
+    } else if (auth) {
+      errors.push(`Provider "${name}" has unsupported auth type "${(auth as { type?: string }).type ?? ""}".`);
+    }
+  }
 
   if (!config.active) {
     errors.push("active alias is required.");
@@ -767,6 +851,9 @@ async function validateConfigOfflineLocal(config: EditableConfig): Promise<Confi
   }
 
   for (const [name, alias] of Object.entries(aliases)) {
+    if (!configKeyPattern.test(name)) {
+      errors.push(`Alias name "${name}" may only contain letters, numbers, "-" and "_".`);
+    }
     if (!alias.provider) {
       errors.push(`Alias "${name}" is missing provider.`);
     } else if (!providers[alias.provider]) {
@@ -774,6 +861,33 @@ async function validateConfigOfflineLocal(config: EditableConfig): Promise<Confi
     }
     if (!alias.model) {
       errors.push(`Alias "${name}" is missing model.`);
+    }
+  }
+
+  for (const [name, entrypoint] of Object.entries(entrypoints)) {
+    if (!configKeyPattern.test(name)) {
+      errors.push(`Entrypoint name "${name}" may only contain letters, numbers, "-" and "_".`);
+    }
+    if (!entrypoint.use) {
+      errors.push(`Entrypoint "${name}" is missing use.`);
+    } else if (entrypoint.use !== "active" && !aliases[entrypoint.use]) {
+      errors.push(`Entrypoint "${name}" uses missing alias "${entrypoint.use}".`);
+    }
+  }
+
+  for (const [key, value] of Object.entries(pricing)) {
+    const [provider, model, extra] = key.split("/");
+    if (!provider || !model || extra !== undefined) {
+      errors.push(`Pricing key "${key}" must use provider/model or provider/*.`);
+    }
+    if (!Number.isFinite(value.input_per_million) || value.input_per_million < 0) {
+      errors.push(`Pricing "${key}" input_per_million must be a non-negative number.`);
+    }
+    if (!Number.isFinite(value.output_per_million) || value.output_per_million < 0) {
+      errors.push(`Pricing "${key}" output_per_million must be a non-negative number.`);
+    }
+    if (value.cached_input_per_million !== undefined && (!Number.isFinite(value.cached_input_per_million) || value.cached_input_per_million < 0)) {
+      errors.push(`Pricing "${key}" cached_input_per_million must be a non-negative number.`);
     }
   }
 
