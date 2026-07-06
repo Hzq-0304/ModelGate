@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { getUsageRecords, getUsageSummary, getUsageTimeline } from "../../api";
 import { UsageRecentTable } from "./UsageRecentTable";
 import { UsageSummaryCards } from "./UsageSummaryCards";
@@ -55,11 +56,61 @@ function formatCost(value: number | undefined, available: boolean) {
   return available && typeof value === "number" ? `$${value.toFixed(6)}` : "N/A";
 }
 
-function ConfigUsagePanel({ groups }: { groups?: Record<string, UsageSummaryGroup> }) {
+function formatTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function ConfigUsagePanel({
+  groups,
+  range
+}: {
+  groups?: Record<string, UsageSummaryGroup>;
+  range: UsageOverviewRange;
+}) {
   const { t } = useI18n();
+  const [expandedAlias, setExpandedAlias] = useState<string | null>(null);
+  const [recordsByAlias, setRecordsByAlias] = useState<Record<string, UsageRecord[]>>({});
+  const [loadingAlias, setLoadingAlias] = useState<string | null>(null);
   const entries = Object.entries(groups ?? {})
     .sort((a, b) => b[1].requests - a[1].requests)
     .slice(0, 6);
+
+  useEffect(() => {
+    setExpandedAlias(null);
+    setRecordsByAlias({});
+    setLoadingAlias(null);
+  }, [range]);
+
+  async function toggleAlias(alias: string) {
+    if (expandedAlias === alias) {
+      setExpandedAlias(null);
+      return;
+    }
+
+    setExpandedAlias(alias);
+    if (alias === "unknown" || recordsByAlias[alias]) {
+      return;
+    }
+
+    setLoadingAlias(alias);
+    try {
+      const result = await getUsageRecords({ range, alias, limit: 5 });
+      setRecordsByAlias((current) => ({
+        ...current,
+        [alias]: result.records
+      }));
+    } catch {
+      setRecordsByAlias((current) => ({
+        ...current,
+        [alias]: []
+      }));
+    } finally {
+      setLoadingAlias((current) => current === alias ? null : current);
+    }
+  }
 
   return (
     <section className="usage-config-panel">
@@ -72,18 +123,60 @@ function ConfigUsagePanel({ groups }: { groups?: Record<string, UsageSummaryGrou
       </div>
       {entries.length > 0 ? (
         <div className="usage-config-list">
-          {entries.map(([alias, value]) => (
-            <article className="usage-config-row" key={alias}>
-              <div>
-                <strong>{alias}</strong>
-                <span>{formatNumber(value.requests)} {t("usage.requests")} · {formatNumber(value.total_tokens)} {t("usage.tokens")}</span>
-              </div>
-              <div className="usage-config-costs">
-                <span>{formatCost(value.actual_cost_usd ?? value.estimated_cost_usd, value.cost_available)}</span>
-                <small>{t("usage.originalCost")}: {formatCost(value.original_cost_usd ?? value.estimated_cost_usd, value.cost_available)}</small>
-              </div>
-            </article>
-          ))}
+          {entries.map(([alias, value]) => {
+            const expanded = expandedAlias === alias;
+            const detailRecords = recordsByAlias[alias] ?? [];
+            const loading = loadingAlias === alias;
+
+            return (
+              <article className={expanded ? "usage-config-card expanded" : "usage-config-card"} key={alias}>
+                <button
+                  aria-expanded={expanded}
+                  className="usage-config-card-button"
+                  onClick={() => void toggleAlias(alias)}
+                  type="button"
+                >
+                  <div className="usage-config-main">
+                    <strong>{alias}</strong>
+                    <span>{formatNumber(value.requests)} {t("usage.requests")} · {formatNumber(value.total_tokens)} {t("usage.tokens")}</span>
+                  </div>
+                  <div className="usage-config-costs">
+                    <span>{formatCost(value.actual_cost_usd ?? value.estimated_cost_usd, value.cost_available)}</span>
+                    <small>{t("usage.originalCost")}: {formatCost(value.original_cost_usd ?? value.estimated_cost_usd, value.cost_available)}</small>
+                  </div>
+                  <ChevronDown aria-hidden="true" className="usage-config-chevron" size={18} />
+                </button>
+                {expanded && (
+                  <div className="usage-config-detail">
+                    <div className="usage-config-detail-grid">
+                      <span><strong>{formatNumber(value.success)}</strong>{t("usage.success")}</span>
+                      <span><strong>{formatNumber(value.failed)}</strong>{t("usage.failed")}</span>
+                      <span><strong>{formatNumber(value.input_tokens)}</strong>{t("usage.input")}</span>
+                      <span><strong>{formatNumber(value.output_tokens)}</strong>{t("usage.output")}</span>
+                      <span><strong>{formatNumber(value.cached_tokens)}</strong>{t("usage.cachedTokens")}</span>
+                    </div>
+                    <div className="usage-config-records">
+                      {loading ? (
+                        <div className="usage-config-record muted">{t("usage.refreshing")}</div>
+                      ) : detailRecords.length > 0 ? (
+                        detailRecords.map((record) => (
+                          <div className={record.ok ? "usage-config-record" : "usage-config-record failed"} key={record.id}>
+                            <span>{formatTime(record.timestamp)}</span>
+                            <span>{record.api_type === "responses" ? "responses" : "chat"}</span>
+                            <span>{formatNumber(record.total_tokens)} {t("usage.tokens")}</span>
+                            <span>{formatCost(record.actual_cost_usd ?? record.estimated_cost_usd, record.cost_available)}</span>
+                            <strong>{record.ok ? "OK" : record.status_code ?? "ERR"}</strong>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="usage-config-record muted">{t("usage.empty")}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="usage-empty compact">{t("usage.empty")}</div>
@@ -190,7 +283,7 @@ export function UsageOverview({ activeModel, disconnected }: { activeModel?: str
           <UsageTrendChart timeline={timeline} />
           <section className="usage-lower-grid">
             <UsageRecentTable records={records} />
-            <ConfigUsagePanel groups={summary?.by_alias} />
+            <ConfigUsagePanel groups={summary?.by_alias} range={range} />
             <div className="usage-distribution-stack">
               <DistributionPanel title={t("usage.providerDistribution")} groups={summary?.by_provider} />
               <DistributionPanel title={t("usage.modelDistribution")} groups={summary?.by_model} />

@@ -323,43 +323,65 @@
 
 .usage-config-list {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  grid-template-columns: 1fr;
 }
 
-.usage-config-row {
-  align-items: center;
+.usage-config-card {
   background: #f8fafc;
   border: 1px solid #e4e9f2;
   border-radius: 8px;
   display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) minmax(110px, max-content);
-  min-height: 62px;
-  padding: 11px 12px;
+  overflow: hidden;
 }
 
-.usage-config-row > div {
+.usage-config-card.expanded {
+  background: #ffffff;
+  border-color: #c8d7f3;
+}
+
+.usage-config-card-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, max-content) 22px;
+  min-height: 62px;
+  padding: 11px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.usage-config-card-button:hover:not(:disabled) {
+  background: #ffffff;
+}
+
+.usage-config-main,
+.usage-config-costs {
   display: grid;
   gap: 5px;
   min-width: 0;
 }
 
-.usage-config-row strong,
-.usage-config-row span,
-.usage-config-row small {
+.usage-config-main strong,
+.usage-config-main span,
+.usage-config-costs span,
+.usage-config-costs small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.usage-config-row strong {
+.usage-config-main strong {
   color: #101828;
   font-size: 14px;
 }
 
-.usage-config-row span,
-.usage-config-row small {
+.usage-config-main span,
+.usage-config-costs small {
   color: #667085;
   font-size: 12px;
 }
@@ -372,6 +394,90 @@
   color: #101828;
   font-size: 14px;
   font-weight: 800;
+}
+
+.usage-config-chevron {
+  color: #667085;
+  justify-self: end;
+  transition: transform 0.16s ease;
+}
+
+.usage-config-card.expanded .usage-config-chevron {
+  transform: rotate(180deg);
+}
+
+.usage-config-detail {
+  border-top: 1px solid #e4e9f2;
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 12px;
+}
+
+.usage-config-detail-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.usage-config-detail-grid span {
+  background: #f8fafc;
+  border: 1px solid #e4e9f2;
+  border-radius: 7px;
+  color: #667085;
+  display: grid;
+  font-size: 12px;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.usage-config-detail-grid strong {
+  color: #101828;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-config-records {
+  display: grid;
+  gap: 6px;
+}
+
+.usage-config-record {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e4e9f2;
+  border-radius: 7px;
+  color: #344054;
+  display: grid;
+  font-size: 12px;
+  gap: 8px;
+  grid-template-columns: 58px 78px minmax(90px, 1fr) 86px 48px;
+  min-height: 34px;
+  padding: 7px 8px;
+}
+
+.usage-config-record.failed {
+  background: #fff7f7;
+  border-color: #fecaca;
+}
+
+.usage-config-record.muted {
+  color: #667085;
+  grid-template-columns: 1fr;
+}
+
+.usage-config-record span,
+.usage-config-record strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-config-record strong {
+  color: #101828;
+  text-align: right;
 }
 
 .usage-table {
@@ -486,6 +592,10 @@
   .usage-distribution-stack {
     grid-template-columns: 1fr;
   }
+
+  .usage-config-detail-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 860px) {
@@ -510,5 +620,34 @@
 
   .usage-range-button {
     flex: 1;
+  }
+
+  .usage-config-card-button {
+    grid-template-columns: minmax(0, 1fr) 22px;
+  }
+
+  .usage-config-costs {
+    justify-items: start;
+  }
+
+  .usage-config-card-button .usage-config-costs {
+    grid-column: 1 / -1;
+  }
+
+  .usage-config-chevron {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .usage-config-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-config-record {
+    grid-template-columns: 52px minmax(72px, 1fr) 68px 46px;
+  }
+
+  .usage-config-record span:nth-child(3) {
+    display: none;
   }
 }
