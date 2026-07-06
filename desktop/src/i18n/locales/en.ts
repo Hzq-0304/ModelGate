@@ -175,6 +175,7 @@ export const en = {
   "usage.currentModel": "Active Model",
   "usage.providerDistribution": "Provider Distribution",
   "usage.modelDistribution": "Model Distribution",
+  "usage.configUsage": "Config Usage",
   "usage.requestsTrend": "Requests",
   "usage.tokensTrend": "Tokens",
   "usage.costTrend": "Cost",

@@ -89,22 +89,47 @@ try {
   };
   appendFileSync(usagePath, `${JSON.stringify(oldRecord)}\n`, "utf8");
 
+  const secondaryRecord: UsageRecord = {
+    ...baseRecord,
+    id: "secondary-cost",
+    resolved_alias: "secondary",
+    requested_model: "secondary",
+    upstream_model: "gpt-secondary",
+    input_tokens: 100,
+    output_tokens: 100,
+    total_tokens: 200,
+    original_cost_usd: 2,
+    actual_cost_usd: 1,
+    estimated_cost_usd: 1,
+    cost_ratio: 0.5
+  };
+  store.addUsageRecord(secondaryRecord);
+
   const records = store.listUsageRecords({ range: "all" });
-  assert.equal(records.length, 2);
+  assert.equal(records.length, 3);
   assert.equal(records.find((record) => record.id === "old-cost")?.actual_cost_usd, 3);
   assert.equal(records.find((record) => record.id === "old-cost")?.original_cost_usd, 3);
+  assert.equal(store.listUsageRecords({ range: "all", alias: "main" }).length, 1);
+  assert.equal(store.listUsageRecords({ range: "all", alias: "secondary" }).length, 1);
 
   const summary = store.getUsageSummary("all");
-  assert.equal(summary.original_cost_usd, 38.5);
-  assert.equal(summary.actual_cost_usd, 11.875);
-  assert.equal(summary.estimated_cost_usd, 11.875);
-  assert.equal(summary.by_provider.openai.original_cost_usd, 38.5);
+  assert.equal(summary.original_cost_usd, 40.5);
+  assert.equal(summary.actual_cost_usd, 12.875);
+  assert.equal(summary.estimated_cost_usd, 12.875);
+  assert.equal(summary.by_alias.main.actual_cost_usd, 8.875);
+  assert.equal(summary.by_alias.secondary.actual_cost_usd, 1);
+  assert.equal(summary.by_alias.unknown.actual_cost_usd, 3);
+  assert.equal(summary.by_provider.openai.original_cost_usd, 40.5);
   assert.equal(summary.by_model["openai/gpt-test"].actual_cost_usd, 8.875);
+
+  const aliasGroups = store.getUsageGroups("all", "alias");
+  assert.deepEqual(aliasGroups.groups.map((group) => group.key), ["main", "secondary", "unknown"]);
+  assert.equal(aliasGroups.groups[0].actual_cost_usd, 8.875);
 
   const timeline = store.getUsageTimeline("today", "hour");
   assert.equal(timeline.points.length, 1);
-  assert.equal(timeline.points[0].original_cost_usd, 38.5);
-  assert.equal(timeline.points[0].actual_cost_usd, 11.875);
+  assert.equal(timeline.points[0].original_cost_usd, 40.5);
+  assert.equal(timeline.points[0].actual_cost_usd, 12.875);
 
   console.log("Usage cost smoke test passed.");
 } finally {

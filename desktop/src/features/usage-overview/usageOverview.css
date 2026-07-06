@@ -153,12 +153,14 @@
 
 .usage-chart-panel,
 .usage-table-panel,
+.usage-config-panel,
 .usage-distribution-panel {
   display: grid;
   gap: 12px;
 }
 
-.usage-chart-panel {
+.usage-chart-panel,
+.usage-config-panel {
   background: #ffffff;
   border: 1px solid #e4e9f2;
   border-radius: 8px;
@@ -319,6 +321,59 @@
   min-width: 0;
 }
 
+.usage-config-list {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.usage-config-row {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e4e9f2;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, max-content);
+  min-height: 62px;
+  padding: 11px 12px;
+}
+
+.usage-config-row > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.usage-config-row strong,
+.usage-config-row span,
+.usage-config-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-config-row strong {
+  color: #101828;
+  font-size: 14px;
+}
+
+.usage-config-row span,
+.usage-config-row small {
+  color: #667085;
+  font-size: 12px;
+}
+
+.usage-config-costs {
+  justify-items: end;
+}
+
+.usage-config-costs span {
+  color: #101828;
+  font-size: 14px;
+  font-weight: 800;
+}
+
 .usage-table {
   display: grid;
   gap: 8px;
@@ -427,6 +482,7 @@
   }
 
   .usage-chart-grid-panel,
+  .usage-config-list,
   .usage-distribution-stack {
     grid-template-columns: 1fr;
   }

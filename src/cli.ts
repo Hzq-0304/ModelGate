@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {
   type DiagnosticResult,
+  type UsageGroupBy,
   clearLogs,
   getAliases,
   getCcSwitchLink,
@@ -8,6 +9,7 @@ import {
   getProviderPresets,
   getStats,
   getStatus,
+  getUsageGroups,
   getUsageRecords,
   getUsageSummary,
   reloadConfig,
@@ -18,7 +20,7 @@ import {
 } from "./cli/client.js";
 
 function printUsage() {
-  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|usage [--range today|24h|7d|all] [--records] [--limit N]|presets|ccswitch-link [--app codex]|test active [--responses]|test alias <alias> [--stream] [--responses]|test provider <provider> --model <model> [--stream] [--responses]>");
+  console.log("Usage: modelgate <status|aliases|switch <alias>|reload|logs [--limit N|--clear]|stats|usage [--range today|24h|7d|all] [--records] [--limit N] [--group-by alias|provider|model]|presets|ccswitch-link [--app codex]|test active [--responses]|test alias <alias> [--stream] [--responses]|test provider <provider> --model <model> [--stream] [--responses]>");
 }
 
 function formatTime(value: string) {
@@ -181,6 +183,31 @@ async function run() {
     const range = (argValue(args, "--range") ?? "today") as "today" | "24h" | "7d" | "all";
     if (!["today", "24h", "7d", "all"].includes(range)) {
       throw new Error("Invalid range. Use today, 24h, 7d, or all.");
+    }
+
+    const groupBy = argValue(args, "--group-by") as UsageGroupBy | undefined;
+    if (groupBy) {
+      if (!["alias", "provider", "model"].includes(groupBy)) {
+        throw new Error("Invalid group. Use alias, provider, or model.");
+      }
+
+      const result = await getUsageGroups(range, groupBy);
+      console.log(`Usage range: ${result.range}`);
+      console.log(`Group by: ${result.group_by}`);
+      console.log("");
+      console.log("Group                         Requests   OK     Failed Tokens       Real Cost  Original");
+      for (const group of result.groups) {
+        console.log(
+          `${group.label.padEnd(29)} ` +
+          `${formatNumber(group.requests).padEnd(10)} ` +
+          `${formatNumber(group.success).padEnd(6)} ` +
+          `${formatNumber(group.failed).padEnd(6)} ` +
+          `${formatNumber(group.total_tokens).padEnd(12)} ` +
+          `${formatCost(actualCost(group), group.cost_available).padEnd(10)} ` +
+          `${formatCost(group.original_cost_usd, group.cost_available)}`
+        );
+      }
+      return;
     }
 
     if (args.includes("--records")) {

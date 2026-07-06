@@ -3,7 +3,7 @@ import { getUsageRecords, getUsageSummary, getUsageTimeline } from "../../api";
 import { UsageRecentTable } from "./UsageRecentTable";
 import { UsageSummaryCards } from "./UsageSummaryCards";
 import { UsageTrendChart } from "./UsageTrendChart";
-import type { UsageOverviewRange, UsageRecord, UsageSummary, UsageTimeline } from "./usageTypes";
+import type { UsageOverviewRange, UsageRecord, UsageSummary, UsageSummaryGroup, UsageTimeline } from "./usageTypes";
 import { useI18n } from "../../i18n/i18n";
 import "./usageOverview.css";
 
@@ -16,14 +16,7 @@ function DistributionPanel({
   groups
 }: {
   title: string;
-  groups?: Record<string, {
-    requests: number;
-    total_tokens: number;
-    original_cost_usd?: number;
-    actual_cost_usd?: number;
-    estimated_cost_usd?: number;
-    cost_available: boolean;
-  }>;
+  groups?: Record<string, UsageSummaryGroup>;
 }) {
   const entries = Object.entries(groups ?? {})
     .sort((a, b) => b[1].requests - a[1].requests)
@@ -49,6 +42,51 @@ function DistributionPanel({
         </div>
       ) : (
         <div className="usage-empty compact">N/A</div>
+      )}
+    </section>
+  );
+}
+
+function formatNumber(value: number | undefined) {
+  return (value ?? 0).toLocaleString("en-US");
+}
+
+function formatCost(value: number | undefined, available: boolean) {
+  return available && typeof value === "number" ? `$${value.toFixed(6)}` : "N/A";
+}
+
+function ConfigUsagePanel({ groups }: { groups?: Record<string, UsageSummaryGroup> }) {
+  const { t } = useI18n();
+  const entries = Object.entries(groups ?? {})
+    .sort((a, b) => b[1].requests - a[1].requests)
+    .slice(0, 6);
+
+  return (
+    <section className="usage-config-panel">
+      <div className="usage-chart-heading">
+        <span>{t("usage.configUsage")}</span>
+        <div className="usage-legend">
+          <span><i className="legend-actual-cost" />{t("usage.realCost")}</span>
+          <span><i className="legend-original-cost" />{t("usage.originalCost")}</span>
+        </div>
+      </div>
+      {entries.length > 0 ? (
+        <div className="usage-config-list">
+          {entries.map(([alias, value]) => (
+            <article className="usage-config-row" key={alias}>
+              <div>
+                <strong>{alias}</strong>
+                <span>{formatNumber(value.requests)} {t("usage.requests")} · {formatNumber(value.total_tokens)} {t("usage.tokens")}</span>
+              </div>
+              <div className="usage-config-costs">
+                <span>{formatCost(value.actual_cost_usd ?? value.estimated_cost_usd, value.cost_available)}</span>
+                <small>{t("usage.originalCost")}: {formatCost(value.original_cost_usd ?? value.estimated_cost_usd, value.cost_available)}</small>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="usage-empty compact">{t("usage.empty")}</div>
       )}
     </section>
   );
@@ -152,6 +190,7 @@ export function UsageOverview({ activeModel, disconnected }: { activeModel?: str
           <UsageTrendChart timeline={timeline} />
           <section className="usage-lower-grid">
             <UsageRecentTable records={records} />
+            <ConfigUsagePanel groups={summary?.by_alias} />
             <div className="usage-distribution-stack">
               <DistributionPanel title={t("usage.providerDistribution")} groups={summary?.by_provider} />
               <DistributionPanel title={t("usage.modelDistribution")} groups={summary?.by_model} />

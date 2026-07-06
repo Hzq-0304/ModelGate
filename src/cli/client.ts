@@ -51,6 +51,7 @@ export type RequestStats = {
 };
 
 export type UsageRange = "today" | "24h" | "7d" | "all";
+export type UsageGroupBy = "alias" | "provider" | "model";
 
 export type UsageRecord = {
   id: string;
@@ -93,6 +94,33 @@ export type UsageSummary = {
   actual_cost_usd?: number;
   estimated_cost_usd?: number;
   cost_available: boolean;
+};
+
+export type UsageGroupSummary = {
+  key: string;
+  label: string;
+  alias?: string;
+  provider?: string;
+  model?: string;
+  requests: number;
+  success: number;
+  failed: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_tokens?: number;
+  reasoning_tokens?: number;
+  total_tokens?: number;
+  original_cost_usd?: number;
+  actual_cost_usd?: number;
+  estimated_cost_usd?: number;
+  cost_available: boolean;
+};
+
+export type UsageGroupedSummary = {
+  range: UsageRange;
+  kind: "normal" | "diagnostic" | "all";
+  group_by: UsageGroupBy;
+  groups: UsageGroupSummary[];
 };
 
 export type ProviderPreset = {
@@ -218,6 +246,15 @@ export async function getStats() {
 export async function getUsageSummary(range: UsageRange = "today") {
   const response = await fetch(`${getBaseUrl()}/admin/usage/summary?range=${encodeURIComponent(range)}`);
   return parseResponse<UsageSummary>(response);
+}
+
+export async function getUsageGroups(range: UsageRange = "today", groupBy: UsageGroupBy = "alias") {
+  const params = new URLSearchParams({
+    range,
+    group_by: groupBy
+  });
+  const response = await fetch(`${getBaseUrl()}/admin/usage/groups?${params.toString()}`);
+  return parseResponse<UsageGroupedSummary>(response);
 }
 
 export async function getUsageRecords(range: UsageRange = "all", limit = 50) {

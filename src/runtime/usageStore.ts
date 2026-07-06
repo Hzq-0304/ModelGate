@@ -4,6 +4,7 @@ import type { ModelGateConfig, PricingConfig } from "../config/schema.js";
 
 export type UsageRange = "today" | "24h" | "7d" | "all";
 export type UsageKindFilter = "normal" | "diagnostic" | "all";
+export type UsageGroupBy = "alias" | "provider" | "model";
 export type UsageApiType = "chat_completions" | "responses";
 export type UsagePath = "/v1/chat/completions" | "/v1/responses";
 export type UsageKind = "normal" | "diagnostic";
@@ -53,17 +54,34 @@ export type UsageSummary = {
   actual_cost_usd?: number;
   estimated_cost_usd?: number;
   cost_available: boolean;
+  by_alias: Record<string, UsageSummaryGroup>;
   by_provider: Record<string, UsageSummaryGroup>;
   by_model: Record<string, UsageSummaryGroup>;
 };
 
-export type UsageSummaryGroup = {
+export type UsageSummaryGroup = TokenUsage & {
   requests: number;
-  total_tokens: number;
+  success: number;
+  failed: number;
   original_cost_usd?: number;
   actual_cost_usd?: number;
   estimated_cost_usd?: number;
   cost_available: boolean;
+};
+
+export type UsageGroupSummary = UsageSummaryGroup & {
+  key: string;
+  label: string;
+  alias?: string;
+  provider?: string;
+  model?: string;
+};
+
+export type UsageGroupedSummary = {
+  range: UsageRange;
+  kind: UsageKindFilter;
+  group_by: UsageGroupBy;
+  groups: UsageGroupSummary[];
 };
 
 export type UsageTimelineBucket = "hour" | "day";
@@ -85,6 +103,7 @@ export type UsageTimelinePoint = {
 export type UsageRecordFilters = {
   range?: UsageRange;
   kind?: UsageKindFilter;
+  alias?: string;
   provider?: string;
   model?: string;
   limit?: number;
@@ -136,9 +155,26 @@ function addTokens(target: TokenUsage, source: TokenUsage) {
 function createGroup(): UsageSummaryGroup {
   return {
     requests: 0,
+    success: 0,
+    failed: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cached_tokens: 0,
+    reasoning_tokens: 0,
     total_tokens: 0,
     cost_available: false
   };
+}
+
+function addRecordToGroup(group: UsageSummaryGroup, record: UsageRecord) {
+  group.requests += 1;
+  if (record.ok) {
+    group.success += 1;
+  } else {
+    group.failed += 1;
+  }
+  addTokens(group, record);
+  addCost(group, record);
 }
 
 function costFields(record: UsageRecord) {
@@ -228,6 +264,56 @@ function readRecords(path: string) {
       }
     })
     .filter((record): record is UsageRecord => record !== null);
+}
+
+function aliasKey(record: UsageRecord) {
+  return record.resolved_alias ?? record.requested_model ?? "unknown";
+}
+
+function providerKey(record: UsageRecord) {
+  return record.provider ?? "unknown";
+}
+
+function modelKey(record: UsageRecord) {
+  return `${record.provider ?? "unknown"}/${record.upstream_model ?? "unknown"}`;
+}
+
+function groupKey(record: UsageRecord, groupBy: UsageGroupBy) {
+  if (groupBy === "provider") {
+    return providerKey(record);
+  }
+  if (groupBy === "model") {
+    return modelKey(record);
+  }
+  return aliasKey(record);
+}
+
+function toGroupSummary(key: string, group: UsageSummaryGroup, groupBy: UsageGroupBy, sample?: UsageRecord): UsageGroupSummary {
+  const base = {
+    key,
+    label: key,
+    ...group
+  };
+
+  if (groupBy === "provider") {
+    return {
+      ...base,
+      provider: key
+    };
+  }
+  if (groupBy === "model") {
+    return {
+      ...base,
+      provider: sample?.provider,
+      model: sample?.upstream_model
+    };
+  }
+  return {
+    ...base,
+    alias: key,
+    provider: sample?.provider,
+    model: sample?.upstream_model
+  };
 }
 
 export function extractChatUsage(json: unknown): TokenUsage {
@@ -347,12 +433,14 @@ export function createUsageStore(path = resolve(process.cwd(), defaultUsagePath)
     const range = filters.range ?? "all";
     const kind = filters.kind ?? "all";
     const limit = filters.limit === undefined ? undefined : Math.max(0, Math.min(filters.limit, 1000));
+    const alias = filters.alias?.trim();
     const provider = filters.provider?.trim();
     const model = filters.model?.trim();
 
     return readRecords(path)
       .filter((record) => inRange(record, range))
       .filter((record) => kind === "all" || record.kind === kind)
+      .filter((record) => !alias || record.resolved_alias === alias || record.requested_model === alias)
       .filter((record) => !provider || record.provider === provider)
       .filter((record) => !model || record.upstream_model === model || record.requested_model === model || record.resolved_alias === model)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -372,6 +460,7 @@ export function createUsageStore(path = resolve(process.cwd(), defaultUsagePath)
       success: records.filter((record) => record.ok).length,
       failed: records.filter((record) => !record.ok).length,
       cost_available: false,
+      by_alias: {},
       by_provider: {},
       by_model: {}
     };
@@ -380,21 +469,20 @@ export function createUsageStore(path = resolve(process.cwd(), defaultUsagePath)
       addTokens(summary, record);
       addCost(summary, record);
 
-      const providerKey = record.provider ?? "unknown";
-      const modelKey = `${record.provider ?? "unknown"}/${record.upstream_model ?? "unknown"}`;
-      const providerGroup = summary.by_provider[providerKey] ?? createGroup();
-      const modelGroup = summary.by_model[modelKey] ?? createGroup();
+      const nextAliasKey = aliasKey(record);
+      const nextProviderKey = providerKey(record);
+      const nextModelKey = modelKey(record);
+      const aliasGroup = summary.by_alias[nextAliasKey] ?? createGroup();
+      const providerGroup = summary.by_provider[nextProviderKey] ?? createGroup();
+      const modelGroup = summary.by_model[nextModelKey] ?? createGroup();
 
-      providerGroup.requests += 1;
-      providerGroup.total_tokens += record.total_tokens ?? 0;
-      addCost(providerGroup, record);
+      addRecordToGroup(aliasGroup, record);
+      addRecordToGroup(providerGroup, record);
+      addRecordToGroup(modelGroup, record);
 
-      modelGroup.requests += 1;
-      modelGroup.total_tokens += record.total_tokens ?? 0;
-      addCost(modelGroup, record);
-
-      summary.by_provider[providerKey] = providerGroup;
-      summary.by_model[modelKey] = modelGroup;
+      summary.by_alias[nextAliasKey] = aliasGroup;
+      summary.by_provider[nextProviderKey] = providerGroup;
+      summary.by_model[nextModelKey] = modelGroup;
     }
 
     summary.input_tokens = summary.input_tokens ?? 0;
@@ -404,6 +492,36 @@ export function createUsageStore(path = resolve(process.cwd(), defaultUsagePath)
     summary.total_tokens = summary.total_tokens ?? 0;
 
     return summary;
+  }
+
+  function getUsageGroups(
+    range: UsageRange = "today",
+    groupBy: UsageGroupBy = "alias",
+    kind: UsageKindFilter = "all",
+    filters: Omit<UsageRecordFilters, "range" | "kind" | "limit"> = {}
+  ): UsageGroupedSummary {
+    const records = listUsageRecords({ range, kind, ...filters });
+    const groups = new Map<string, UsageSummaryGroup>();
+    const samples = new Map<string, UsageRecord>();
+
+    for (const record of records) {
+      const key = groupKey(record, groupBy);
+      const group = groups.get(key) ?? createGroup();
+      addRecordToGroup(group, record);
+      groups.set(key, group);
+      if (!samples.has(key)) {
+        samples.set(key, record);
+      }
+    }
+
+    return {
+      range,
+      kind,
+      group_by: groupBy,
+      groups: [...groups.entries()]
+        .map(([key, group]) => toGroupSummary(key, group, groupBy, samples.get(key)))
+        .sort((a, b) => b.requests - a.requests || a.key.localeCompare(b.key))
+    };
   }
 
   function getUsageTimeline(range: Exclude<UsageRange, "all"> = "today", bucket: UsageTimelineBucket = "hour") {
@@ -455,6 +573,7 @@ export function createUsageStore(path = resolve(process.cwd(), defaultUsagePath)
     addUsageRecord,
     listUsageRecords,
     getUsageSummary,
+    getUsageGroups,
     getUsageTimeline,
     clearUsageRecords
   };

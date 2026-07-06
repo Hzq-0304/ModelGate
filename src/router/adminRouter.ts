@@ -13,7 +13,7 @@ import { createOpenAICompatibleError } from "../providers/openaiCompatible.js";
 import { RatioSourceError, type RatioBinding, type RatioSourceAuth, type RatioSourceType } from "../ratio-sources/types.js";
 import { addDiagnosticLog, testActiveAlias, testAlias, testProvider } from "../runtime/diagnostics.js";
 import type { RuntimeState } from "../runtime/state.js";
-import type { UsageKindFilter, UsageRange, UsageTimelineBucket } from "../runtime/usageStore.js";
+import type { UsageGroupBy, UsageKindFilter, UsageRange, UsageTimelineBucket } from "../runtime/usageStore.js";
 
 type SwitchBody = {
   active?: string;
@@ -62,10 +62,20 @@ type UsageTimelineQuery = {
   bucket?: string;
 };
 
+type UsageGroupsQuery = {
+  range?: string;
+  kind?: string;
+  group_by?: string;
+  alias?: string;
+  provider?: string;
+  model?: string;
+};
+
 type UsageRecordsQuery = {
   limit?: string;
   range?: string;
   kind?: string;
+  alias?: string;
   provider?: string;
   model?: string;
 };
@@ -156,6 +166,10 @@ function usageRange(value: string | undefined, fallback: UsageRange): UsageRange
 
 function usageKind(value: string | undefined): UsageKindFilter {
   return value === "normal" || value === "diagnostic" || value === "all" ? value : "all";
+}
+
+function usageGroupBy(value: string | undefined): UsageGroupBy {
+  return value === "provider" || value === "model" || value === "alias" ? value : "alias";
 }
 
 function timelineRange(value: string | undefined): Exclude<UsageRange, "all"> {
@@ -423,12 +437,26 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
     return runtime.usageStore.getUsageTimeline(range, bucket);
   });
 
+  server.get<{ Querystring: UsageGroupsQuery }>("/admin/usage/groups", async (request) => {
+    return runtime.usageStore.getUsageGroups(
+      usageRange(request.query.range, "today"),
+      usageGroupBy(request.query.group_by),
+      usageKind(request.query.kind),
+      {
+        alias: request.query.alias,
+        provider: request.query.provider,
+        model: request.query.model
+      }
+    );
+  });
+
   server.get<{ Querystring: UsageRecordsQuery }>("/admin/usage/records", async (request) => {
     const limit = Number.parseInt(request.query.limit ?? "50", 10);
     return {
       records: runtime.usageStore.listUsageRecords({
         range: usageRange(request.query.range, "all"),
         kind: usageKind(request.query.kind),
+        alias: request.query.alias,
         provider: request.query.provider,
         model: request.query.model,
         limit: Number.isFinite(limit) ? limit : 50

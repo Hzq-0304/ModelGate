@@ -283,6 +283,7 @@ export type RequestStats = {
 };
 
 export type UsageRange = "today" | "24h" | "7d" | "all";
+export type UsageGroupBy = "alias" | "provider" | "model";
 
 export type UsageRecord = {
   id: string;
@@ -311,6 +312,36 @@ export type UsageRecord = {
   cost_available: boolean;
 };
 
+export type UsageSummaryGroup = {
+  requests: number;
+  success: number;
+  failed: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_tokens?: number;
+  reasoning_tokens?: number;
+  total_tokens?: number;
+  original_cost_usd?: number;
+  actual_cost_usd?: number;
+  estimated_cost_usd?: number;
+  cost_available: boolean;
+};
+
+export type UsageGroupSummary = UsageSummaryGroup & {
+  key: string;
+  label: string;
+  alias?: string;
+  provider?: string;
+  model?: string;
+};
+
+export type UsageGroupedSummary = {
+  range: UsageRange;
+  kind: "normal" | "diagnostic" | "all";
+  group_by: UsageGroupBy;
+  groups: UsageGroupSummary[];
+};
+
 export type UsageSummary = {
   range: UsageRange;
   total_tokens: number;
@@ -325,22 +356,9 @@ export type UsageSummary = {
   actual_cost_usd?: number;
   estimated_cost_usd?: number;
   cost_available: boolean;
-  by_provider: Record<string, {
-    requests: number;
-    total_tokens: number;
-    original_cost_usd?: number;
-    actual_cost_usd?: number;
-    estimated_cost_usd?: number;
-    cost_available: boolean;
-  }>;
-  by_model: Record<string, {
-    requests: number;
-    total_tokens: number;
-    original_cost_usd?: number;
-    actual_cost_usd?: number;
-    estimated_cost_usd?: number;
-    cost_available: boolean;
-  }>;
+  by_alias: Record<string, UsageSummaryGroup>;
+  by_provider: Record<string, UsageSummaryGroup>;
+  by_model: Record<string, UsageSummaryGroup>;
 };
 
 export type UsageTimeline = {
@@ -1055,6 +1073,30 @@ export async function getUsageSummary(range: UsageRange = "today") {
   return parseJson<UsageSummary>(response);
 }
 
+export async function getUsageGroups(params: {
+  range?: UsageRange;
+  groupBy?: UsageGroupBy;
+  alias?: string;
+  provider?: string;
+  model?: string;
+} = {}) {
+  const search = new URLSearchParams({
+    range: params.range ?? "today",
+    group_by: params.groupBy ?? "alias"
+  });
+  if (params.alias) {
+    search.set("alias", params.alias);
+  }
+  if (params.provider) {
+    search.set("provider", params.provider);
+  }
+  if (params.model) {
+    search.set("model", params.model);
+  }
+  const response = await fetch(`${baseUrl}/admin/usage/groups?${search.toString()}`);
+  return parseJson<UsageGroupedSummary>(response);
+}
+
 export async function getUsageTimeline(range: Exclude<UsageRange, "all"> = "today", bucket: "hour" | "day" = "hour") {
   const params = new URLSearchParams({
     range,
@@ -1067,6 +1109,7 @@ export async function getUsageTimeline(range: Exclude<UsageRange, "all"> = "toda
 export async function getUsageRecords(params: {
   range?: UsageRange;
   limit?: number;
+  alias?: string;
   provider?: string;
   model?: string;
 } = {}) {
@@ -1076,6 +1119,9 @@ export async function getUsageRecords(params: {
   });
   if (params.provider) {
     search.set("provider", params.provider);
+  }
+  if (params.alias) {
+    search.set("alias", params.alias);
   }
   if (params.model) {
     search.set("model", params.model);

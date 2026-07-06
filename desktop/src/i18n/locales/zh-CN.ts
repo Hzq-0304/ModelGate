@@ -177,6 +177,7 @@ export const zhCN: typeof en = {
   "usage.currentModel": "当前模型",
   "usage.providerDistribution": "供应商分布",
   "usage.modelDistribution": "模型分布",
+  "usage.configUsage": "配置用量",
   "usage.requestsTrend": "请求趋势",
   "usage.tokensTrend": "Token 趋势",
   "usage.costTrend": "成本趋势",
