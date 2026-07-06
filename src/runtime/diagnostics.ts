@@ -565,6 +565,13 @@ export async function testActiveAlias(
 
 export function addDiagnosticLog(runtime: RuntimeState, result: DiagnosticResult) {
   const path = result.api_type === "responses" ? "/v1/responses" : "/v1/chat/completions";
+  const alias = result.alias ? runtime.config.aliases[result.alias] : undefined;
+  const costRatio = alias?.ratio_binding
+    ? runtime.ratioSources.buildBindings(runtime.config)
+      .find((binding) => binding.alias === result.alias && binding.status === "bound")
+      ?.currentRatio
+    : undefined;
+
   runtime.requestLogs.addRequestLog({
     id: crypto.randomUUID(),
     kind: "diagnostic",
@@ -602,6 +609,6 @@ export function addDiagnosticLog(runtime: RuntimeState, result: DiagnosticResult
     ok: result.ok,
     status_code: result.status_code,
     duration_ms: result.duration_ms,
-    ...estimateUsageCost(runtime.config, result.provider, result.model)
+    ...estimateUsageCost(runtime.config, result.provider, result.model, {}, costRatio)
   });
 }

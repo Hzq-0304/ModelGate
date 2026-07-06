@@ -72,7 +72,10 @@ export type UsageRecord = {
   cached_tokens?: number;
   reasoning_tokens?: number;
   total_tokens?: number;
+  original_cost_usd?: number;
+  actual_cost_usd?: number;
   estimated_cost_usd?: number;
+  cost_ratio?: number;
   cost_available: boolean;
 };
 
@@ -86,6 +89,8 @@ export type UsageSummary = {
   requests: number;
   success: number;
   failed: number;
+  original_cost_usd?: number;
+  actual_cost_usd?: number;
   estimated_cost_usd?: number;
   cost_available: boolean;
 };

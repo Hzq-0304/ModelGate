@@ -4,7 +4,7 @@
 }
 
 .usage-topline {
-  align-items: start;
+  align-items: end;
   display: flex;
   gap: 16px;
   justify-content: space-between;
@@ -15,10 +15,18 @@
   margin-bottom: 6px;
 }
 
+.usage-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .usage-range {
-  background: #ffffff;
+  background: #f8fafc;
   border: 1px solid #e4e9f2;
-  border-radius: 7px;
+  border-radius: 8px;
   display: flex;
   gap: 4px;
   padding: 4px;
@@ -27,19 +35,49 @@
 .usage-range-button {
   background: transparent;
   border-color: transparent;
+  border-radius: 6px;
   color: #475467;
-  padding: 8px 11px;
+  min-height: 32px;
+  padding: 7px 11px;
 }
 
 .usage-range-button:hover:not(:disabled) {
-  background: #f8fafc;
+  background: #ffffff;
   border-color: #d8dee8;
 }
 
 .usage-range-button.active {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: #101828;
+  border-color: #101828;
   color: #ffffff;
+}
+
+.usage-live-state {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e4e9f2;
+  border-radius: 999px;
+  color: #475467;
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 11px;
+}
+
+.usage-live-state i {
+  background: #12b76a;
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px rgba(18, 183, 106, 0.12);
+  display: block;
+  height: 7px;
+  width: 7px;
+}
+
+.usage-live-state.loading i {
+  background: #f79009;
+  box-shadow: 0 0 0 4px rgba(247, 144, 9, 0.14);
 }
 
 .usage-summary-grid {
@@ -49,18 +87,46 @@
 }
 
 .usage-metric {
-  background: #f8fafc;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
   border: 1px solid #e4e9f2;
-  border-radius: 7px;
+  border-radius: 8px;
   display: grid;
   gap: 7px;
-  min-height: 74px;
-  padding: 12px;
+  min-height: 104px;
+  padding: 14px;
+  position: relative;
+}
+
+.usage-metric::before {
+  background: #d0d5dd;
+  border-radius: 999px;
+  content: "";
+  height: 4px;
+  left: 14px;
+  position: absolute;
+  right: 14px;
+  top: 0;
+}
+
+.usage-metric.primary::before {
+  background: #101828;
+}
+
+.usage-metric.green::before {
+  background: #12b76a;
+}
+
+.usage-metric.blue::before {
+  background: #2563eb;
+}
+
+.usage-metric.amber::before {
+  background: #f79009;
 }
 
 .usage-metric span,
 .usage-section-title,
-.usage-chart-heading span {
+.usage-chart-heading > span {
   color: #667085;
   font-size: 12px;
   font-weight: 800;
@@ -69,7 +135,17 @@
 
 .usage-metric strong {
   color: #101828;
-  font-size: 20px;
+  font-size: 22px;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-metric small {
+  color: #667085;
+  font-size: 12px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -82,16 +158,26 @@
   gap: 12px;
 }
 
+.usage-chart-panel {
+  background: #ffffff;
+  border: 1px solid #e4e9f2;
+  border-radius: 8px;
+  padding: 14px;
+}
+
 .usage-chart-heading {
   align-items: center;
   display: flex;
+  gap: 12px;
   justify-content: space-between;
 }
 
 .usage-legend {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
+  justify-content: flex-end;
 }
 
 .usage-legend span {
@@ -113,8 +199,12 @@
   background: #12b76a;
 }
 
-.legend-cost {
+.legend-original-cost {
   background: #f79009;
+}
+
+.legend-actual-cost {
+  background: #d92d20;
 }
 
 .usage-chart-grid-panel {
@@ -124,20 +214,24 @@
 }
 
 .usage-mini-chart {
-  background: #ffffff;
+  background: #f8fafc;
   border: 1px solid #e4e9f2;
-  border-radius: 7px;
+  border-radius: 8px;
   display: grid;
   gap: 8px;
-  min-height: 128px;
+  min-height: 150px;
   padding: 12px;
 }
 
-.usage-mini-chart span {
+.usage-mini-chart > span {
   color: #667085;
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.usage-cost-chart {
+  background: #fffaf5;
 }
 
 .usage-chart {
@@ -153,8 +247,9 @@
 }
 
 .usage-token-line,
-.usage-cost-line,
-.usage-request-line {
+.usage-request-line,
+.usage-original-cost-line,
+.usage-actual-cost-line {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -165,12 +260,42 @@
   stroke: #12b76a;
 }
 
-.usage-cost-line {
+.usage-request-line {
+  stroke: #2563eb;
+}
+
+.usage-original-cost-line {
   stroke: #f79009;
 }
 
-.usage-request-line {
-  stroke: #2563eb;
+.usage-actual-cost-line {
+  stroke: #d92d20;
+}
+
+.usage-cost-chart-footer {
+  align-items: center;
+  color: #667085;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.usage-cost-chart-footer span,
+.usage-cost-chart-footer em {
+  font-size: 11px;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-cost-chart-footer strong {
+  color: #101828;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .usage-chart-empty,
@@ -187,25 +312,35 @@
   align-items: start;
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(0, 1.6fr) minmax(250px, 0.8fr);
+  grid-template-columns: 1fr;
+}
+
+.usage-table-panel {
+  min-width: 0;
 }
 
 .usage-table {
   display: grid;
   gap: 8px;
   overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .usage-row {
   align-items: center;
-  background: #f8fafc;
+  background: #ffffff;
   border: 1px solid #e4e9f2;
-  border-radius: 7px;
+  border-radius: 8px;
   display: grid;
   gap: 10px;
-  grid-template-columns: 60px minmax(120px, 1fr) 92px 72px 72px 76px 72px;
-  min-height: 48px;
-  padding: 10px 12px;
+  grid-template-columns: 56px minmax(92px, 1fr) 68px 58px 58px 62px 84px 58px;
+  min-height: 44px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.usage-row.failed {
+  background: #fff7f7;
 }
 
 .usage-row span {
@@ -227,6 +362,7 @@
 .usage-distribution-stack {
   display: grid;
   gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .usage-distribution-panel {
@@ -285,23 +421,38 @@
   color: #d92d20;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1100px) {
   .usage-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .usage-chart-grid-panel,
-  .usage-lower-grid {
+  .usage-distribution-stack {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 860px) {
   .usage-topline {
+    align-items: stretch;
     flex-direction: column;
   }
 
+  .usage-toolbar {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 620px) {
   .usage-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .usage-range {
+    width: 100%;
+  }
+
+  .usage-range-button {
+    flex: 1;
   }
 }

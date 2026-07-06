@@ -12,6 +12,10 @@ function formatNumber(value: number | undefined) {
   return value === undefined ? "N/A" : value.toLocaleString("en-US");
 }
 
+function formatCost(value: number | undefined, available: boolean) {
+  return available && typeof value === "number" ? `$${value.toFixed(6)}` : "N/A";
+}
+
 export function UsageRecentTable({ records }: { records: UsageRecord[] }) {
   const { t } = useI18n();
 
@@ -27,6 +31,7 @@ export function UsageRecentTable({ records }: { records: UsageRecord[] }) {
             <span>{t("usage.input")}</span>
             <span>{t("usage.output")}</span>
             <span>{t("usage.total")}</span>
+            <span>{t("usage.realCost")}</span>
             <span>{t("common.status")}</span>
           </div>
           {records.map((record) => (
@@ -37,6 +42,9 @@ export function UsageRecentTable({ records }: { records: UsageRecord[] }) {
               <span>{formatNumber(record.input_tokens)}</span>
               <span>{formatNumber(record.output_tokens)}</span>
               <span>{formatNumber(record.total_tokens)}</span>
+              <span title={`${t("usage.originalCost")}: ${formatCost(record.original_cost_usd ?? record.estimated_cost_usd, record.cost_available)}`}>
+                {formatCost(record.actual_cost_usd ?? record.estimated_cost_usd, record.cost_available)}
+              </span>
               <span><span className={record.ok ? "pill" : "pill bad"}>{record.ok ? "OK" : record.status_code ?? "ERR"}</span></span>
             </div>
           ))}

@@ -41,6 +41,10 @@ function formatCost(value: number | undefined, available: boolean) {
   return available && typeof value === "number" ? `$${value.toFixed(6)}` : "N/A";
 }
 
+function actualCost(value: { actual_cost_usd?: number; estimated_cost_usd?: number }) {
+  return value.actual_cost_usd ?? value.estimated_cost_usd;
+}
+
 function printDiagnosticResult(result: DiagnosticResult) {
   if (result.target === "provider") {
     console.log(`Testing provider: ${result.provider ?? "-"}`);
@@ -182,7 +186,7 @@ async function run() {
     if (args.includes("--records")) {
       const limit = Number.parseInt(argValue(args, "--limit") ?? "50", 10);
       const result = await getUsageRecords(range, Number.isFinite(limit) ? limit : 50);
-      console.log("Time                  Kind        API        OK   Alias             Provider     Model                Input      Output     Total      Cost");
+      console.log("Time                  Kind        API        OK   Alias             Provider     Model                Input      Output     Total      Real Cost  Original");
       for (const record of result.records) {
         console.log(
           `${formatTime(record.timestamp).padEnd(21)} ` +
@@ -195,7 +199,8 @@ async function run() {
           `${formatNumber(record.input_tokens).padEnd(10)} ` +
           `${formatNumber(record.output_tokens).padEnd(10)} ` +
           `${formatNumber(record.total_tokens).padEnd(10)} ` +
-          `${formatCost(record.estimated_cost_usd, record.cost_available)}`
+          `${formatCost(actualCost(record), record.cost_available).padEnd(10)} ` +
+          `${formatCost(record.original_cost_usd, record.cost_available)}`
         );
       }
       return;
@@ -209,7 +214,8 @@ async function run() {
     console.log(`Output tokens: ${formatNumber(summary.output_tokens)}`);
     console.log(`Cached tokens: ${formatNumber(summary.cached_tokens)}`);
     console.log(`Requests: ${formatNumber(summary.requests)}`);
-    console.log(`Estimated cost: ${formatCost(summary.estimated_cost_usd, summary.cost_available)}`);
+    console.log(`Real cost: ${formatCost(actualCost(summary), summary.cost_available)}`);
+    console.log(`Original cost: ${formatCost(summary.original_cost_usd, summary.cost_available)}`);
     return;
   }
 

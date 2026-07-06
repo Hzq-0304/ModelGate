@@ -16,7 +16,14 @@ function DistributionPanel({
   groups
 }: {
   title: string;
-  groups?: Record<string, { requests: number; total_tokens: number; estimated_cost_usd?: number; cost_available: boolean }>;
+  groups?: Record<string, {
+    requests: number;
+    total_tokens: number;
+    original_cost_usd?: number;
+    actual_cost_usd?: number;
+    estimated_cost_usd?: number;
+    cost_available: boolean;
+  }>;
 }) {
   const entries = Object.entries(groups ?? {})
     .sort((a, b) => b[1].requests - a[1].requests)
@@ -34,7 +41,9 @@ function DistributionPanel({
               <div>
                 <i style={{ width: `${Math.max(8, (value.requests / maxRequests) * 100)}%` }} />
               </div>
-              <strong>{value.requests}</strong>
+              <strong title={value.cost_available ? `$${(value.actual_cost_usd ?? value.estimated_cost_usd ?? 0).toFixed(6)}` : undefined}>
+                {value.requests}
+              </strong>
             </div>
           ))}
         </div>
@@ -115,17 +124,23 @@ export function UsageOverview({ activeModel, disconnected }: { activeModel?: str
           </div>
           <p className="muted">{t("usage.description")}</p>
         </div>
-        <div className="usage-range" aria-label="Usage range">
-          {ranges.map((item) => (
-            <button
-              className={range === item.value ? "usage-range-button active" : "usage-range-button"}
-              key={item.value}
-              onClick={() => setRange(item.value)}
-              type="button"
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className="usage-toolbar">
+          <div className="usage-range" aria-label="Usage range">
+            {ranges.map((item) => (
+              <button
+                className={range === item.value ? "usage-range-button active" : "usage-range-button"}
+                key={item.value}
+                onClick={() => setRange(item.value)}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className={loading ? "usage-live-state loading" : "usage-live-state"}>
+            <i />
+            <span>{loading ? t("usage.refreshing") : t("usage.refreshed")}</span>
+          </div>
         </div>
       </div>
 

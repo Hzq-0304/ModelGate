@@ -32,7 +32,10 @@ export type UsageRecord = TokenUsage & {
   ok: boolean;
   status_code?: number;
   duration_ms?: number;
+  original_cost_usd?: number;
+  actual_cost_usd?: number;
   estimated_cost_usd?: number;
+  cost_ratio?: number;
   cost_available: boolean;
 };
 
@@ -46,6 +49,8 @@ export type UsageSummary = {
   requests: number;
   success: number;
   failed: number;
+  original_cost_usd?: number;
+  actual_cost_usd?: number;
   estimated_cost_usd?: number;
   cost_available: boolean;
   by_provider: Record<string, UsageSummaryGroup>;
@@ -55,6 +60,8 @@ export type UsageSummary = {
 export type UsageSummaryGroup = {
   requests: number;
   total_tokens: number;
+  original_cost_usd?: number;
+  actual_cost_usd?: number;
   estimated_cost_usd?: number;
   cost_available: boolean;
 };
@@ -68,6 +75,8 @@ export type UsageTimelinePoint = {
   cached_tokens: number;
   reasoning_tokens: number;
   total_tokens: number;
+  original_cost_usd?: number;
+  actual_cost_usd?: number;
   estimated_cost_usd?: number;
   cost_available: boolean;
   requests: number;
@@ -132,13 +141,35 @@ function createGroup(): UsageSummaryGroup {
   };
 }
 
-function addCost(target: { estimated_cost_usd?: number; cost_available: boolean }, record: UsageRecord) {
-  if (!record.cost_available || typeof record.estimated_cost_usd !== "number") {
+function costFields(record: UsageRecord) {
+  const estimated = numberField(record.estimated_cost_usd);
+  const original = numberField(record.original_cost_usd) ?? estimated;
+  const actual = numberField(record.actual_cost_usd) ?? estimated ?? original;
+
+  return {
+    original,
+    actual
+  };
+}
+
+function addCost(
+  target: {
+    original_cost_usd?: number;
+    actual_cost_usd?: number;
+    estimated_cost_usd?: number;
+    cost_available: boolean;
+  },
+  record: UsageRecord
+) {
+  const cost = costFields(record);
+  if (!record.cost_available || typeof cost.original !== "number" || typeof cost.actual !== "number") {
     return;
   }
 
   target.cost_available = true;
-  target.estimated_cost_usd = (target.estimated_cost_usd ?? 0) + record.estimated_cost_usd;
+  target.original_cost_usd = (target.original_cost_usd ?? 0) + cost.original;
+  target.actual_cost_usd = (target.actual_cost_usd ?? 0) + cost.actual;
+  target.estimated_cost_usd = target.actual_cost_usd;
 }
 
 function bucketStart(date: Date, bucket: UsageTimelineBucket) {
@@ -170,7 +201,14 @@ function safeRecord(value: unknown): UsageRecord | null {
     return null;
   }
 
-  return record;
+  const cost = costFields(record);
+  return {
+    ...record,
+    original_cost_usd: cost.original,
+    actual_cost_usd: cost.actual,
+    estimated_cost_usd: cost.actual ?? record.estimated_cost_usd,
+    cost_ratio: numberField(record.cost_ratio)
+  };
 }
 
 function readRecords(path: string) {
@@ -250,7 +288,8 @@ export function estimateUsageCost(
   config: ModelGateConfig,
   provider?: string,
   model?: string,
-  usage: TokenUsage = {}
+  usage: TokenUsage = {},
+  costRatio?: number
 ) {
   if (!provider || !model) {
     return {
@@ -276,14 +315,21 @@ export function estimateUsageCost(
   const outputTokens = usage.output_tokens ?? 0;
   const nonCachedInputTokens = clampNonNegative(inputTokens - cachedTokens);
   const cachedPrice = pricing.cached_input_per_million ?? pricing.input_per_million;
-  const estimated_cost_usd =
+  const original_cost_usd =
     nonCachedInputTokens / 1_000_000 * pricing.input_per_million +
     cachedTokens / 1_000_000 * cachedPrice +
     outputTokens / 1_000_000 * pricing.output_per_million;
+  const normalizedRatio = typeof costRatio === "number" && Number.isFinite(costRatio) && costRatio >= 0
+    ? costRatio
+    : undefined;
+  const actual_cost_usd = original_cost_usd * (normalizedRatio ?? 1);
 
   return {
     cost_available: true as const,
-    estimated_cost_usd
+    original_cost_usd,
+    actual_cost_usd,
+    estimated_cost_usd: actual_cost_usd,
+    cost_ratio: normalizedRatio
   };
 }
 

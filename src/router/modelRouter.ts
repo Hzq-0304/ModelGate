@@ -83,7 +83,13 @@ function writeUsageRecord(
   usage: TokenUsage = {}
 ) {
   const finishedMs = Date.now();
-  const cost = estimateUsageCost(runtime.config, details.provider, details.upstream_model, usage);
+  const alias = details.resolved_alias ? runtime.config.aliases[details.resolved_alias] : undefined;
+  const costRatio = alias?.ratio_binding
+    ? runtime.ratioSources.buildBindings(runtime.config)
+      .find((binding) => binding.alias === details.resolved_alias && binding.status === "bound")
+      ?.currentRatio
+    : undefined;
+  const cost = estimateUsageCost(runtime.config, details.provider, details.upstream_model, usage, costRatio);
 
   runtime.usageStore.addUsageRecord({
     id: crypto.randomUUID(),
