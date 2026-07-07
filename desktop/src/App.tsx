@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BarChart3, Boxes } from "lucide-react";
 import {
   type AliasesResponse,
   type CcSwitchImportCandidate,
@@ -71,6 +72,7 @@ import type { AppRouteId } from "./routes/routeTypes";
 import desktopPackage from "../package.json";
 
 type ActiveTab = AppRouteId;
+type HomeSection = "providers" | "usage";
 type ConfigSection = SettingsSectionId;
 type RecordsSection = "logs" | "usage";
 
@@ -136,6 +138,24 @@ const ratioBindingStatusLabels = {
   missing_model_ratio: "ratio.bindingStatus.missingModelRatio",
   unsupported: "ratio.bindingStatus.unsupported"
 } satisfies Record<RatioBindingItem["status"], TranslationKey>;
+
+function ModelGateBrand() {
+  return (
+    <span className="modelgate-brand" aria-label="Model Gate">
+      <span className="modelgate-brand-symbol" aria-hidden="true">
+        <svg viewBox="0 0 44 44" role="img">
+          <rect className="modelgate-logo-back" x="3" y="6" width="38" height="32" rx="8" />
+          <rect className="modelgate-logo-node primary" x="9" y="12" width="11" height="11" rx="3" />
+          <rect className="modelgate-logo-node accent" x="24" y="21" width="11" height="11" rx="3" />
+          <path className="modelgate-logo-link" d="M20 17.5H25.5C29.1 17.5 32 20.4 32 24V25.5" />
+          <path className="modelgate-logo-link" d="M14.5 23V25.5C14.5 29.1 17.4 32 21 32H24" />
+          <circle className="modelgate-logo-dot" cx="14.5" cy="17.5" r="2" />
+          <circle className="modelgate-logo-dot" cx="29.5" cy="26.5" r="2" />
+        </svg>
+      </span>
+    </span>
+  );
+}
 
 function isRoutingSection(section: ConfigSection): section is typeof routingSections[number] {
   return routingSections.includes(section as typeof routingSections[number]);
@@ -412,6 +432,7 @@ function buildOfflineRatioBindings(config: EditableConfig | null, ratioData: Rat
 export function App() {
   const { language, setLanguage, t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>("switcher");
+  const [homeSection, setHomeSection] = useState<HomeSection>("providers");
   const [configSection, setConfigSection] = useState<ConfigSection>("common");
   const [recordsSection, setRecordsSection] = useState<RecordsSection>("logs");
   const [connection, setConnection] = useState<ConnectionState>("checking");
@@ -2738,6 +2759,10 @@ export function App() {
     && editableConfig.providers[deletingAlias.provider]
   );
   const editSaving = busyAction === `provider-edit:${editAliasName}`;
+  const homeNavItems: Array<{ id: HomeSection; label: string; Icon: typeof Boxes }> = [
+    { id: "providers", label: t("switcher.providerList"), Icon: Boxes },
+    { id: "usage", label: t("usage.title"), Icon: BarChart3 }
+  ];
 
   return (
     <>
@@ -3258,6 +3283,7 @@ export function App() {
         </CcSwitchSettingsPage>
       ) : (
         <CcSwitchShell
+          brand={<ModelGateBrand />}
           onOpenSettings={() => openSettings()}
           onStartServer={() => void handleStartServer()}
           onStopServer={() => void handleStopServer()}
@@ -3268,26 +3294,46 @@ export function App() {
           title={t("app.title")}
         >
           <section className="home-dashboard">
-            <section id="account-switcher">
-              <AccountSwitcher
-                accounts={aliasesList}
-                activeAliasName={displayActiveAliasName}
-                connection={connection}
-                configWarnings={displayConfigWarnings}
-                message={message}
-                switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
-                onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
-                onDeleteAccount={(alias) => void handleDeleteAccount(alias)}
-                onEditAccount={handleEditAccount}
-                onGoToIntegrations={() => openSettings("integrations")}
-                onSelectAccount={(alias) => void handleSwitch(alias)}
-              />
-            </section>
-            <section className="home-usage-panel" id="usage-overview">
-              <UsageOverview
-                activeModel={activeAlias?.model}
-                disconnected={disconnected}
-              />
+            <nav className="home-sidebar" aria-label="Home sections">
+              {homeNavItems.map(({ id, label, Icon }) => (
+                <button
+                  aria-current={homeSection === id ? "page" : undefined}
+                  aria-label={label}
+                  className={homeSection === id ? "home-sidebar-item active" : "home-sidebar-item"}
+                  key={id}
+                  onClick={() => setHomeSection(id)}
+                  title={label}
+                  type="button"
+                >
+                  <Icon aria-hidden="true" />
+                </button>
+              ))}
+            </nav>
+            <section className="home-content">
+              {homeSection === "providers" ? (
+                <section className="home-section-panel" id="account-switcher">
+                  <AccountSwitcher
+                    accounts={aliasesList}
+                    activeAliasName={displayActiveAliasName}
+                    connection={connection}
+                    configWarnings={displayConfigWarnings}
+                    message={message}
+                    switchingAlias={busyAction?.startsWith("switch:") ? busyAction.slice("switch:".length) : null}
+                    onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
+                    onDeleteAccount={(alias) => void handleDeleteAccount(alias)}
+                    onEditAccount={handleEditAccount}
+                    onGoToIntegrations={() => openSettings("integrations")}
+                    onSelectAccount={(alias) => void handleSwitch(alias)}
+                  />
+                </section>
+              ) : (
+                <section className="home-section-panel home-usage-panel" id="usage-overview">
+                  <UsageOverview
+                    activeModel={activeAlias?.model}
+                    disconnected={disconnected}
+                  />
+                </section>
+              )}
             </section>
           </section>
         </CcSwitchShell>

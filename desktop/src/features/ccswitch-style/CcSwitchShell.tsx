@@ -12,6 +12,7 @@ type ServerLifecycle =
 
 type CcSwitchShellProps = {
   title: string;
+  brand?: ReactNode;
   settingsLabel: string;
   settingsActive: boolean;
   onOpenSettings: () => void;
@@ -24,6 +25,7 @@ type CcSwitchShellProps = {
 
 export function CcSwitchShell({
   title,
+  brand,
   settingsLabel,
   settingsActive,
   onOpenSettings,
@@ -38,7 +40,7 @@ export function CcSwitchShell({
       <header className="ccs-header" data-tauri-drag-region>
         <div className="ccs-header-left">
           <div className="ccs-brand">
-            <h1>{title}</h1>
+            <h1>{brand ?? title}</h1>
           </div>
           <button
             aria-label={settingsLabel}
