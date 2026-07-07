@@ -1,3 +1,15 @@
+# ModelGate v0.2.0-rc.1
+
+## Highlights
+
+- Pre-release build for the v0.2.0 line.
+- Includes the refreshed icon-only home navigation and Model Gate logo treatment.
+
+## Notes
+
+- This is a pre-release installer intended for validation before v0.2.0.
+- This release still requires Node.js to be installed and available in PATH.
+
 # ModelGate v0.1.9
 
 ## Highlights
