@@ -71,6 +71,7 @@ select {
   align-items: center;
   display: flex;
   flex: 1 1 auto;
+  gap: 8px;
   justify-content: flex-end;
   min-width: 0;
 }
@@ -130,6 +131,60 @@ select {
 .ccs-icon {
   height: 16px;
   width: 16px;
+}
+
+.topbar-token-summary {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e4e9f2;
+  border-radius: 999px;
+  color: #101828;
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: 4px;
+  height: 32px;
+  min-width: 0;
+  padding: 3px 4px 3px 11px;
+}
+
+.topbar-token-value {
+  align-items: baseline;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 3px;
+  line-height: 1;
+  max-width: 92px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-token-value small {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.topbar-token-range {
+  background: #ffffff;
+  border: 1px solid #d8dee8;
+  border-radius: 999px;
+  color: #344054;
+  font-size: 11px;
+  font-weight: 800;
+  height: 24px;
+  line-height: 1;
+  min-height: 0;
+  padding: 0 8px;
+}
+
+.topbar-token-range:hover {
+  border-color: #b9c4d6;
+  color: #101828;
 }
 
 /* ---- service toggle (ported from CC Switch ProxyToggle) ---- */

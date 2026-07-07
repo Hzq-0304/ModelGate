@@ -21,6 +21,8 @@ import {
   type RequestStats,
   type ServerProcessStatus,
   type StatusResponse,
+  type UsageRange,
+  type UsageSummary,
   clearRequestLogs,
   getAliases,
   getAdminConfig,
@@ -34,6 +36,7 @@ import {
   getRequestStats,
   getServerProcessStatus,
   getStatus,
+  getUsageSummary,
   readModelGateConfig,
   reloadConfig,
   restartServerProcess,
@@ -74,6 +77,7 @@ import desktopPackage from "../package.json";
 
 type ActiveTab = AppRouteId;
 type HomeSection = "providers" | "usage";
+type TopbarUsageRange = Extract<UsageRange, "10m" | "30m" | "1h" | "12h" | "1d">;
 type ConfigSection = SettingsSectionId;
 type RecordsSection = "logs" | "usage";
 
@@ -139,6 +143,13 @@ const ratioBindingStatusLabels = {
   missing_model_ratio: "ratio.bindingStatus.missingModelRatio",
   unsupported: "ratio.bindingStatus.unsupported"
 } satisfies Record<RatioBindingItem["status"], TranslationKey>;
+const topbarUsageRanges = [
+  { value: "10m", label: "10m" },
+  { value: "30m", label: "30m" },
+  { value: "1h", label: "1h" },
+  { value: "12h", label: "12h" },
+  { value: "1d", label: "1day" }
+] satisfies Array<{ value: TopbarUsageRange; label: string }>;
 
 function ModelGateBrand() {
   return (
@@ -146,6 +157,21 @@ function ModelGateBrand() {
       <img alt="" aria-hidden="true" className="modelgate-brand-symbol" src={modelGateLogoUrl} />
     </span>
   );
+}
+
+function formatTokenTotal(value: number | undefined) {
+  const total = value ?? 0;
+  const units = ["", "k", "M", "B", "T", "P"];
+  let scaled = total;
+  let unitIndex = 0;
+
+  while (Math.abs(scaled) >= 1000 && unitIndex < units.length - 1) {
+    scaled /= 1000;
+    unitIndex += 1;
+  }
+
+  const digits = scaled >= 100 || unitIndex === 0 ? 0 : scaled >= 10 ? 1 : 2;
+  return `${scaled.toFixed(digits).replace(/\.0+$|(\.\d*[1-9])0+$/, "$1")}${units[unitIndex]}`;
 }
 
 function isRoutingSection(section: ConfigSection): section is typeof routingSections[number] {
@@ -424,6 +450,8 @@ export function App() {
   const { language, setLanguage, t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>("switcher");
   const [homeSection, setHomeSection] = useState<HomeSection>("providers");
+  const [topbarUsageRange, setTopbarUsageRange] = useState<TopbarUsageRange>("10m");
+  const [topbarUsageSummary, setTopbarUsageSummary] = useState<UsageSummary | null>(null);
   const [configSection, setConfigSection] = useState<ConfigSection>("common");
   const [recordsSection, setRecordsSection] = useState<RecordsSection>("logs");
   const [connection, setConnection] = useState<ConnectionState>("checking");
@@ -1315,6 +1343,34 @@ export function App() {
   }, [refresh]);
 
   useEffect(() => {
+    if (connection !== "connected") {
+      setTopbarUsageSummary(null);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadTopbarUsage() {
+      try {
+        const summary = await getUsageSummary(topbarUsageRange);
+        if (!cancelled) {
+          setTopbarUsageSummary(summary);
+        }
+      } catch {
+        if (!cancelled) {
+          setTopbarUsageSummary(null);
+        }
+      }
+    }
+
+    void loadTopbarUsage();
+    const timer = window.setInterval(() => void loadTopbarUsage(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [connection, topbarUsageRange]);
+
+  useEffect(() => {
     if (!showCcSwitchImportGuide || importDrafts.length === 0) {
       return;
     }
@@ -1381,6 +1437,12 @@ export function App() {
     } finally {
       setBusyAction(null);
     }
+  }
+
+  function cycleTopbarUsageRange() {
+    const currentIndex = topbarUsageRanges.findIndex((item) => item.value === topbarUsageRange);
+    const next = topbarUsageRanges[(currentIndex + 1) % topbarUsageRanges.length];
+    setTopbarUsageRange(next.value);
   }
 
   function handleEditAccount(aliasName: string) {
@@ -2754,6 +2816,8 @@ export function App() {
     { id: "providers", label: t("switcher.providerList"), Icon: Boxes },
     { id: "usage", label: t("usage.title"), Icon: BarChart3 }
   ];
+  const topbarUsageLabel = topbarUsageRanges.find((item) => item.value === topbarUsageRange)?.label ?? "10m";
+  const topbarTokenLabel = topbarUsageSummary ? formatTokenTotal(topbarUsageSummary.total_tokens) : "--";
 
   return (
     <>
@@ -3275,6 +3339,20 @@ export function App() {
       ) : (
         <CcSwitchShell
           brand={<ModelGateBrand />}
+          headerAccessory={(
+            <div className="topbar-token-summary" aria-label={`Token total for ${topbarUsageLabel}`}>
+              <span className="topbar-token-value">{topbarTokenLabel}<small>tok</small></span>
+              <button
+                className="topbar-token-range"
+                data-tauri-no-drag
+                onClick={cycleTopbarUsageRange}
+                title="Change token window"
+                type="button"
+              >
+                {topbarUsageLabel}
+              </button>
+            </div>
+          )}
           onOpenSettings={() => openSettings()}
           onStartServer={() => void handleStartServer()}
           onStopServer={() => void handleStopServer()}

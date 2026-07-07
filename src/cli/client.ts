@@ -50,7 +50,7 @@ export type RequestStats = {
   by_provider: Record<string, number>;
 };
 
-export type UsageRange = "today" | "24h" | "7d" | "all";
+export type UsageRange = "10m" | "30m" | "1h" | "12h" | "1d" | "today" | "24h" | "7d" | "all";
 export type UsageGroupBy = "alias" | "provider" | "model";
 
 export type UsageRecord = {

@@ -52,6 +52,7 @@ try {
   const usagePath = join(tempDir, "usage.jsonl");
   const store = createUsageStore(usagePath);
   const now = new Date().toISOString();
+  const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000).toISOString();
   const baseRecord = {
     id: "new-cost",
     timestamp: now,
@@ -73,7 +74,7 @@ try {
 
   const oldRecord: UsageRecord = {
     id: "old-cost",
-    timestamp: now,
+    timestamp: twentyMinutesAgo,
     api_type: "chat_completions",
     path: "/v1/chat/completions",
     kind: "normal",
@@ -121,6 +122,14 @@ try {
   assert.equal(summary.by_alias.unknown.actual_cost_usd, 3);
   assert.equal(summary.by_provider.openai.original_cost_usd, 40.5);
   assert.equal(summary.by_model["openai/gpt-test"].actual_cost_usd, 8.875);
+
+  const tenMinuteSummary = store.getUsageSummary("10m");
+  assert.equal(tenMinuteSummary.total_tokens, 3_000_200);
+  assert.equal(tenMinuteSummary.by_alias.unknown, undefined);
+
+  const thirtyMinuteSummary = store.getUsageSummary("30m");
+  assert.equal(thirtyMinuteSummary.total_tokens, 3_002_200);
+  assert.equal(thirtyMinuteSummary.by_alias.unknown.total_tokens, 2000);
 
   const aliasGroups = store.getUsageGroups("all", "alias");
   assert.deepEqual(aliasGroups.groups.map((group) => group.key), ["main", "secondary", "unknown"]);

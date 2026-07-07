@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } fr
 import { dirname, resolve } from "node:path";
 import type { ModelGateConfig, PricingConfig } from "../config/schema.js";
 
-export type UsageRange = "today" | "24h" | "7d" | "all";
+export type UsageRange = "10m" | "30m" | "1h" | "12h" | "1d" | "today" | "24h" | "7d" | "all";
 export type UsageKindFilter = "normal" | "diagnostic" | "all";
 export type UsageGroupBy = "alias" | "provider" | "model";
 export type UsageApiType = "chat_completions" | "responses";
@@ -125,13 +125,27 @@ function rangeStart(range: UsageRange) {
   }
 
   const now = new Date();
+  const rollingWindows: Partial<Record<UsageRange, number>> = {
+    "10m": 10 * 60 * 1000,
+    "30m": 30 * 60 * 1000,
+    "1h": 60 * 60 * 1000,
+    "12h": 12 * 60 * 60 * 1000,
+    "1d": 24 * 60 * 60 * 1000,
+    "24h": 24 * 60 * 60 * 1000,
+    "7d": 7 * 24 * 60 * 60 * 1000
+  };
+  const rollingWindow = rollingWindows[range];
+  if (rollingWindow) {
+    return now.getTime() - rollingWindow;
+  }
+
   if (range === "today") {
     const start = new Date(now);
     start.setHours(0, 0, 0, 0);
     return start.getTime();
   }
 
-  return now.getTime() - (range === "24h" ? 24 : 7 * 24) * 60 * 60 * 1000;
+  return undefined;
 }
 
 function inRange(record: UsageRecord, range: UsageRange) {

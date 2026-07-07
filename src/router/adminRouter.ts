@@ -161,7 +161,17 @@ function normalizeBinding(value: NonNullable<RatioBindingsBody["bindings"]>[stri
 }
 
 function usageRange(value: string | undefined, fallback: UsageRange): UsageRange {
-  return value === "today" || value === "24h" || value === "7d" || value === "all" ? value : fallback;
+  return value === "10m"
+    || value === "30m"
+    || value === "1h"
+    || value === "12h"
+    || value === "1d"
+    || value === "today"
+    || value === "24h"
+    || value === "7d"
+    || value === "all"
+    ? value
+    : fallback;
 }
 
 function usageKind(value: string | undefined): UsageKindFilter {
@@ -173,7 +183,8 @@ function usageGroupBy(value: string | undefined): UsageGroupBy {
 }
 
 function timelineRange(value: string | undefined): Exclude<UsageRange, "all"> {
-  return value === "24h" || value === "7d" || value === "today" ? value : "today";
+  const range = usageRange(value, "today");
+  return range === "all" ? "today" : range;
 }
 
 function timelineBucket(value: string | undefined): UsageTimelineBucket {
