@@ -69,6 +69,7 @@ import type { SettingsSectionId } from "./features/settings/settingsRoutes";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
 import { useI18n, type Language, type TranslationKey } from "./i18n/i18n";
 import type { AppRouteId } from "./routes/routeTypes";
+import modelGateLogoUrl from "./assets/modelgate-logo.png";
 import desktopPackage from "../package.json";
 
 type ActiveTab = AppRouteId;
@@ -142,17 +143,7 @@ const ratioBindingStatusLabels = {
 function ModelGateBrand() {
   return (
     <span className="modelgate-brand" aria-label="Model Gate">
-      <span className="modelgate-brand-symbol" aria-hidden="true">
-        <svg viewBox="0 0 44 44" role="img">
-          <rect className="modelgate-logo-back" x="3" y="6" width="38" height="32" rx="8" />
-          <rect className="modelgate-logo-node primary" x="9" y="12" width="11" height="11" rx="3" />
-          <rect className="modelgate-logo-node accent" x="24" y="21" width="11" height="11" rx="3" />
-          <path className="modelgate-logo-link" d="M20 17.5H25.5C29.1 17.5 32 20.4 32 24V25.5" />
-          <path className="modelgate-logo-link" d="M14.5 23V25.5C14.5 29.1 17.4 32 21 32H24" />
-          <circle className="modelgate-logo-dot" cx="14.5" cy="17.5" r="2" />
-          <circle className="modelgate-logo-dot" cx="29.5" cy="26.5" r="2" />
-        </svg>
-      </span>
+      <img alt="" aria-hidden="true" className="modelgate-brand-symbol" src={modelGateLogoUrl} />
     </span>
   );
 }

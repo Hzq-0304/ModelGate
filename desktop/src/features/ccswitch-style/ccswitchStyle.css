@@ -54,6 +54,8 @@ select {
 .ccs-header {
   align-items: center;
   display: flex;
+  gap: 12px;
+  justify-content: space-between;
   min-height: 44px;
   padding: 0 0 16px;
 }
@@ -63,6 +65,14 @@ select {
   display: flex;
   flex-shrink: 0;
   gap: 8px;
+}
+
+.ccs-header-right {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .ccs-brand {
@@ -82,42 +92,11 @@ select {
 }
 
 .modelgate-brand-symbol {
-  display: inline-flex;
+  display: block;
   flex: 0 0 auto;
   height: 36px;
+  object-fit: contain;
   width: 36px;
-}
-
-.modelgate-brand-symbol svg {
-  display: block;
-  height: 100%;
-  width: 100%;
-}
-
-.modelgate-logo-back {
-  fill: #f4f8ff;
-  stroke: #c8d7f0;
-  stroke-width: 1.2;
-}
-
-.modelgate-logo-node.primary {
-  fill: #2563eb;
-}
-
-.modelgate-logo-node.accent {
-  fill: #16a34a;
-}
-
-.modelgate-logo-link {
-  fill: none;
-  stroke: #182230;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2.6;
-}
-
-.modelgate-logo-dot {
-  fill: #ffffff;
 }
 
 .ccs-icon-button {
@@ -259,8 +238,8 @@ select {
 .home-dashboard {
   align-items: start;
   display: grid;
-  gap: 20px;
-  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  grid-template-columns: 34px minmax(0, 1fr);
   margin: 0 auto;
   max-width: 1120px;
   width: 100%;
@@ -287,14 +266,14 @@ select {
   color: #475467;
   display: inline-flex;
   gap: 9px;
-  height: 42px;
+  height: 34px;
   justify-content: center;
   padding: 0;
   transition:
     background 160ms ease,
     border-color 160ms ease,
     color 160ms ease;
-  width: 42px;
+  width: 34px;
 }
 
 .home-sidebar-item svg {

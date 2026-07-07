@@ -42,6 +42,14 @@ export function CcSwitchShell({
           <div className="ccs-brand">
             <h1>{brand ?? title}</h1>
           </div>
+          <CcSwitchServiceToggle
+            lifecycle={serverLifecycle}
+            busy={serverBusy}
+            onStart={onStartServer}
+            onStop={onStopServer}
+          />
+        </div>
+        <div className="ccs-header-right">
           <button
             aria-label={settingsLabel}
             className={settingsActive ? "ccs-icon-button is-active" : "ccs-icon-button"}
@@ -52,12 +60,6 @@ export function CcSwitchShell({
           >
             <Settings className="ccs-icon" />
           </button>
-          <CcSwitchServiceToggle
-            lifecycle={serverLifecycle}
-            busy={serverBusy}
-            onStart={onStartServer}
-            onStop={onStopServer}
-          />
         </div>
       </header>
       <div className="ccs-main">{children}</div>
