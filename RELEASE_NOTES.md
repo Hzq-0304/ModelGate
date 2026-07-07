@@ -1,3 +1,15 @@
+# ModelGate v0.1.9
+
+## Highlights
+
+- Maintenance release after validating startup, CC Switch snapshot import, ratio sources, usage cost accounting, TypeScript builds, and Tauri/Rust checks.
+- Refreshed desktop installer and local release packaging for v0.1.9.
+
+## Notes
+
+- This release supersedes v0.1.8 for all desktop users.
+- This release still requires Node.js to be installed and available in PATH.
+
 # ModelGate v0.1.8
 
 ## Highlights
