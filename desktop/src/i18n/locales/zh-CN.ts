@@ -165,6 +165,7 @@ export const zhCN: typeof en = {
   "usage.cost": "成本",
   "usage.input": "输入",
   "usage.output": "输出",
+  "usage.reasoning": "推理",
   "usage.total": "总计",
   "usage.time": "时间",
   "usage.api": "API",

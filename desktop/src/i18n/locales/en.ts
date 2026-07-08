@@ -163,6 +163,7 @@ export const en = {
   "usage.cost": "Cost",
   "usage.input": "Input",
   "usage.output": "Output",
+  "usage.reasoning": "Reasoning",
   "usage.total": "Total",
   "usage.time": "Time",
   "usage.api": "API",
