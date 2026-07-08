@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BarChart3, Boxes } from "lucide-react";
+import { BarChart3, Boxes, Gauge } from "lucide-react";
 import {
   type AliasesResponse,
   type CcSwitchImportCandidate,
@@ -75,7 +75,7 @@ import type { AppRouteId } from "./routes/routeTypes";
 import desktopPackage from "../package.json";
 
 type ActiveTab = AppRouteId;
-type HomeSection = "providers" | "usage";
+type HomeSection = "providers" | "usage" | "ratios";
 type TopbarUsageRange = Extract<UsageRange, "10m" | "30m" | "1h" | "12h" | "1d">;
 type ConfigSection = SettingsSectionId;
 type RecordsSection = "logs" | "usage";
@@ -1427,6 +1427,14 @@ export function App() {
 
     void loadRatioMonitor().catch((error) => setRatioMessage(t("ratio.loadFailed", { message: getErrorMessage(error) })));
   }, [activeTab, configSection, editableConfig, connection]);
+
+  useEffect(() => {
+    if (activeTab !== "switcher" || homeSection !== "ratios") {
+      return;
+    }
+
+    void loadRatioMonitor().catch((error) => setRatioMessage(t("ratio.loadFailed", { message: getErrorMessage(error) })));
+  }, [activeTab, homeSection, editableConfig, connection]);
 
   async function handleSwitch(aliasName: string) {
     setBusyAction(`switch:${aliasName}`);
@@ -2827,7 +2835,8 @@ export function App() {
   const editSaving = busyAction === `provider-edit:${editAliasName}`;
   const homeNavItems: Array<{ id: HomeSection; label: string; Icon: typeof Boxes }> = [
     { id: "providers", label: t("switcher.providerList"), Icon: Boxes },
-    { id: "usage", label: t("usage.title"), Icon: BarChart3 }
+    { id: "usage", label: t("usage.title"), Icon: BarChart3 },
+    { id: "ratios", label: t("settings.ratios"), Icon: Gauge }
   ];
   const topbarUsageLabel = topbarUsageRanges.find((item) => item.value === topbarUsageRange)?.label ?? "10m";
   const topbarTokenLabel = topbarUsageSummary ? formatTokenTotal(topbarUsageSummary.total_tokens) : "--";
@@ -3392,7 +3401,7 @@ export function App() {
               ))}
             </nav>
             <section className="home-content">
-              {homeSection === "providers" ? (
+              {homeSection === "providers" && (
                 <section className="home-section-panel" id="account-switcher">
                   <AccountSwitcher
                     accounts={aliasesList}
@@ -3408,12 +3417,18 @@ export function App() {
                     onSelectAccount={(alias) => void handleSwitch(alias)}
                   />
                 </section>
-              ) : (
+              )}
+              {homeSection === "usage" && (
                 <section className="home-section-panel home-usage-panel" id="usage-overview">
                   <UsageOverview
                     activeModel={activeAlias?.model}
                     disconnected={disconnected}
                   />
+                </section>
+              )}
+              {homeSection === "ratios" && (
+                <section className="home-section-panel home-ratio-panel" id="ratio-monitor">
+                  {renderRatioMonitor()}
                 </section>
               )}
             </section>
