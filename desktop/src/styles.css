@@ -1140,15 +1140,26 @@ code {
   background: #ffffff;
   border: 1px solid #e4e9f2;
   border-radius: 8px;
+  cursor: pointer;
   display: grid;
-  gap: 14px;
+  gap: 10px;
   grid-template-columns: minmax(0, 1fr) auto;
-  padding: 14px;
+  padding: 12px 14px;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.ratio-source-card:hover,
+.ratio-source-card:focus-visible {
+  border-color: #cbd5e1;
+  box-shadow: 0 6px 18px rgb(15 23 42 / 6%);
+  outline: none;
 }
 
 .ratio-source-card-main {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -1191,10 +1202,72 @@ code {
   gap: 6px 12px;
 }
 
-.ratio-group-ratios {
+.ratio-group-summary {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.ratio-group-expand {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(-4px);
+  transition:
+    max-height 220ms ease,
+    opacity 180ms ease,
+    transform 220ms ease;
+}
+
+.ratio-source-card.is-expanded .ratio-group-expand {
+  max-height: 420px;
+  opacity: 1;
+  overflow-y: auto;
+  transform: translateY(0);
+}
+
+.ratio-group-card-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 1fr;
+  padding-top: 2px;
+}
+
+.ratio-group-card {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e4e9f2;
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(0, 1.35fr);
+  min-height: 32px;
+  padding: 7px 9px;
+}
+
+.ratio-group-card-name,
+.ratio-group-card-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ratio-group-card-name {
+  color: #344054;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ratio-group-card strong {
+  color: #101828;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.ratio-group-card-description {
+  color: #667085;
+  font-size: 12px;
+  text-align: right;
 }
 
 .ratio-source-card .inline-error {

@@ -470,6 +470,7 @@ export function App() {
   const [ratioSources, setRatioSources] = useState<RatioSourcesResponse | null>(null);
   const [ratioMessage, setRatioMessage] = useState(t("ratio.notLoaded"));
   const [showRatioSourceForm, setShowRatioSourceForm] = useState(false);
+  const [expandedRatioSourceIds, setExpandedRatioSourceIds] = useState<Set<string>>(() => new Set());
   const [ratioSourceForm, setRatioSourceForm] = useState<{
     editingId: string;
     name: string;
@@ -788,6 +789,18 @@ export function App() {
     setRatioSources(sourcesResult);
     setRatioMessage(sourcesResult.offline ? t("ratio.loadedOffline") : t("ratio.loaded"));
     return sourcesResult;
+  }
+
+  function toggleRatioSourceExpanded(sourceId: string) {
+    setExpandedRatioSourceIds((current) => {
+      const next = new Set(current);
+      if (next.has(sourceId)) {
+        next.delete(sourceId);
+      } else {
+        next.add(sourceId);
+      }
+      return next;
+    });
   }
 
   function resetRatioSourceForm() {
@@ -2626,10 +2639,28 @@ export function App() {
               </div>
             ) : sourceList.map((source) => {
               const groups = cacheEntries[source.id]?.groups ?? [];
-              const ratioGroups = groups.filter((group) => group.groupRatio !== undefined);
+              const ratioGroups = groups
+                .filter((group) => group.groupRatio !== undefined)
+                .sort((left, right) => (left.groupRatio ?? Number.POSITIVE_INFINITY) - (right.groupRatio ?? Number.POSITIVE_INFINITY));
+              const lowestRatioGroup = ratioGroups[0];
+              const expandedRatioGroups = ratioGroups.slice(1);
+              const expanded = expandedRatioSourceIds.has(source.id);
               const statusKey = ratioSourceStatusLabels[source.status];
               return (
-                <div className="ratio-source-card" key={source.id}>
+                <div
+                  className={expanded ? "ratio-source-card is-expanded" : "ratio-source-card"}
+                  key={source.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleRatioSourceExpanded(source.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      toggleRatioSourceExpanded(source.id);
+                    }
+                  }}
+                  aria-expanded={expanded}
+                >
                   <div className="ratio-source-card-main">
                     <div className="ratio-source-card-heading">
                       <div>
@@ -2638,31 +2669,34 @@ export function App() {
                       </div>
                       <span className={`ccs-status-badge ratio-status-${source.status}`}>{t(statusKey)}</span>
                     </div>
-                    <div className="ratio-source-meta">
-                      <span>{t("ratio.groupCount", { count: ratioGroups.length })}</span>
-                      {source.lastSuccessAt && <span>{t("ratio.lastSuccess")}: {formatLogTime(source.lastSuccessAt)}</span>}
-                      {source.nextRefreshAt && <span>{t("ratio.nextRefresh")}: {formatLogTime(source.nextRefreshAt)}</span>}
-                    </div>
-                    <div className="ratio-group-ratios" aria-label={t("ratio.groupRatios")}>
-                      {ratioGroups.length === 0 ? (
+                    <div className="ratio-group-summary" aria-label={t("ratio.groupRatios")}>
+                      {!lowestRatioGroup ? (
                         <span className="ratio-group-empty">{t("ratio.noGroupRatios")}</span>
                       ) : (
-                        <>
-                          {ratioGroups.slice(0, 10).map((group) => (
-                            <span className="ratio-group-chip" key={group.groupId} title={group.description ?? group.name}>
-                              <span>{group.name}</span>
-                              <strong>{formatRatioValue(group.groupRatio)}</strong>
-                            </span>
-                          ))}
-                          {ratioGroups.length > 10 && (
-                            <span className="ratio-group-chip muted">{t("ratio.moreGroups", { count: ratioGroups.length - 10 })}</span>
-                          )}
-                        </>
+                        <span className="ratio-group-chip" title={lowestRatioGroup.description ?? lowestRatioGroup.name}>
+                          <span>{lowestRatioGroup.name}</span>
+                          <strong>{formatRatioValue(lowestRatioGroup.groupRatio)}</strong>
+                        </span>
                       )}
+                    </div>
+                    <div className="ratio-group-expand" onClick={(event) => event.stopPropagation()}>
+                      <div className="ratio-group-card-grid">
+                        {expandedRatioGroups.map((group) => (
+                          <div className="ratio-group-card" key={group.groupId} title={group.description ?? group.name}>
+                            <span className="ratio-group-card-name">{group.name}</span>
+                            <strong>{formatRatioValue(group.groupRatio)}</strong>
+                            <span className="ratio-group-card-description">{group.description ?? ""}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                     {source.lastError && <span className="inline-error">{formatRatioSourceError(source)}</span>}
                   </div>
-                  <div className="ratio-row-actions">
+                  <div
+                    className="ratio-row-actions"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
                     <button
                       className="ccs-action-icon"
                       type="button"
