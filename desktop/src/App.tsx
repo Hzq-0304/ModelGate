@@ -143,6 +143,17 @@ const ratioBindingStatusLabels = {
   missing_model_ratio: "ratio.bindingStatus.missingModelRatio",
   unsupported: "ratio.bindingStatus.unsupported"
 } satisfies Record<RatioBindingItem["status"], TranslationKey>;
+const ratioSourceErrorLabels: Record<string, TranslationKey> = {
+  unsupported_site: "ratio.error.unsupportedSite",
+  authentication_required: "ratio.error.authRequired",
+  authentication_failed: "ratio.error.authFailed",
+  endpoint_not_found: "ratio.error.endpointNotFound",
+  invalid_response: "ratio.error.invalidResponse",
+  timeout: "ratio.error.timeout",
+  network_error: "ratio.error.network",
+  parser_error: "ratio.error.parser",
+  no_model_ratio: "ratio.error.noModelRatio"
+};
 const topbarUsageRanges = [
   { value: "10m", label: "10m" },
   { value: "30m", label: "30m" },
@@ -902,6 +913,43 @@ export function App() {
     return { type: "none" };
   }
 
+  function formatRatioSourceError(source: RatioSource) {
+    if (!source.lastError) {
+      return "";
+    }
+
+    if (source.lastErrorCode === "authentication_required" && source.lastError.toLowerCase().includes("rejected")) {
+      return t("ratio.error.credentialRejected");
+    }
+
+    const key = source.lastErrorCode ? ratioSourceErrorLabels[source.lastErrorCode] : undefined;
+    return key ? t(key) : source.lastError;
+  }
+
+  function formatRatioActionError(error: unknown) {
+    const message = getErrorMessage(error);
+    const normalized = message.toLowerCase();
+    if (normalized.includes("token_env") || normalized.includes("credential environment variable")) {
+      return t("ratio.error.invalidCredentialVariable");
+    }
+    if (normalized.includes("ratio source name is required")) {
+      return t("ratio.error.nameRequired");
+    }
+    if (normalized.includes("ratio source url is required")) {
+      return t("ratio.error.siteUrlRequired");
+    }
+    if (normalized.includes("ratio source type is required")) {
+      return t("ratio.error.typeRequired");
+    }
+    if (normalized.includes("sub2api group endpoints require") || normalized.includes("http 401")) {
+      return t("ratio.error.authRequired");
+    }
+    if (normalized.includes("sub2api rejected") || normalized.includes("http 403")) {
+      return t("ratio.error.credentialRejected");
+    }
+    return message;
+  }
+
   async function saveRatioSourceDraft() {
     setBusyAction("ratio:save");
     try {
@@ -925,7 +973,7 @@ export function App() {
       await loadRatioMonitor();
       setRatioMessage(t("ratio.sourceSaved"));
     } catch (error) {
-      setRatioMessage(t("ratio.sourceSaveFailed", { message: getErrorMessage(error) }));
+      setRatioMessage(t("ratio.sourceSaveFailed", { message: formatRatioActionError(error) }));
     } finally {
       setBusyAction(null);
     }
@@ -938,7 +986,7 @@ export function App() {
       await loadRatioMonitor();
       setRatioMessage(t("ratio.refreshed"));
     } catch (error) {
-      setRatioMessage(t("ratio.refreshFailed", { message: getErrorMessage(error) }));
+      setRatioMessage(t("ratio.refreshFailed", { message: formatRatioActionError(error) }));
     } finally {
       setBusyAction(null);
     }
@@ -951,7 +999,7 @@ export function App() {
       await loadRatioMonitor();
       setRatioMessage(t("ratio.sourceDeleted"));
     } catch (error) {
-      setRatioMessage(t("ratio.sourceDeleteFailed", { message: getErrorMessage(error) }));
+      setRatioMessage(t("ratio.sourceDeleteFailed", { message: formatRatioActionError(error) }));
     } finally {
       setBusyAction(null);
     }
@@ -984,7 +1032,7 @@ export function App() {
       }
       setRatioMessage(t("ratio.bindingSaved"));
     } catch (error) {
-      setRatioMessage(t("ratio.bindingSaveFailed", { message: getErrorMessage(error) }));
+      setRatioMessage(t("ratio.bindingSaveFailed", { message: formatRatioActionError(error) }));
     } finally {
       setBusyAction(null);
     }
@@ -2572,7 +2620,7 @@ export function App() {
     const cacheEntries = ratioSources?.cache ?? {};
     const sourceOptions = sourceList.filter((source) => source.enabled);
     const ratioBusy = busyAction?.startsWith("ratio:") ?? false;
-    const ratioMessageBad = ratioMessage.includes("failed") || ratioMessage.includes("Failed");
+    const ratioMessageBad = ratioMessage.includes("failed") || ratioMessage.includes("Failed") || ratioMessage.includes("失败");
 
     return (
       <div className="ccs-settings-sections ratio-monitor">
@@ -2594,81 +2642,6 @@ export function App() {
             </button>
           </header>
 
-          {showRatioSourceForm && (
-            <div className="ratio-source-form">
-              <label>
-                {t("common.name")}
-                <input value={ratioSourceForm.name} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, name: event.target.value })} />
-              </label>
-              <label>
-                {t("ratio.siteUrl")}
-                <input value={ratioSourceForm.baseUrl} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, baseUrl: event.target.value })} />
-              </label>
-              <label>
-                {t("common.type")}
-                <select value={ratioSourceForm.type} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, type: event.target.value as RatioSourceType })}>
-                  {ratioSourceTypeOptions.map((type) => (
-                    <option key={type} value={type}>{t(ratioSourceTypeLabels[type])}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t("ratio.refreshInterval")}
-                <input
-                  min={1}
-                  type="number"
-                  value={ratioSourceForm.refreshIntervalMinutes}
-                  onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, refreshIntervalMinutes: Number(event.target.value) })}
-                />
-              </label>
-              <label>
-                {t("ratio.auth")}
-                <select value={ratioSourceForm.authType} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, authType: event.target.value as RatioSourceAuth["type"] })}>
-                  <option value="none">{t("ratio.authNone")}</option>
-                  <option value="bearer">{t("ratio.authBearer")}</option>
-                  <option value="api-token">{t("ratio.authApiToken")}</option>
-                </select>
-              </label>
-              <label>
-                {t("ratio.tokenEnv")}
-                <input
-                  disabled={ratioSourceForm.authType === "none"}
-                  placeholder="HARDYAI_RATIO_TOKEN"
-                  value={ratioSourceForm.tokenEnv}
-                  onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, tokenEnv: event.target.value })}
-                />
-              </label>
-              {ratioSourceForm.authType === "api-token" && (
-                <>
-                  <label>
-                    {t("ratio.header")}
-                    <input value={ratioSourceForm.header} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, header: event.target.value })} />
-                  </label>
-                  <label>
-                    {t("ratio.scheme")}
-                    <input value={ratioSourceForm.scheme} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, scheme: event.target.value })} />
-                  </label>
-                </>
-              )}
-              <label className="inline-checkbox ratio-enabled-field">
-                <input
-                  type="checkbox"
-                  checked={ratioSourceForm.enabled}
-                  onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, enabled: event.target.checked })}
-                />
-                {t("ratio.enabled")}
-              </label>
-              <div className="ratio-form-actions">
-                <button type="button" onClick={() => void saveRatioSourceDraft()} disabled={ratioBusy}>
-                  {busyAction === "ratio:save" ? t("config.saving") : t("providerEdit.save")}
-                </button>
-                <button className="secondary" type="button" onClick={() => setShowRatioSourceForm(false)} disabled={ratioBusy}>
-                  {t("common.cancel")}
-                </button>
-              </div>
-            </div>
-          )}
-
           <div className="ratio-source-list">
             {sourceList.length === 0 ? (
               <div className="empty-state">
@@ -2689,7 +2662,7 @@ export function App() {
                       {source.lastSuccessAt ? ` · ${t("ratio.lastSuccess")}: ${formatLogTime(source.lastSuccessAt)}` : ""}
                       {source.nextRefreshAt ? ` · ${t("ratio.nextRefresh")}: ${formatLogTime(source.nextRefreshAt)}` : ""}
                     </span>
-                    {source.lastError && <span className="inline-error">{source.lastError}</span>}
+                    {source.lastError && <span className="inline-error">{formatRatioSourceError(source)}</span>}
                   </div>
                   <div className="ratio-row-actions">
                     <span className={`ccs-status-badge ratio-status-${source.status}`}>{t(statusKey)}</span>
@@ -2768,6 +2741,109 @@ export function App() {
           </div>
           <span className={ratioMessageBad ? "action-message bad" : "action-message"}>{ratioMessage}</span>
         </section>
+
+        {showRatioSourceForm && (
+          <div className="ccs-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !ratioBusy && setShowRatioSourceForm(false)}>
+            <form
+              className="ccs-modal ratio-source-modal"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveRatioSourceDraft();
+              }}
+            >
+              <div className="ccs-modal-header">
+                <div>
+                  <h3>{ratioSourceForm.editingId ? t("ratio.editSource") : t("ratio.addSource")}</h3>
+                  <span className="ccs-modal-subtitle">{t("ratio.sourceModalSubtitle")}</span>
+                </div>
+                <button className="ccs-drawer-close" onClick={() => setShowRatioSourceForm(false)} type="button" disabled={ratioBusy}>
+                  {t("common.close")}
+                </button>
+              </div>
+
+              <div className="ratio-source-form">
+                <label>
+                  {t("common.name")}
+                  <input value={ratioSourceForm.name} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, name: event.target.value })} autoFocus />
+                </label>
+                <label>
+                  {t("ratio.siteUrl")}
+                  <input value={ratioSourceForm.baseUrl} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, baseUrl: event.target.value })} />
+                </label>
+                <label>
+                  {t("common.type")}
+                  <select value={ratioSourceForm.type} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, type: event.target.value as RatioSourceType })}>
+                    {ratioSourceTypeOptions.map((type) => (
+                      <option key={type} value={type}>{t(ratioSourceTypeLabels[type])}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {t("ratio.refreshInterval")}
+                  <input
+                    min={1}
+                    type="number"
+                    value={ratioSourceForm.refreshIntervalMinutes}
+                    onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, refreshIntervalMinutes: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  {t("ratio.auth")}
+                  <select value={ratioSourceForm.authType} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, authType: event.target.value as RatioSourceAuth["type"] })}>
+                    <option value="none">{t("ratio.authNone")}</option>
+                    <option value="bearer">{t("ratio.authBearer")}</option>
+                    <option value="api-token">{t("ratio.authApiToken")}</option>
+                  </select>
+                </label>
+                <label>
+                  {t("ratio.tokenEnv")}
+                  <input
+                    disabled={ratioSourceForm.authType === "none"}
+                    placeholder="HARDYAI_RATIO_TOKEN"
+                    value={ratioSourceForm.tokenEnv}
+                    onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, tokenEnv: event.target.value })}
+                  />
+                </label>
+                {ratioSourceForm.authType === "api-token" && (
+                  <>
+                    <label>
+                      {t("ratio.header")}
+                      <input value={ratioSourceForm.header} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, header: event.target.value })} />
+                    </label>
+                    <label>
+                      {t("ratio.scheme")}
+                      <input value={ratioSourceForm.scheme} onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, scheme: event.target.value })} />
+                    </label>
+                  </>
+                )}
+                <label className="inline-checkbox ratio-enabled-field">
+                  <input
+                    type="checkbox"
+                    checked={ratioSourceForm.enabled}
+                    onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, enabled: event.target.checked })}
+                  />
+                  {t("ratio.enabled")}
+                </label>
+              </div>
+
+              <div className="ratio-source-auth-hint">
+                {ratioSourceForm.authType === "none" ? t("ratio.authHintNone") : t("ratio.authHintToken")}
+              </div>
+
+              <div className="ccs-modal-footer">
+                <span className={ratioMessageBad ? "ccs-modal-message bad" : "ccs-modal-message"}>{ratioMessage}</span>
+                <div className="ccs-modal-footer-actions">
+                  <button className="ccs-modal-btn secondary" onClick={() => setShowRatioSourceForm(false)} type="button" disabled={ratioBusy}>
+                    {t("common.cancel")}
+                  </button>
+                  <button className="ccs-modal-btn" type="submit" disabled={ratioBusy}>
+                    {busyAction === "ratio:save" ? t("config.saving") : t("providerEdit.save")}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
     );
   }

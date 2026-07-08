@@ -1009,13 +1009,9 @@ code {
 }
 
 .ratio-source-form {
-  background: #f8fafc;
-  border: 1px solid #e4e9f2;
-  border-radius: 8px;
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding: 12px;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .ratio-source-form label {
@@ -1024,6 +1020,21 @@ code {
   font-size: 12px;
   font-weight: 700;
   gap: 6px;
+}
+
+.ratio-source-modal {
+  max-width: 760px;
+  width: min(760px, calc(100vw - 32px));
+}
+
+.ratio-source-auth-hint {
+  background: #f8fafc;
+  border: 1px solid #e4e9f2;
+  border-radius: 8px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px 12px;
 }
 
 .ratio-enabled-field,
