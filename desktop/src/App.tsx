@@ -2321,6 +2321,7 @@ export function App() {
       } else {
         setCcSwitchMessage(t("ccswitch.simple.importedOffline"));
       }
+      setShowCcSwitchImportGuide(false);
     } catch (error) {
       setCcSwitchMessage(`Import failed: ${getErrorMessage(error)}`);
     } finally {
