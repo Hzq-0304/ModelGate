@@ -185,7 +185,7 @@ function ConfigUsagePanel({
   );
 }
 
-export function UsageOverview({ activeModel, disconnected }: { activeModel?: string; disconnected: boolean }) {
+export function UsageOverview({ activeModel }: { activeModel?: string }) {
   const { t } = useI18n();
   const [range, setRange] = useState<UsageOverviewRange>("today");
   const [summary, setSummary] = useState<UsageSummary | null>(null);
@@ -200,14 +200,6 @@ export function UsageOverview({ activeModel, disconnected }: { activeModel?: str
   ];
 
   useEffect(() => {
-    if (disconnected) {
-      setSummary(null);
-      setTimeline(null);
-      setRecords([]);
-      setMessage(t("usage.connect"));
-      return;
-    }
-
     let cancelled = false;
     async function loadUsage() {
       setLoading(true);
@@ -243,7 +235,7 @@ export function UsageOverview({ activeModel, disconnected }: { activeModel?: str
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [disconnected, range, t]);
+  }, [range, t]);
 
   return (
     <section className="usage-overview card">
@@ -275,22 +267,16 @@ export function UsageOverview({ activeModel, disconnected }: { activeModel?: str
         </div>
       </div>
 
-      {disconnected ? (
-        <div className="usage-empty">{t("usage.connect")}</div>
-      ) : (
-        <>
-          <UsageSummaryCards activeModel={activeModel} summary={summary} />
-          <UsageTrendChart timeline={timeline} />
-          <section className="usage-lower-grid">
-            <UsageRecentTable records={records} />
-            <ConfigUsagePanel groups={summary?.by_alias} range={range} />
-            <div className="usage-distribution-stack">
-              <DistributionPanel title={t("usage.providerDistribution")} groups={summary?.by_provider} />
-              <DistributionPanel title={t("usage.modelDistribution")} groups={summary?.by_model} />
-            </div>
-          </section>
-        </>
-      )}
+      <UsageSummaryCards activeModel={activeModel} summary={summary} />
+      <UsageTrendChart timeline={timeline} />
+      <section className="usage-lower-grid">
+        <UsageRecentTable records={records} />
+        <ConfigUsagePanel groups={summary?.by_alias} range={range} />
+        <div className="usage-distribution-stack">
+          <DistributionPanel title={t("usage.providerDistribution")} groups={summary?.by_provider} />
+          <DistributionPanel title={t("usage.modelDistribution")} groups={summary?.by_model} />
+        </div>
+      </section>
 
       <div className={message.startsWith("Usage refresh failed") ? "usage-message bad" : "usage-message"}>
         {loading ? t("usage.refreshing") : message}

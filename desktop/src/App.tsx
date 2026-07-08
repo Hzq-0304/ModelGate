@@ -2937,7 +2937,7 @@ export function App() {
                 </button>
               </div>
               {recordsSection === "usage" ? (
-                <UsageOverview activeModel={activeAlias?.model} disconnected={disconnected} />
+                <UsageOverview activeModel={activeAlias?.model} />
               ) : (
                 <>
                   <section className="actions">
@@ -3422,7 +3422,6 @@ export function App() {
                 <section className="home-section-panel home-usage-panel" id="usage-overview">
                   <UsageOverview
                     activeModel={activeAlias?.model}
-                    disconnected={disconnected}
                   />
                 </section>
               )}

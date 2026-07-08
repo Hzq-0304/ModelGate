@@ -670,7 +670,19 @@ function createUsageSummaryGroup(): UsageSummaryGroup {
   };
 }
 
-function addUsageTokens(target: UsageSummary | UsageSummaryGroup, source: UsageRecord) {
+type UsageAccumulator = {
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_tokens?: number;
+  reasoning_tokens?: number;
+  total_tokens?: number;
+  original_cost_usd?: number;
+  actual_cost_usd?: number;
+  estimated_cost_usd?: number;
+  cost_available: boolean;
+};
+
+function addUsageTokens(target: UsageAccumulator, source: UsageRecord) {
   target.input_tokens = (target.input_tokens ?? 0) + (source.input_tokens ?? 0);
   target.output_tokens = (target.output_tokens ?? 0) + (source.output_tokens ?? 0);
   target.cached_tokens = (target.cached_tokens ?? 0) + (source.cached_tokens ?? 0);
@@ -678,7 +690,7 @@ function addUsageTokens(target: UsageSummary | UsageSummaryGroup, source: UsageR
   target.total_tokens = (target.total_tokens ?? 0) + (source.total_tokens ?? 0);
 }
 
-function addUsageCost(target: UsageSummary | UsageSummaryGroup, record: UsageRecord) {
+function addUsageCost(target: UsageAccumulator, record: UsageRecord) {
   const cost = usageCostFields(record);
   if (!record.cost_available || typeof cost.original !== "number" || typeof cost.actual !== "number") {
     return;
@@ -727,9 +739,13 @@ function parseOfflineUsageRecords(raw: string) {
     .filter((record): record is UsageRecord => record !== null);
 }
 
-async function getOfflineUsageSummary(range: UsageRange) {
+async function readOfflineUsageRecords(range: UsageRange = "all") {
   const offline = await invoke<OfflineUsageDataTextResponse>("read_usage_data");
-  const records = parseOfflineUsageRecords(offline.raw).filter((record) => usageInRange(record, range));
+  return parseOfflineUsageRecords(offline.raw).filter((record) => usageInRange(record, range));
+}
+
+async function getOfflineUsageSummary(range: UsageRange) {
+  const records = await readOfflineUsageRecords(range);
   const summary: UsageSummary = {
     range,
     total_tokens: 0,
@@ -767,6 +783,77 @@ async function getOfflineUsageSummary(range: UsageRange) {
   }
 
   return summary;
+}
+
+function usageRecordMatches(record: UsageRecord, params: {
+  alias?: string;
+  provider?: string;
+  model?: string;
+}) {
+  return (!params.alias || record.resolved_alias === params.alias || record.requested_model === params.alias)
+    && (!params.provider || record.provider === params.provider)
+    && (!params.model || record.upstream_model === params.model || record.requested_model === params.model || record.resolved_alias === params.model);
+}
+
+function usageBucketStart(timestamp: string, bucket: "hour" | "day") {
+  const date = new Date(timestamp);
+  if (bucket === "day") {
+    date.setHours(0, 0, 0, 0);
+  } else {
+    date.setMinutes(0, 0, 0);
+  }
+  return date.toISOString();
+}
+
+async function getOfflineUsageTimeline(range: Exclude<UsageRange, "all">, bucket: "hour" | "day") {
+  const records = await readOfflineUsageRecords(range);
+  const points = new Map<string, UsageTimeline["points"][number]>();
+
+  for (const record of records) {
+    const timestamp = new Date(record.timestamp).getTime();
+    if (!Number.isFinite(timestamp)) {
+      continue;
+    }
+
+    const key = usageBucketStart(record.timestamp, bucket);
+    const point = points.get(key) ?? {
+      time: key,
+      input_tokens: 0,
+      output_tokens: 0,
+      cached_tokens: 0,
+      reasoning_tokens: 0,
+      total_tokens: 0,
+      cost_available: false,
+      requests: 0
+    };
+
+    point.requests += 1;
+    addUsageTokens(point, record);
+    addUsageCost(point, record);
+    points.set(key, point);
+  }
+
+  return {
+    range,
+    bucket,
+    points: [...points.values()].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+  } satisfies UsageTimeline;
+}
+
+async function getOfflineUsageRecords(params: {
+  range?: UsageRange;
+  limit?: number;
+  alias?: string;
+  provider?: string;
+  model?: string;
+} = {}) {
+  const limit = Math.max(0, Math.min(params.limit ?? 10, 1000));
+  const records = (await readOfflineUsageRecords(params.range ?? "all"))
+    .filter((record) => usageRecordMatches(record, params))
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, limit);
+
+  return { records };
 }
 
 function unavailableServerProcessStatus(): ServerProcessStatus {
@@ -1306,8 +1393,15 @@ export async function getUsageTimeline(range: Exclude<UsageRange, "all"> = "toda
     range,
     bucket
   });
-  const response = await fetch(`${baseUrl}/admin/usage/timeline?${params.toString()}`);
-  return parseJson<UsageTimeline>(response);
+  try {
+    const response = await fetch(`${baseUrl}/admin/usage/timeline?${params.toString()}`);
+    return await parseJson<UsageTimeline>(response);
+  } catch (error) {
+    if (!isTauriRuntime()) {
+      throw error;
+    }
+    return getOfflineUsageTimeline(range, bucket);
+  }
 }
 
 export async function getUsageRecords(params: {
@@ -1330,8 +1424,15 @@ export async function getUsageRecords(params: {
   if (params.model) {
     search.set("model", params.model);
   }
-  const response = await fetch(`${baseUrl}/admin/usage/records?${search.toString()}`);
-  return parseJson<{ records: UsageRecord[] }>(response);
+  try {
+    const response = await fetch(`${baseUrl}/admin/usage/records?${search.toString()}`);
+    return await parseJson<{ records: UsageRecord[] }>(response);
+  } catch (error) {
+    if (!isTauriRuntime()) {
+      throw error;
+    }
+    return getOfflineUsageRecords(params);
+  }
 }
 
 export async function getProviderPresets() {
