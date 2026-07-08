@@ -860,7 +860,7 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
       return response;
     }
 
-    if (route.provider.responses_api) {
+    if (route.provider.type === "openai-compatible") {
       let upstream: Response;
       try {
         upstream = await forwardOpenAICompatibleResponse(body, route.provider, route.providerName, route.upstreamModel);
@@ -912,6 +912,9 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
       }
 
       if (!upstream.ok) {
+        if (upstream.status === 404 || upstream.status === 405) {
+          await upstream.body?.cancel().catch(() => undefined);
+        } else {
         const upstreamError = await readUpstreamError(upstream);
         addLog({
           fallback_mode: "direct_responses",
@@ -932,100 +935,101 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
           ok: false
         });
         return reply.status(upstream.status).send(upstreamError);
-      }
-
-      if (stream) {
-        let streamUsage: TokenUsage = {};
-        try {
-          await sendOpenAICompatibleStream(upstream, reply, (data) => {
-            const nextUsage = extractResponsesUsage(data);
-            if (Object.values(nextUsage).some((value) => value !== undefined)) {
-              streamUsage = nextUsage;
-            }
-          });
-          addLog({
-            fallback_mode: "direct_responses",
-            resolved_alias: route.aliasName,
-            provider: route.providerName,
-            upstream_model: route.upstreamModel,
-            status_code: upstream.status,
-            ok: true
-          });
-          addUsage({
-            fallback_mode: "direct_responses",
-            resolved_alias: route.aliasName,
-            provider: route.providerName,
-            upstream_model: route.upstreamModel,
-            status_code: upstream.status,
-            ok: true
-          }, streamUsage);
-        } catch (error) {
-          addLog({
-            fallback_mode: "direct_responses",
-            resolved_alias: route.aliasName,
-            provider: route.providerName,
-            upstream_model: route.upstreamModel,
-            status_code: upstream.status || 502,
-            ok: false,
-            error_type: "stream_error",
-            error_message: truncate(getErrorMessage(error))
-          });
-          addUsage({
-            fallback_mode: "direct_responses",
-            resolved_alias: route.aliasName,
-            provider: route.providerName,
-            upstream_model: route.upstreamModel,
-            status_code: upstream.status || 502,
-            ok: false
-          }, streamUsage);
-          throw error;
         }
-        return;
-      }
+      } else {
+        if (stream) {
+          let streamUsage: TokenUsage = {};
+          try {
+            await sendOpenAICompatibleStream(upstream, reply, (data) => {
+              const nextUsage = extractResponsesUsage(data);
+              if (Object.values(nextUsage).some((value) => value !== undefined)) {
+                streamUsage = nextUsage;
+              }
+            });
+            addLog({
+              fallback_mode: "direct_responses",
+              resolved_alias: route.aliasName,
+              provider: route.providerName,
+              upstream_model: route.upstreamModel,
+              status_code: upstream.status,
+              ok: true
+            });
+            addUsage({
+              fallback_mode: "direct_responses",
+              resolved_alias: route.aliasName,
+              provider: route.providerName,
+              upstream_model: route.upstreamModel,
+              status_code: upstream.status,
+              ok: true
+            }, streamUsage);
+          } catch (error) {
+            addLog({
+              fallback_mode: "direct_responses",
+              resolved_alias: route.aliasName,
+              provider: route.providerName,
+              upstream_model: route.upstreamModel,
+              status_code: upstream.status || 502,
+              ok: false,
+              error_type: "stream_error",
+              error_message: truncate(getErrorMessage(error))
+            });
+            addUsage({
+              fallback_mode: "direct_responses",
+              resolved_alias: route.aliasName,
+              provider: route.providerName,
+              upstream_model: route.upstreamModel,
+              status_code: upstream.status || 502,
+              ok: false
+            }, streamUsage);
+            throw error;
+          }
+          return;
+        }
 
-      const json = await upstream.json().catch((error: unknown) => error);
-      if (json instanceof Error) {
+        const json = await upstream.json().catch((error: unknown) => error);
+        if (json instanceof Error) {
+          addLog({
+            fallback_mode: "direct_responses",
+            resolved_alias: route.aliasName,
+            provider: route.providerName,
+            upstream_model: route.upstreamModel,
+            status_code: 502,
+            ok: false,
+            error_type: "upstream_error",
+            error_message: truncate(`Upstream provider "${route.providerName}" returned invalid JSON: ${getErrorMessage(json)}`)
+          });
+          addUsage({
+            fallback_mode: "direct_responses",
+            resolved_alias: route.aliasName,
+            provider: route.providerName,
+            upstream_model: route.upstreamModel,
+            status_code: 502,
+            ok: false
+          });
+          return reply
+            .status(502)
+            .send(createOpenAICompatibleError(`Upstream provider "${route.providerName}" returned invalid JSON: ${getErrorMessage(json)}`, "upstream_error"));
+        }
+
         addLog({
           fallback_mode: "direct_responses",
           resolved_alias: route.aliasName,
           provider: route.providerName,
           upstream_model: route.upstreamModel,
-          status_code: 502,
-          ok: false,
-          error_type: "upstream_error",
-          error_message: truncate(`Upstream provider "${route.providerName}" returned invalid JSON: ${getErrorMessage(json)}`)
+          status_code: upstream.status,
+          ok: true,
+          response_chars: JSON.stringify(json).length
         });
         addUsage({
           fallback_mode: "direct_responses",
           resolved_alias: route.aliasName,
           provider: route.providerName,
           upstream_model: route.upstreamModel,
-          status_code: 502,
-          ok: false
-        });
-        return reply
-          .status(502)
-          .send(createOpenAICompatibleError(`Upstream provider "${route.providerName}" returned invalid JSON: ${getErrorMessage(json)}`, "upstream_error"));
+          status_code: upstream.status,
+          ok: true
+        }, extractResponsesUsage(json));
+        return reply.status(upstream.status).send(json);
       }
-
-      addLog({
-        fallback_mode: "direct_responses",
-        resolved_alias: route.aliasName,
-        provider: route.providerName,
-        upstream_model: route.upstreamModel,
-        status_code: upstream.status,
-        ok: true,
-        response_chars: JSON.stringify(json).length
-      });
-      addUsage({
-        fallback_mode: "direct_responses",
-        resolved_alias: route.aliasName,
-        provider: route.providerName,
-        upstream_model: route.upstreamModel,
-        status_code: upstream.status,
-        ok: true
-      }, extractResponsesUsage(json));
-      return reply.status(upstream.status).send(json);
     }
 
     const converted = responsesToChatCompletionBody(body, route.upstreamModel);

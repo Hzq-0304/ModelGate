@@ -1325,7 +1325,9 @@ export function App() {
       setStatus(nextStatus);
       setAliases(nextAliases);
       setConnection("connected");
-      setMessage(successMessage);
+      if (successMessage) {
+        setMessage(successMessage);
+      }
       await loadConfiguration().catch(() => undefined);
       await loadCcSwitchLink("codex").catch(() => undefined);
     } catch (error) {
@@ -1767,7 +1769,7 @@ export function App() {
     try {
       await ensureManagementBackend();
       await setRoutingEnabled(true);
-      await syncServerState(undefined, "Routing enabled");
+      await syncServerState(undefined, "");
     } catch (error) {
       setMessage(`Failed to enable routing: ${getErrorMessage(error)}`);
     } finally {
@@ -1781,7 +1783,7 @@ export function App() {
     try {
       await ensureManagementBackend();
       await setRoutingEnabled(false);
-      await syncServerState(undefined, "Routing disabled");
+      await syncServerState(undefined, "");
     } catch (error) {
       setMessage(`Failed to disable routing: ${getErrorMessage(error)}`);
     } finally {

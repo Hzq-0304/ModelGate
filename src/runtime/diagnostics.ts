@@ -131,7 +131,7 @@ function createFailureResult(
     target: target.target,
     api_type: apiType,
     fallback_mode: apiType === "responses"
-      ? target.provider.type === "openai-compatible" && target.provider.responses_api ? "direct_responses" : "responses_to_chat"
+      ? target.provider.type === "openai-compatible" ? "direct_responses" : "responses_to_chat"
       : undefined,
     provider: target.providerName,
     alias: target.aliasName,
@@ -170,7 +170,7 @@ async function runOpenAICompatibleTest(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const baseUrl = target.provider.base_url.replace(/\/+$/, "");
-  const directResponses = apiType === "responses" && Boolean(target.provider.responses_api);
+  const directResponses = apiType === "responses";
   const fallbackMode = apiType === "responses"
     ? directResponses ? "direct_responses" : "responses_to_chat"
     : undefined;

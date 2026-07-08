@@ -9,6 +9,7 @@ import { RuntimeState } from "../src/runtime/state.js";
 
 const previousOpenAiApiKey = process.env.OPENAI_API_KEY;
 const previousImportedToken = process.env.CCSWITCH_IMPORTED_TOKEN;
+const previousResponsesDirectToken = process.env.RESPONSES_DIRECT_TOKEN;
 delete process.env.OPENAI_API_KEY;
 
 const tempDir = mkdtempSync(join(tmpdir(), "modelgate-missing-env-"));
@@ -343,12 +344,102 @@ providers:
   }
 }
 
+async function testResponsesDirectForwardingByDefault() {
+  process.env.RESPONSES_DIRECT_TOKEN = "responses-token";
+  let seenPath = "";
+  let seenAuthorization = "";
+  let seenModel = "";
+  let sawResponsesOnlyField = false;
+
+  const upstream = createHttpServer((request, response) => {
+    seenPath = request.url ?? "";
+    seenAuthorization = request.headers.authorization ?? "";
+    let raw = "";
+    request.on("data", (chunk) => {
+      raw += String(chunk);
+    });
+    request.on("end", () => {
+      const body = JSON.parse(raw || "{}") as { model?: string; text?: unknown };
+      seenModel = body.model ?? "";
+      sawResponsesOnlyField = typeof body.text === "object" && body.text !== null;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        id: "resp-test",
+        object: "response",
+        created_at: Math.floor(Date.now() / 1000),
+        status: "completed",
+        model: seenModel,
+        output: [
+          {
+            id: "msg-test",
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "ok" }]
+          }
+        ],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+      }));
+    });
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+
+  try {
+    const address = upstream.address();
+    const upstreamPort = address && typeof address === "object" ? address.port : 0;
+    const configPath = join(tempDir, "responses-direct-default.yaml");
+    writeFileSync(configPath, `server:
+  host: 127.0.0.1
+  port: 11435
+
+active: codex-main
+
+aliases:
+  codex-main:
+    provider: relay
+    model: gpt-5.5
+
+providers:
+  relay:
+    type: openai-compatible
+    base_url: http://127.0.0.1:${upstreamPort}/v1
+    auth:
+      type: static-header-ref
+      header: Authorization
+      scheme: Bearer
+      value_env: RESPONSES_DIRECT_TOKEN
+`, "utf8");
+
+    await withModelGate(configPath, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "codex-main",
+          input: "hello",
+          text: { format: { type: "text" } },
+          max_output_tokens: 8
+        })
+      });
+      const json = await response.json() as { id?: string };
+      assert.equal(response.status, 200);
+      assert.equal(json.id, "resp-test");
+      assert.equal(seenPath, "/v1/responses");
+      assert.equal(seenAuthorization, "Bearer responses-token");
+      assert.equal(seenModel, "gpt-5.5");
+      assert.equal(sawResponsesOnlyField, true);
+    });
+  } finally {
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  }
+}
+
 try {
   await testLegacyMissingEnv();
   await testCcSwitchImportedReferenceDoesNotWarnAsOpenAiEnv();
   await testCcSwitchHardyAiReferenceDoesNotWarnAsHardyEnv();
   await testCcSwitchMissingCredentialWarningWithoutReference();
   await testImportedCredentialHeader();
+  await testResponsesDirectForwardingByDefault();
 
   console.log("startup/auth smoke tests passed");
 } finally {
@@ -361,6 +452,11 @@ try {
     delete process.env.CCSWITCH_IMPORTED_TOKEN;
   } else {
     process.env.CCSWITCH_IMPORTED_TOKEN = previousImportedToken;
+  }
+  if (previousResponsesDirectToken === undefined) {
+    delete process.env.RESPONSES_DIRECT_TOKEN;
+  } else {
+    process.env.RESPONSES_DIRECT_TOKEN = previousResponsesDirectToken;
   }
 
   rmSync(tempDir, { recursive: true, force: true });
