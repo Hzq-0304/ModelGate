@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BarChart3, Boxes, Gauge } from "lucide-react";
+import { BarChart3, Boxes, Gauge, Plus } from "lucide-react";
 import {
   type AliasesResponse,
   type CcSwitchImportCandidate,
@@ -10,9 +10,6 @@ import {
   type EditableConfig,
   type ProviderPreset,
   type ProviderConfig,
-  type RatioBindingItem,
-  type RatioCacheEntry,
-  type RatioGroup,
   type RatioSource,
   type RatioSourceAuth,
   type RatioSourceType,
@@ -30,7 +27,6 @@ import {
   getCcSwitchLink,
   getHealth,
   getProviderPresets,
-  getRatioBindings,
   getRatioSources,
   getRequestLogs,
   getRequestStats,
@@ -41,7 +37,6 @@ import {
   reloadConfig,
   restartServerProcess,
   saveAdminConfig,
-  saveRatioBindings,
   saveRatioCredential,
   saveRatioCredentialSecret,
   scanCcSwitchDatabase,
@@ -137,14 +132,6 @@ const ratioSourceStatusLabels = {
   warning: "ratio.status.warning",
   failed: "ratio.status.failed"
 } satisfies Record<RatioSource["status"], TranslationKey>;
-const ratioBindingStatusLabels = {
-  bound: "ratio.bindingStatus.bound",
-  unbound: "ratio.bindingStatus.unbound",
-  missing_source: "ratio.bindingStatus.missingSource",
-  missing_group: "ratio.bindingStatus.missingGroup",
-  missing_model_ratio: "ratio.bindingStatus.missingModelRatio",
-  unsupported: "ratio.bindingStatus.unsupported"
-} satisfies Record<RatioBindingItem["status"], TranslationKey>;
 const ratioSourceErrorLabels: Record<string, TranslationKey> = {
   unsupported_site: "ratio.error.unsupportedSite",
   authentication_required: "ratio.error.authRequired",
@@ -204,6 +191,13 @@ function formatTokenTotal(value: number | undefined) {
 
   const digits = scaled >= 100 || unitIndex === 0 ? 0 : scaled >= 10 ? 1 : 2;
   return `${scaled.toFixed(digits).replace(/\.0+$|(\.\d*[1-9])0+$/, "$1")}${units[unitIndex]}`;
+}
+
+function formatRatioValue(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) {
+    return "-";
+  }
+  return `${value.toFixed(4).replace(/\.?0+$/, "")}x`;
 }
 
 function isRoutingSection(section: ConfigSection): section is typeof routingSections[number] {
@@ -409,86 +403,6 @@ function metadataDisplayName(metadata: unknown) {
   return value.trim() ? value.trim() : undefined;
 }
 
-function findRatioModel(group: RatioGroup | undefined, model: string) {
-  if (!group) {
-    return undefined;
-  }
-  const exact = group.models.find((item) => item.model === model);
-  if (exact) {
-    return exact.ratio;
-  }
-  const lower = model.toLowerCase();
-  return group.models.find((item) => item.model.toLowerCase() === lower)?.ratio;
-}
-
-function buildOfflineRatioBindings(config: EditableConfig | null, ratioData: RatioSourcesResponse | null): RatioBindingItem[] {
-  if (!config) {
-    return [];
-  }
-
-  const sources = new Map((ratioData?.sources ?? []).map((source) => [source.id, source]));
-  const cache = ratioData?.cache ?? {};
-
-  return Object.entries(config.aliases).map(([aliasName, alias]) => {
-    const binding = alias.ratio_binding;
-    if (!binding) {
-      return {
-        alias: aliasName,
-        provider: alias.provider,
-        model: alias.model,
-        status: "unbound"
-      };
-    }
-
-    const source = sources.get(binding.source_id);
-    if (!source) {
-      return {
-        alias: aliasName,
-        provider: alias.provider,
-        model: alias.model,
-        binding: { sourceId: binding.source_id, groupId: binding.group_id },
-        status: "missing_source"
-      };
-    }
-
-    const group = cache[source.id]?.groups.find((candidate) => candidate.groupId === binding.group_id);
-    if (!group) {
-      return {
-        alias: aliasName,
-        provider: alias.provider,
-        model: alias.model,
-        binding: { sourceId: binding.source_id, groupId: binding.group_id },
-        sourceName: source.name,
-        status: "missing_group"
-      };
-    }
-
-    if (group.unsupportedReason === "no_model_ratio") {
-      return {
-        alias: aliasName,
-        provider: alias.provider,
-        model: alias.model,
-        binding: { sourceId: binding.source_id, groupId: binding.group_id },
-        sourceName: source.name,
-        groupName: group.name,
-        status: "unsupported"
-      };
-    }
-
-    const currentRatio = findRatioModel(group, alias.model);
-    return {
-      alias: aliasName,
-      provider: alias.provider,
-      model: alias.model,
-      binding: { sourceId: binding.source_id, groupId: binding.group_id },
-      currentRatio,
-      sourceName: source.name,
-      groupName: group.name,
-      status: currentRatio === undefined ? "missing_model_ratio" : "bound"
-    };
-  });
-}
-
 export function App() {
   const { language, setLanguage, t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>("switcher");
@@ -553,7 +467,6 @@ export function App() {
     use: "active"
   });
   const [ratioSources, setRatioSources] = useState<RatioSourcesResponse | null>(null);
-  const [ratioBindings, setRatioBindings] = useState<RatioBindingItem[]>([]);
   const [ratioMessage, setRatioMessage] = useState(t("ratio.notLoaded"));
   const [showRatioSourceForm, setShowRatioSourceForm] = useState(false);
   const [ratioSourceForm, setRatioSourceForm] = useState<{
@@ -872,18 +785,6 @@ export function App() {
   async function loadRatioMonitor() {
     const sourcesResult = await getRatioSources();
     setRatioSources(sourcesResult);
-
-    if (connection === "connected") {
-      try {
-        const bindingsResult = await getRatioBindings();
-        setRatioBindings(bindingsResult.bindings);
-      } catch {
-        setRatioBindings(buildOfflineRatioBindings(editableConfig, sourcesResult));
-      }
-    } else {
-      setRatioBindings(buildOfflineRatioBindings(editableConfig, sourcesResult));
-    }
-
     setRatioMessage(sourcesResult.offline ? t("ratio.loadedOffline") : t("ratio.loaded"));
     return sourcesResult;
   }
@@ -1081,39 +982,6 @@ export function App() {
       setRatioMessage(t("ratio.sourceDeleted"));
     } catch (error) {
       setRatioMessage(t("ratio.sourceDeleteFailed", { message: formatRatioActionError(error) }));
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
-  async function handleRatioBindingChange(aliasName: string, sourceId: string, groupId: string) {
-    if (!editableConfig) {
-      setRatioMessage(t("config.notLoaded"));
-      return;
-    }
-
-    const binding = sourceId && groupId ? { sourceId, groupId } : null;
-    setBusyAction(`ratio:binding:${aliasName}`);
-    try {
-      if (connection === "connected") {
-        const result = await saveRatioBindings({ [aliasName]: binding });
-        setRatioBindings(result.bindings);
-        await loadConfiguration().catch(() => undefined);
-      } else {
-        const nextAliases = { ...editableConfig.aliases };
-        const alias = nextAliases[aliasName];
-        if (alias) {
-          nextAliases[aliasName] = binding
-            ? { ...alias, ratio_binding: { source_id: binding.sourceId, group_id: binding.groupId } }
-            : { ...alias, ratio_binding: undefined };
-        }
-        const nextConfig = { ...editableConfig, aliases: nextAliases };
-        await persistConfigChange(nextConfig, t("ratio.bindingSaved"));
-        setRatioBindings(buildOfflineRatioBindings(nextConfig, ratioSources));
-      }
-      setRatioMessage(t("ratio.bindingSaved"));
-    } catch (error) {
-      setRatioMessage(t("ratio.bindingSaveFailed", { message: formatRatioActionError(error) }));
     } finally {
       setBusyAction(null);
     }
@@ -2699,7 +2567,6 @@ export function App() {
   function renderRatioMonitor() {
     const sourceList = ratioSources?.sources ?? [];
     const cacheEntries = ratioSources?.cache ?? {};
-    const sourceOptions = sourceList.filter((source) => source.enabled);
     const ratioBusy = busyAction?.startsWith("ratio:") ?? false;
     const ratioMessageBad = ratioMessage.includes("failed") || ratioMessage.includes("Failed") || ratioMessage.includes("失败");
 
@@ -2712,14 +2579,17 @@ export function App() {
               <p>{t("ratio.sourcesDescription")}</p>
             </div>
             <button
+              className="ccs-icon-button ratio-add-source-button"
               type="button"
               onClick={() => {
                 resetRatioSourceForm();
                 setShowRatioSourceForm(true);
               }}
               disabled={ratioBusy}
+              title={t("ratio.addSource")}
+              aria-label={t("ratio.addSource")}
             >
-              {t("ratio.addSource")}
+              <Plus className="ccs-icon" />
             </button>
           </header>
 
@@ -2731,22 +2601,43 @@ export function App() {
               </div>
             ) : sourceList.map((source) => {
               const groups = cacheEntries[source.id]?.groups ?? [];
-              const modelCount = groups.reduce((count, group) => count + group.models.length, 0);
+              const ratioGroups = groups.filter((group) => group.groupRatio !== undefined);
               const statusKey = ratioSourceStatusLabels[source.status];
               return (
-                <div className="ccs-setting-row ratio-source-row" key={source.id}>
-                  <div>
-                    <strong>{source.name}</strong>
-                    <span>{source.baseUrl} · {t(ratioSourceTypeLabels[source.type])}</span>
-                    <span>
-                      {t("ratio.groupCount", { count: groups.length })} · {t("ratio.modelCount", { count: modelCount })}
-                      {source.lastSuccessAt ? ` · ${t("ratio.lastSuccess")}: ${formatLogTime(source.lastSuccessAt)}` : ""}
-                      {source.nextRefreshAt ? ` · ${t("ratio.nextRefresh")}: ${formatLogTime(source.nextRefreshAt)}` : ""}
-                    </span>
+                <div className="ratio-source-card" key={source.id}>
+                  <div className="ratio-source-card-main">
+                    <div className="ratio-source-card-heading">
+                      <div>
+                        <strong>{source.name}</strong>
+                        <span>{source.baseUrl} · {t(ratioSourceTypeLabels[source.type])}</span>
+                      </div>
+                      <span className={`ccs-status-badge ratio-status-${source.status}`}>{t(statusKey)}</span>
+                    </div>
+                    <div className="ratio-source-meta">
+                      <span>{t("ratio.groupCount", { count: ratioGroups.length })}</span>
+                      {source.lastSuccessAt && <span>{t("ratio.lastSuccess")}: {formatLogTime(source.lastSuccessAt)}</span>}
+                      {source.nextRefreshAt && <span>{t("ratio.nextRefresh")}: {formatLogTime(source.nextRefreshAt)}</span>}
+                    </div>
+                    <div className="ratio-group-ratios" aria-label={t("ratio.groupRatios")}>
+                      {ratioGroups.length === 0 ? (
+                        <span className="ratio-group-empty">{t("ratio.noGroupRatios")}</span>
+                      ) : (
+                        <>
+                          {ratioGroups.slice(0, 10).map((group) => (
+                            <span className="ratio-group-chip" key={group.groupId} title={group.description ?? group.name}>
+                              <span>{group.name}</span>
+                              <strong>{formatRatioValue(group.groupRatio)}</strong>
+                            </span>
+                          ))}
+                          {ratioGroups.length > 10 && (
+                            <span className="ratio-group-chip muted">{t("ratio.moreGroups", { count: ratioGroups.length - 10 })}</span>
+                          )}
+                        </>
+                      )}
+                    </div>
                     {source.lastError && <span className="inline-error">{formatRatioSourceError(source)}</span>}
                   </div>
                   <div className="ratio-row-actions">
-                    <span className={`ccs-status-badge ratio-status-${source.status}`}>{t(statusKey)}</span>
                     <button className="secondary" type="button" onClick={() => void handleRefreshRatioSource(source.id)} disabled={ratioBusy}>
                       {busyAction === `ratio:refresh:${source.id}` ? t("common.refreshing") : t("common.refresh")}
                     </button>
@@ -2756,65 +2647,6 @@ export function App() {
                     <button className="secondary danger" type="button" onClick={() => void handleDeleteRatioSource(source.id)} disabled={ratioBusy}>
                       {t("common.delete")}
                     </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="ccs-settings-section ratio-monitor-section">
-          <header className="ccs-settings-section-header">
-            <h2>{t("ratio.bindings")}</h2>
-            <p>{t("ratio.bindingsDescription")}</p>
-          </header>
-          <div className="ratio-binding-list">
-            {ratioBindings.length === 0 ? (
-              <div className="empty-state">
-                <strong>{t("ratio.noBindings")}</strong>
-                <span>{t("ratio.noBindingsHint")}</span>
-              </div>
-            ) : ratioBindings.map((binding) => {
-              const selectedSourceId = binding.binding?.sourceId ?? "";
-              const selectedGroupId = binding.binding?.groupId ?? "";
-              const groups = selectedSourceId ? cacheEntries[selectedSourceId]?.groups ?? [] : [];
-              const currentRatio = binding.currentRatio === undefined ? t(ratioBindingStatusLabels[binding.status]) : `${binding.currentRatio}x`;
-              return (
-                <div className="ccs-setting-row ratio-binding-row" key={binding.alias}>
-                  <div>
-                    <strong>{binding.alias}</strong>
-                    <span>{binding.provider} · {binding.model}</span>
-                    <span>{t("ratio.currentRatio")}: {currentRatio}</span>
-                  </div>
-                  <div className="ratio-binding-controls">
-                    <select
-                      aria-label={t("ratio.source")}
-                      value={selectedSourceId}
-                      onChange={(event) => {
-                        const nextSourceId = event.target.value;
-                        const nextGroups = nextSourceId ? cacheEntries[nextSourceId]?.groups ?? [] : [];
-                        void handleRatioBindingChange(binding.alias, nextSourceId, nextGroups[0]?.groupId ?? "");
-                      }}
-                      disabled={ratioBusy || !editableConfig}
-                    >
-                      <option value="">{t("ratio.unbound")}</option>
-                      {sourceOptions.map((source) => (
-                        <option key={source.id} value={source.id}>{source.name}</option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label={t("ratio.group")}
-                      value={selectedGroupId}
-                      onChange={(event) => void handleRatioBindingChange(binding.alias, selectedSourceId, event.target.value)}
-                      disabled={ratioBusy || !editableConfig || !selectedSourceId}
-                    >
-                      <option value="">{t("ratio.group")}</option>
-                      {groups.map((group) => (
-                        <option key={group.groupId} value={group.groupId}>
-                          {group.name} ({group.models.length})
-                        </option>
-                      ))}
-                    </select>
                   </div>
                 </div>
               );

@@ -264,9 +264,10 @@ providers:
       type: "sub2api"
     });
     const sub2Source = await manager.refreshSource(sub2.id);
-    assert.equal(sub2Source.status, "warning");
-    assert.equal(sub2Source.lastErrorCode, "no_model_ratio");
+    assert.equal(sub2Source.status, "ok");
+    assert.equal(sub2Source.lastErrorCode, undefined);
     assert.equal(manager.getGroups(sub2.id)[1]?.description, "VIP Sub2API group");
+    assert.equal(manager.getGroups(sub2.id)[1]?.groupRatio, 0.7);
     assert.equal(manager.getGroups(sub2.id)[1]?.models.length, 0);
 
     const sub2Auth = manager.createSource({

@@ -1008,6 +1008,13 @@ code {
   justify-content: space-between;
 }
 
+.ratio-add-source-button {
+  background: #ffffff;
+  border: 1px solid #d0d5dd;
+  color: #344054;
+  flex: 0 0 auto;
+}
+
 .ratio-source-form {
   display: grid;
   gap: 18px 14px;
@@ -1107,8 +1114,7 @@ code {
 }
 
 .ratio-form-actions,
-.ratio-row-actions,
-.ratio-binding-controls {
+.ratio-row-actions {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
@@ -1116,24 +1122,113 @@ code {
   justify-content: flex-end;
 }
 
-.ratio-source-list,
-.ratio-binding-list {
-  border-top: 1px solid #e5e7eb;
+.ratio-source-list {
   display: grid;
-  gap: 0;
+  gap: 10px;
 }
 
-.ratio-source-row,
-.ratio-binding-row {
-  align-items: center;
+.ratio-source-card {
+  align-items: flex-start;
+  background: #ffffff;
+  border: 1px solid #e4e9f2;
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 14px;
 }
 
-.ratio-source-row .inline-error {
+.ratio-source-card-main {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ratio-source-card-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.ratio-source-card-heading > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ratio-source-card-heading strong {
+  color: #101828;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.ratio-source-card-heading span:not(.ccs-status-badge),
+.ratio-source-meta {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ratio-source-card-heading span:not(.ccs-status-badge) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ratio-source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.ratio-group-ratios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ratio-source-card .inline-error {
   color: #b42318;
+  font-size: 12px;
 }
 
-.ratio-binding-controls select {
-  min-width: 168px;
+.ratio-group-chip {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e4e9f2;
+  border-radius: 6px;
+  color: #344054;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 6px;
+  line-height: 1;
+  max-width: 220px;
+  min-height: 28px;
+  padding: 0 9px;
+}
+
+.ratio-group-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ratio-group-chip strong {
+  color: #101828;
+  font-weight: 700;
+}
+
+.ratio-group-chip.muted,
+.ratio-group-empty {
+  color: #667085;
+}
+
+.ratio-group-empty {
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .ratio-status-ok {

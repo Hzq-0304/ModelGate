@@ -338,7 +338,7 @@ export class RatioSourceManager {
         };
       }
 
-      if (group.unsupportedReason === "no_model_ratio") {
+      if (group.unsupportedReason === "no_model_ratio" && group.groupRatio === undefined) {
         return {
           alias: aliasName,
           provider: alias.provider,
@@ -353,7 +353,7 @@ export class RatioSourceManager {
         };
       }
 
-      const currentRatio = findModelRatio(group.models, alias.model);
+      const currentRatio = group.groupRatio ?? findModelRatio(group.models, alias.model);
       return {
         alias: aliasName,
         provider: alias.provider,

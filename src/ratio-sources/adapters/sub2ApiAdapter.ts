@@ -61,8 +61,7 @@ function parseSub2ApiGroups(source: RatioSource, json: unknown): RatioGroup[] {
       description: stringValue(row.description) ?? stringValue(row.platform) ?? stringValue(row.subscription_type),
       sourceOrder: numberValue(row.sort_order) ?? index,
       groupRatio,
-      models: [],
-      unsupportedReason: "no_model_ratio" as const
+      models: []
     };
   });
 }
@@ -113,9 +112,7 @@ async function fetchSub2Groups(source: RatioSource, context?: RatioFetchContext)
         return {
           groups,
           etag: response.headers.get("etag") ?? undefined,
-          lastModified: response.headers.get("last-modified") ?? undefined,
-          warning: "Sub2API exposes group rate_multiplier, but no group -> model -> ratio map was found.",
-          warningCode: "no_model_ratio"
+          lastModified: response.headers.get("last-modified") ?? undefined
         };
       }
       lastError = new RatioSourceError("invalid_response", "Sub2API groups endpoint returned no groups.");
@@ -133,7 +130,7 @@ async function fetchSub2Groups(source: RatioSource, context?: RatioFetchContext)
   if (lastError instanceof RatioSourceError) {
     throw lastError;
   }
-  throw new RatioSourceError("no_model_ratio", "Sub2API did not expose model ratio data.");
+  throw new RatioSourceError("no_model_ratio", "Sub2API did not expose group ratio data.");
 }
 
 export const sub2ApiAdapter: RatioSourceAdapter = {
