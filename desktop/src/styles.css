@@ -1010,9 +1010,9 @@ code {
 
 .ratio-source-form {
   display: grid;
-  gap: 16px 12px;
+  gap: 18px 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding-top: 4px;
+  padding-top: 8px;
 }
 
 .ratio-source-form label {
@@ -1034,12 +1034,17 @@ code {
 }
 
 .ratio-source-modal {
-  max-width: 760px;
-  width: min(760px, calc(100vw - 32px));
+  display: grid;
+  gap: 18px;
+  max-height: min(820px, calc(100vh - 48px));
+  max-width: 860px;
+  overflow: auto;
+  padding: 24px 28px 22px;
+  width: min(860px, calc(100vw - 40px));
 }
 
 .ratio-source-modal .ccs-modal-header {
-  margin-bottom: 6px;
+  margin-bottom: 2px;
 }
 
 .ratio-credential-panel {

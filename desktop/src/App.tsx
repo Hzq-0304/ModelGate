@@ -43,6 +43,7 @@ import {
   saveAdminConfig,
   saveRatioBindings,
   saveRatioCredential,
+  saveRatioCredentialSecret,
   scanCcSwitchDatabase,
   selectAndScanCcSwitchDatabase,
   setRoutingEnabled,
@@ -231,6 +232,17 @@ function normalizeConfigKey(value: string, fallback = "ccswitch-provider") {
     .replace(/^-|-$/g, "");
 
   return normalized || fallback;
+}
+
+function ratioCredentialEnvName(name: string, baseUrl: string, fallbackId = "") {
+  const source = name.trim() || baseUrl.trim() || fallbackId || "ratio-source";
+  const slug = source
+    .replace(/^https?:\/\//i, "")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .toUpperCase();
+  return `MODELGATE_RATIO_${slug || "SOURCE"}_TOKEN`;
 }
 
 function isPlaceholderValue(value: string) {
@@ -916,13 +928,15 @@ export function App() {
   }
 
   function ratioFormAuth(): RatioSourceAuth {
+    const tokenEnv = ratioSourceForm.tokenEnv.trim()
+      || ratioCredentialEnvName(ratioSourceForm.name, ratioSourceForm.baseUrl, ratioSourceForm.editingId);
     if (ratioSourceForm.authType === "bearer") {
-      return { type: "bearer", token_env: ratioSourceForm.tokenEnv.trim() };
+      return { type: "bearer", token_env: tokenEnv };
     }
     if (ratioSourceForm.authType === "api-token") {
       return {
         type: "api-token",
-        token_env: ratioSourceForm.tokenEnv.trim(),
+        token_env: tokenEnv,
         header: ratioSourceForm.header.trim() || "Authorization",
         scheme: ratioSourceForm.scheme.trim()
       };
@@ -944,14 +958,20 @@ export function App() {
       return;
     }
 
-    await saveRatioCredential({
+    const tokenEnv = ratioSourceForm.tokenEnv.trim()
+      || ratioCredentialEnvName(ratioSourceForm.name, ratioSourceForm.baseUrl, ratioSourceForm.editingId);
+    const result = await saveRatioCredential({
       baseUrl: ratioSourceForm.baseUrl,
-      tokenEnv: ratioSourceForm.tokenEnv,
+      tokenEnv,
       mode: ratioSourceForm.credentialMode,
       cookie: ratioSourceForm.credentialMode === "cookie" ? ratioSourceForm.credentialCookie : undefined,
       email: ratioSourceForm.credentialMode === "password" ? ratioSourceForm.credentialEmail : undefined,
-      password: ratioSourceForm.credentialMode === "password" ? ratioSourceForm.credentialPassword : undefined
+      password: ratioSourceForm.credentialMode === "password" ? ratioSourceForm.credentialPassword : undefined,
+      returnToken: true
     });
+    if (result.token) {
+      await saveRatioCredentialSecret(result.tokenEnv, result.token);
+    }
   }
 
   function formatRatioSourceError(source: RatioSource) {
@@ -2846,15 +2866,6 @@ export function App() {
                     <option value="bearer">{t("ratio.authBearer")}</option>
                     <option value="api-token">{t("ratio.authApiToken")}</option>
                   </select>
-                </label>
-                <label>
-                  {t("ratio.tokenEnv")}
-                  <input
-                    disabled={ratioSourceForm.authType === "none"}
-                    placeholder="HARDYAI_RATIO_TOKEN"
-                    value={ratioSourceForm.tokenEnv}
-                    onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, tokenEnv: event.target.value })}
-                  />
                 </label>
                 {ratioSourceForm.authType === "bearer" && (
                   <div className="ratio-credential-panel">

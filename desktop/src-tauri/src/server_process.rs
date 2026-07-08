@@ -11,6 +11,8 @@ use std::{
 };
 use tauri::{AppHandle, Manager, State};
 
+use crate::credential_store;
+
 const ENDPOINT: &str = "http://127.0.0.1:11435";
 const HOST: &str = "127.0.0.1:11435";
 const SERVER_RESOURCE_DIR: &str = "modelgate-server";
@@ -738,7 +740,11 @@ fn begin_start(
         .env("MODEL_GATE_CONFIG_DIR", &config_dir)
         .env("MODELGATE_SNAPSHOT_DIR", &config_dir)
         .env("MODEL_GATE_SNAPSHOT_DIR", &config_dir)
-        .env("MODELGATE_ROUTING_ENABLED", "false")
+        .env("MODELGATE_ROUTING_ENABLED", "false");
+    for (env_name, secret) in credential_store::saved_ratio_credentials(app) {
+        command.env(env_name, secret);
+    }
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());

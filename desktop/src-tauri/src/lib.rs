@@ -1,5 +1,6 @@
 mod ccswitch_import;
 mod ccswitch_export;
+mod credential_store;
 mod offline_config;
 mod server_process;
 
@@ -15,6 +16,7 @@ pub fn run() {
             ccswitch_import::scan_ccswitch_database,
             ccswitch_import::scan_selected_ccswitch_database,
             ccswitch_export::open_ccswitch_deep_link,
+            credential_store::save_ratio_credential_secret,
             offline_config::get_modelgate_config_path,
             offline_config::read_modelgate_config,
             offline_config::read_ratio_data,

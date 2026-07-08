@@ -1499,13 +1499,25 @@ export async function saveRatioCredential(credential: {
   cookie?: string;
   email?: string;
   password?: string;
+  returnToken?: boolean;
 }) {
   const response = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(credential)
   });
-  return parseJson<{ ok: boolean; tokenEnv: string }>(response);
+  return parseJson<{ ok: boolean; tokenEnv: string; token?: string }>(response);
+}
+
+export async function saveRatioCredentialSecret(envName: string, secret: string) {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  await invoke<void>("save_ratio_credential_secret", {
+    envName,
+    secret
+  });
 }
 
 export async function updateRatioSource(id: string, patch: Partial<RatioSource>) {

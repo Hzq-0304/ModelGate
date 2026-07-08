@@ -10,6 +10,7 @@ import {
 import { providerPresets } from "../config/providerPresets.js";
 import { createCcSwitchProviderLink, isCcSwitchApp } from "../integrations/ccswitchLink.js";
 import { createOpenAICompatibleError } from "../providers/openaiCompatible.js";
+import { normalizeBaseUrl } from "../ratio-sources/normalize/normalizeBaseUrl.js";
 import { RatioSourceError, type RatioBinding, type RatioSourceAuth, type RatioSourceType } from "../ratio-sources/types.js";
 import { addDiagnosticLog, testActiveAlias, testAlias, testProvider } from "../runtime/diagnostics.js";
 import type { RuntimeState } from "../runtime/state.js";
@@ -48,6 +49,8 @@ type RatioCredentialBody = {
   cookie?: string;
   email?: string;
   password?: string;
+  returnToken?: boolean;
+  return_token?: boolean;
 };
 
 type RatioSourceParams = {
@@ -98,11 +101,7 @@ type UsageRecordsQuery = {
 const ratioCredentialEnvPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function normalizeRatioCredentialBaseUrl(value: string) {
-  const url = new URL(value.trim());
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new RatioSourceError("unsupported_site", "Ratio source URL must use http or https.");
-  }
-  return url.toString().replace(/\/+$/, "");
+  return normalizeBaseUrl(value);
 }
 
 function tokenFromCookieLike(value: string) {
@@ -201,7 +200,10 @@ async function resolveRatioCredential(body: RatioCredentialBody) {
   }
 
   process.env[tokenEnv] = token;
-  return { tokenEnv };
+  return {
+    tokenEnv,
+    token: body.returnToken || body.return_token ? token : undefined
+  };
 }
 
 type CcSwitchLinkQuery = {
