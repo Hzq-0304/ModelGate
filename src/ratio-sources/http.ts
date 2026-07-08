@@ -3,6 +3,7 @@ import { RatioSourceError, type RatioSource, type RatioSourceAuth } from "./type
 const maxBodyBytes = 10 * 1024 * 1024;
 const requestTimeoutMs = 10_000;
 const maxRedirects = 3;
+export const cookieSecretPrefix = "cookie:";
 
 function credentialFromEnv(auth: RatioSourceAuth | undefined): Record<string, string> {
   if (!auth || auth.type === "none") {
@@ -12,6 +13,12 @@ function credentialFromEnv(auth: RatioSourceAuth | undefined): Record<string, st
   const value = process.env[auth.token_env];
   if (!value) {
     throw new RatioSourceError("authentication_required", `Missing ratio source credential environment variable ${auth.token_env}.`);
+  }
+
+  if (value.startsWith(cookieSecretPrefix)) {
+    return {
+      Cookie: value.slice(cookieSecretPrefix.length).trim()
+    };
   }
 
   if (auth.type === "bearer") {

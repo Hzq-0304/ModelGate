@@ -1,6 +1,6 @@
 {
   "name": "modelgate",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Local OpenAI-compatible model request router and provider hot-switch gateway.",
   "type": "module",
   "private": false,

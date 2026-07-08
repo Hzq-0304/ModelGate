@@ -877,6 +877,7 @@ export function App() {
       || ratioCredentialEnvName(ratioSourceForm.name, ratioSourceForm.baseUrl, ratioSourceForm.editingId);
     const result = await saveRatioCredential({
       baseUrl: ratioSourceForm.baseUrl,
+      type: ratioSourceForm.type,
       tokenEnv,
       mode: ratioSourceForm.credentialMode,
       cookie: ratioSourceForm.credentialMode === "cookie" ? ratioSourceForm.credentialCookie : undefined,

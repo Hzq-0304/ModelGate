@@ -31,6 +31,7 @@ function wait(ms: number) {
 function route(request: IncomingMessage, response: ServerResponse) {
   const url = new URL(request.url ?? "/", "http://fixture.local");
   const auth = request.headers.authorization ?? "";
+  const cookie = request.headers.cookie ?? "";
 
   if (url.pathname === "/new/api/ratio_config") {
     json(response, 403, { success: false, message: "ratio config disabled" });
@@ -65,6 +66,41 @@ function route(request: IncomingMessage, response: ServerResponse) {
     return;
   }
 
+  if (url.pathname === "/new-secure/api/user/login") {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    request.on("end", () => {
+      const login = JSON.parse(body || "{}") as { username?: string; email?: string; password?: string };
+      if ((login.username === "admin@example.com" || login.email === "admin@example.com") && login.password === "correct-password") {
+        response.writeHead(200, {
+          "content-type": "application/json",
+          "set-cookie": "session=new-secure-session; Path=/; HttpOnly"
+        });
+        response.end(JSON.stringify({ success: true, data: { username: "admin@example.com" } }));
+        return;
+      }
+      json(response, 200, { success: false, message: "unauthorized" });
+    });
+    return;
+  }
+  if (url.pathname === "/new-secure/api/ratio_config" || url.pathname === "/new-secure/api/pricing") {
+    if (!cookie.includes("session=new-secure-session")) {
+      json(response, 401, { success: false, message: "unauthorized" });
+      return;
+    }
+    json(response, 200, {
+      success: true,
+      data: [
+        { model_name: "gpt-secure", quota_type: 0, model_ratio: 1.25, enable_groups: ["default"] }
+      ],
+      group_ratio: { default: 1 },
+      usable_group: { default: "Secure New API group" }
+    });
+    return;
+  }
+
   if (url.pathname === "/one/api/option/") {
     if (auth !== "Bearer one-api-token") {
       json(response, 401, { success: false, message: "unauthorized" });
@@ -75,6 +111,40 @@ function route(request: IncomingMessage, response: ServerResponse) {
       data: [
         { key: "ModelRatio", value: JSON.stringify({ "gpt-5.5": 1.5, "claude-opus-4-1": 3 }) },
         { key: "GroupRatio", value: JSON.stringify({ default: 1, vip: 0.5 }) }
+      ]
+    });
+    return;
+  }
+
+  if (url.pathname === "/one-secure/api/user/login") {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    request.on("end", () => {
+      const login = JSON.parse(body || "{}") as { username?: string; email?: string; password?: string };
+      if ((login.username === "admin@example.com" || login.email === "admin@example.com") && login.password === "correct-password") {
+        response.writeHead(200, {
+          "content-type": "application/json",
+          "set-cookie": "session=one-secure-session; Path=/; HttpOnly"
+        });
+        response.end(JSON.stringify({ success: true, data: { username: "admin@example.com" } }));
+        return;
+      }
+      json(response, 200, { success: false, message: "unauthorized" });
+    });
+    return;
+  }
+  if (url.pathname === "/one-secure/api/option/") {
+    if (!cookie.includes("session=one-secure-session")) {
+      json(response, 401, { success: false, message: "unauthorized" });
+      return;
+    }
+    json(response, 200, {
+      success: true,
+      data: [
+        { key: "ModelRatio", value: JSON.stringify({ "gpt-secure-one": 1.75 }) },
+        { key: "GroupRatio", value: JSON.stringify({ default: 1 }) }
       ]
     });
     return;
@@ -392,6 +462,76 @@ providers:
       const passwordCredential = await passwordCredentialResponse.json() as { tokenEnv: string; token?: string };
       assert.equal(passwordCredential.tokenEnv, "SUB2_SECURE_RATIO_TOKEN");
       assert.equal(passwordCredential.token, "sub2-secure-token");
+
+      const newApiCredentialResponse = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: `${fixture.baseUrl}/new-secure`,
+          type: "new-api",
+          tokenEnv: "NEW_API_SECURE_RATIO_TOKEN",
+          mode: "password",
+          email: "admin@example.com",
+          password: "correct-password",
+          returnToken: true
+        })
+      });
+      assert.equal(newApiCredentialResponse.status, 200);
+      const newApiCredential = await newApiCredentialResponse.json() as { tokenEnv: string; token?: string };
+      assert.equal(newApiCredential.tokenEnv, "NEW_API_SECURE_RATIO_TOKEN");
+      assert.match(newApiCredential.token ?? "", /^cookie:/);
+
+      const newApiSecureCreateResponse = await fetch(`${baseUrl}/admin/ratio-sources`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Secure New API",
+          baseUrl: `${fixture.baseUrl}/new-secure`,
+          type: "new-api",
+          auth: { type: "bearer", token_env: "NEW_API_SECURE_RATIO_TOKEN" }
+        })
+      });
+      assert.equal(newApiSecureCreateResponse.status, 201);
+      const newApiSecureCreated = await newApiSecureCreateResponse.json() as { source: { id: string } };
+      const newApiSecureRefreshResponse = await fetch(`${baseUrl}/admin/ratio-sources/${newApiSecureCreated.source.id}/refresh`, {
+        method: "POST"
+      });
+      assert.equal(newApiSecureRefreshResponse.status, 200);
+
+      const oneApiCredentialResponse = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: `${fixture.baseUrl}/one-secure`,
+          type: "one-api",
+          tokenEnv: "ONE_API_SECURE_RATIO_TOKEN",
+          mode: "password",
+          email: "admin@example.com",
+          password: "correct-password",
+          returnToken: true
+        })
+      });
+      assert.equal(oneApiCredentialResponse.status, 200);
+      const oneApiCredential = await oneApiCredentialResponse.json() as { tokenEnv: string; token?: string };
+      assert.equal(oneApiCredential.tokenEnv, "ONE_API_SECURE_RATIO_TOKEN");
+      assert.match(oneApiCredential.token ?? "", /^cookie:/);
+
+      const oneApiSecureCreateResponse = await fetch(`${baseUrl}/admin/ratio-sources`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Secure One API",
+          baseUrl: `${fixture.baseUrl}/one-secure`,
+          type: "one-api",
+          auth: { type: "bearer", token_env: "ONE_API_SECURE_RATIO_TOKEN" }
+        })
+      });
+      assert.equal(oneApiSecureCreateResponse.status, 201);
+      const oneApiSecureCreated = await oneApiSecureCreateResponse.json() as { source: { id: string } };
+      const oneApiSecureRefreshResponse = await fetch(`${baseUrl}/admin/ratio-sources/${oneApiSecureCreated.source.id}/refresh`, {
+        method: "POST"
+      });
+      assert.equal(oneApiSecureRefreshResponse.status, 200);
 
       const networkCredentialResponse = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
         method: "POST",

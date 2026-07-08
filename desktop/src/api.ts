@@ -1494,6 +1494,7 @@ export async function createRatioSource(source: {
 
 export async function saveRatioCredential(credential: {
   baseUrl: string;
+  type?: RatioSourceType;
   tokenEnv: string;
   mode: "cookie" | "password";
   cookie?: string;

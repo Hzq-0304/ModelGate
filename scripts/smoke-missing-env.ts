@@ -89,6 +89,18 @@ providers:
     const responsesJson = await responsesResponse.json();
     assert.equal(responsesResponse.status, 400);
     assert.equal(responsesJson.error.type, "missing_environment_variable");
+
+    const largeResponsesResponse = await fetch(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "codex-main",
+        input: "x".repeat(2 * 1024 * 1024)
+      })
+    });
+    const largeResponsesJson = await largeResponsesResponse.json();
+    assert.equal(largeResponsesResponse.status, 400);
+    assert.equal(largeResponsesJson.error.type, "missing_environment_variable");
   });
 }
 

@@ -10,6 +10,7 @@ import {
 import { providerPresets } from "../config/providerPresets.js";
 import { createCcSwitchProviderLink, isCcSwitchApp } from "../integrations/ccswitchLink.js";
 import { createOpenAICompatibleError } from "../providers/openaiCompatible.js";
+import { cookieSecretPrefix } from "../ratio-sources/http.js";
 import { normalizeBaseUrl } from "../ratio-sources/normalize/normalizeBaseUrl.js";
 import { RatioSourceError, type RatioBinding, type RatioSourceAuth, type RatioSourceType } from "../ratio-sources/types.js";
 import { addDiagnosticLog, testActiveAlias, testAlias, testProvider } from "../runtime/diagnostics.js";
@@ -43,6 +44,7 @@ type RatioSourceBody = {
 type RatioCredentialBody = {
   baseUrl?: string;
   base_url?: string;
+  type?: RatioSourceType;
   tokenEnv?: string;
   token_env?: string;
   mode?: "cookie" | "password";
@@ -123,6 +125,25 @@ function tokenFromCookieLike(value: string) {
   return jwt?.[0] ?? "";
 }
 
+function cookieSecretFromCookieLike(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || !trimmed.includes("=")) {
+    return "";
+  }
+
+  const cookieLines = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^cookie\s*:\s*/i, "").trim())
+    .filter((line) => line.includes("="));
+  if (cookieLines.length > 0) {
+    return `${cookieSecretPrefix}${cookieLines.join("; ")}`;
+  }
+
+  return `${cookieSecretPrefix}${trimmed}`;
+}
+
 function jsonRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
 }
@@ -143,54 +164,112 @@ function authTokenFromLoginResponse(json: unknown) {
     || stringField(data, "token");
 }
 
-async function loginSub2ApiCredential(baseUrl: string, email: string, password: string) {
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl}/api/v1/auth/login`, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({ email, password })
-    });
-  } catch (error) {
-    const cause = error instanceof Error && "cause" in error ? error.cause : undefined;
-    const causeMessage = cause instanceof Error ? cause.message : "";
-    const message = causeMessage || (error instanceof Error ? error.message : String(error));
-    throw new RatioSourceError(
-      "network_error",
-      `Network request failed while signing in to Sub2API. Check the site URL and DNS/network connection.${message ? ` Detail: ${message}` : ""}`
-    );
-  }
-  const text = await response.text();
-  let json: unknown = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = null;
+function cookieSecretFromLoginHeaders(headers: Headers) {
+  const typedHeaders = headers as Headers & { getSetCookie?: () => string[] };
+  const rawCookies = typedHeaders.getSetCookie?.() ?? (headers.get("set-cookie") ? [headers.get("set-cookie") ?? ""] : []);
+  const cookies = rawCookies
+    .flatMap((cookie) => cookie.split(/,(?=\s*[^;,=\s]+=[^;,]+)/))
+    .map((cookie) => cookie.split(";")[0]?.trim() ?? "")
+    .filter((cookie) => cookie.includes("="));
+  return cookies.length > 0 ? `${cookieSecretPrefix}${cookies.join("; ")}` : "";
+}
+
+function loginTargetsForType(type: RatioSourceType) {
+  if (type === "sub2api") {
+    return [
+      {
+        label: "Sub2API",
+        path: "/api/v1/auth/login",
+        body: (email: string, password: string) => ({ email, password })
+      }
+    ];
   }
 
-  if (!response.ok) {
-    throw new RatioSourceError("authentication_failed", "Sub2API login rejected the supplied account credential.", response.status);
+  return [
+    {
+      label: type === "one-api" ? "One API" : "New API",
+      path: "/api/user/login",
+      body: (email: string, password: string) => ({ username: email, email, password })
+    },
+    {
+      label: "Sub2API-compatible",
+      path: "/api/v1/auth/login",
+      body: (email: string, password: string) => ({ email, password })
+    }
+  ];
+}
+
+async function loginRatioCredential(baseUrl: string, type: RatioSourceType, email: string, password: string) {
+  let lastError: RatioSourceError | undefined;
+  for (const target of loginTargetsForType(type)) {
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}${target.path}`, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(target.body(email, password))
+      });
+    } catch (error) {
+      const cause = error instanceof Error && "cause" in error ? error.cause : undefined;
+      const causeMessage = cause instanceof Error ? cause.message : "";
+      const message = causeMessage || (error instanceof Error ? error.message : String(error));
+      throw new RatioSourceError(
+        "network_error",
+        `Network request failed while signing in to ${target.label}. Check the site URL and DNS/network connection.${message ? ` Detail: ${message}` : ""}`
+      );
+    }
+
+    const text = await response.text();
+    let json: unknown = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = null;
+    }
+
+    if (response.status === 404) {
+      lastError = new RatioSourceError("endpoint_not_found", `${target.label} login endpoint was not found.`, response.status);
+      continue;
+    }
+
+    const root = jsonRecord(json);
+    const data = jsonRecord(root.data);
+    const message = stringField(root, "message") || stringField(data, "message");
+    if (!response.ok || root.success === false) {
+      throw new RatioSourceError(
+        "authentication_failed",
+        message || `${target.label} login rejected the supplied account credential.`,
+        response.status
+      );
+    }
+
+    if (root.requires_2fa === true || data.requires_2fa === true || root.mfa === true || data.mfa === true) {
+      throw new RatioSourceError("authentication_required", `${target.label} login requires two-factor authentication. Paste a browser login cookie instead.`);
+    }
+
+    const token = authTokenFromLoginResponse(json);
+    if (token) {
+      return token;
+    }
+
+    const cookieSecret = cookieSecretFromLoginHeaders(response.headers);
+    if (cookieSecret) {
+      return cookieSecret;
+    }
+
+    lastError = new RatioSourceError("invalid_response", `${target.label} login did not return an access token or session cookie.`);
   }
 
-  const root = jsonRecord(json);
-  const data = jsonRecord(root.data);
-  if (root.requires_2fa === true || data.requires_2fa === true) {
-    throw new RatioSourceError("authentication_required", "Sub2API login requires two-factor authentication. Paste a browser login token instead.");
-  }
-
-  const token = authTokenFromLoginResponse(json);
-  if (!token) {
-    throw new RatioSourceError("invalid_response", "Sub2API login did not return an access token.");
-  }
-  return token;
+  throw lastError ?? new RatioSourceError("endpoint_not_found", "No compatible login endpoint was found for this ratio source.");
 }
 
 async function resolveRatioCredential(body: RatioCredentialBody) {
   const baseUrl = normalizeRatioCredentialBaseUrl(String(body.baseUrl ?? body.base_url ?? ""));
   const tokenEnv = String(body.tokenEnv ?? body.token_env ?? "").trim();
+  const sourceType = body.type ?? "sub2api";
   if (!ratioCredentialEnvPattern.test(tokenEnv)) {
     throw new RatioSourceError("authentication_required", "Ratio credential requires a valid environment variable name.");
   }
@@ -200,13 +279,13 @@ async function resolveRatioCredential(body: RatioCredentialBody) {
     const email = body.email?.trim() ?? "";
     const password = body.password ?? "";
     if (!email || !password) {
-      throw new RatioSourceError("authentication_required", "Sub2API account and password are required.");
+      throw new RatioSourceError("authentication_required", "Ratio source account and password are required.");
     }
-    token = await loginSub2ApiCredential(baseUrl, email, password);
+    token = await loginRatioCredential(baseUrl, sourceType, email, password);
   } else {
-    token = tokenFromCookieLike(body.cookie ?? "");
+    token = tokenFromCookieLike(body.cookie ?? "") || cookieSecretFromCookieLike(body.cookie ?? "");
     if (!token) {
-      throw new RatioSourceError("authentication_required", "Paste auth_token, a Bearer token, or a cookie containing auth_token.");
+      throw new RatioSourceError("authentication_required", "Paste auth_token, a Bearer token, or a browser login cookie.");
     }
   }
 
