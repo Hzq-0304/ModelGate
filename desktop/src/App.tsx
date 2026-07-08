@@ -2830,11 +2830,11 @@ export function App() {
   const serverLifecycle = backendLifecycle === "starting" || backendLifecycle === "stopping"
     ? backendLifecycle
     : routingEnabled
-      ? backendLifecycle
+      ? "running"
       : "stopped";
   const isServerStarting = serverLifecycle === "starting";
   const isServerStopping = serverLifecycle === "stopping";
-  const serverRunning = serverLifecycle === "running" || serverLifecycle === "external-running";
+  const serverRunning = serverLifecycle === "running";
   const canStartServer = !serverRunning && backendLifecycle !== "starting" && backendLifecycle !== "stopping";
   const canStopServer = serverRunning;
   const serverControlBusy = (busyAction?.startsWith("server:") ?? false) || isServerStarting || isServerStopping;
@@ -3459,7 +3459,7 @@ export function App() {
                     onAlreadyActive={() => setMessage(t("switcher.alreadyActive"))}
                     onDeleteAccount={(alias) => void handleDeleteAccount(alias)}
                     onEditAccount={handleEditAccount}
-                    onGoToIntegrations={() => openSettings("integrations")}
+                    onGoToIntegrations={openCcSwitchImportModal}
                     onSelectAccount={(alias) => void handleSwitch(alias)}
                   />
                 </section>

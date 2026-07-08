@@ -4,6 +4,7 @@
   display: flex;
   inset: 0;
   justify-content: center;
+  overflow: auto;
   padding: 24px;
   position: fixed;
   z-index: 100;
@@ -23,7 +24,7 @@
   gap: 14px;
   max-height: min(760px, calc(100vh - 48px));
   max-width: 860px;
-  overflow: hidden;
+  overflow: auto;
   padding: 18px;
   width: min(860px, calc(100vw - 48px));
 }
@@ -114,8 +115,6 @@
 .ccswitch-import-list {
   display: grid;
   gap: 10px;
-  max-height: min(420px, calc(100vh - 330px));
-  overflow: auto;
   padding-right: 2px;
 }
 
