@@ -90,6 +90,34 @@ function route(request: IncomingMessage, response: ServerResponse) {
     return;
   }
 
+  if (url.pathname === "/sub-secure/api/v1/auth/login") {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    request.on("end", () => {
+      const login = JSON.parse(body || "{}") as { email?: string; password?: string };
+      if (login.email === "admin@example.com" && login.password === "correct-password") {
+        json(response, 200, { data: { access_token: "sub2-secure-token" } });
+        return;
+      }
+      json(response, 401, { success: false, message: "unauthorized" });
+    });
+    return;
+  }
+  if (url.pathname.startsWith("/sub-secure/api/v1/")) {
+    if (auth !== "Bearer sub2-secure-token") {
+      json(response, 401, { success: false, message: "unauthorized" });
+      return;
+    }
+    json(response, 200, {
+      data: [
+        { id: 1, name: "secure", description: "Secure Sub2API group", rate_multiplier: 0.9, sort_order: 1 }
+      ]
+    });
+    return;
+  }
+
   if (url.pathname.startsWith("/sub-auth/api/v1/")) {
     json(response, 401, { success: false, message: "unauthorized" });
     return;
@@ -331,6 +359,54 @@ providers:
       const hardyai = bindings.bindings.find((binding) => binding.alias === "hardyai");
       assert.equal(hardyai?.status, "bound");
       assert.equal(hardyai?.currentRatio, 0.8);
+
+      const cookieCredentialResponse = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: `${fixture.baseUrl}/sub-secure`,
+          tokenEnv: "SUB2_SECURE_RATIO_TOKEN",
+          mode: "cookie",
+          cookie: "auth_token=sub2-secure-token; theme=dark"
+        })
+      });
+      assert.equal(cookieCredentialResponse.status, 200);
+      const cookieCredential = await cookieCredentialResponse.json() as { tokenEnv: string; token?: string };
+      assert.equal(cookieCredential.tokenEnv, "SUB2_SECURE_RATIO_TOKEN");
+      assert.equal(cookieCredential.token, undefined);
+
+      const passwordCredentialResponse = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: `${fixture.baseUrl}/sub-secure`,
+          tokenEnv: "SUB2_SECURE_RATIO_TOKEN",
+          mode: "password",
+          email: "admin@example.com",
+          password: "correct-password"
+        })
+      });
+      assert.equal(passwordCredentialResponse.status, 200);
+      const passwordCredential = await passwordCredentialResponse.json() as { tokenEnv: string; token?: string };
+      assert.equal(passwordCredential.tokenEnv, "SUB2_SECURE_RATIO_TOKEN");
+      assert.equal(passwordCredential.token, undefined);
+
+      const secureCreateResponse = await fetch(`${baseUrl}/admin/ratio-sources`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Secure Sub2API",
+          baseUrl: `${fixture.baseUrl}/sub-secure`,
+          type: "sub2api",
+          auth: { type: "bearer", token_env: "SUB2_SECURE_RATIO_TOKEN" }
+        })
+      });
+      assert.equal(secureCreateResponse.status, 201);
+      const secureCreated = await secureCreateResponse.json() as { source: { id: string } };
+      const secureRefreshResponse = await fetch(`${baseUrl}/admin/ratio-sources/${secureCreated.source.id}/refresh`, {
+        method: "POST"
+      });
+      assert.equal(secureRefreshResponse.status, 200);
     });
 
     console.log("ratio source smoke tests passed");

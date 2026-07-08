@@ -1492,6 +1492,22 @@ export async function createRatioSource(source: {
   return parseJson<{ ok: boolean; source: RatioSource }>(response);
 }
 
+export async function saveRatioCredential(credential: {
+  baseUrl: string;
+  tokenEnv: string;
+  mode: "cookie" | "password";
+  cookie?: string;
+  email?: string;
+  password?: string;
+}) {
+  const response = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(credential)
+  });
+  return parseJson<{ ok: boolean; tokenEnv: string }>(response);
+}
+
 export async function updateRatioSource(id: string, patch: Partial<RatioSource>) {
   const response = await fetch(`${baseUrl}/admin/ratio-sources/${encodeURIComponent(id)}`, {
     method: "PATCH",

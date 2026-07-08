@@ -42,6 +42,7 @@ import {
   restartServerProcess,
   saveAdminConfig,
   saveRatioBindings,
+  saveRatioCredential,
   scanCcSwitchDatabase,
   selectAndScanCcSwitchDatabase,
   setRoutingEnabled,
@@ -550,6 +551,10 @@ export function App() {
     type: RatioSourceType;
     refreshIntervalMinutes: number;
     authType: RatioSourceAuth["type"];
+    credentialMode: "cookie" | "password";
+    credentialCookie: string;
+    credentialEmail: string;
+    credentialPassword: string;
     tokenEnv: string;
     header: string;
     scheme: string;
@@ -561,6 +566,10 @@ export function App() {
     type: "new-api",
     refreshIntervalMinutes: 180,
     authType: "none",
+    credentialMode: "cookie",
+    credentialCookie: "",
+    credentialEmail: "",
+    credentialPassword: "",
     tokenEnv: "",
     header: "Authorization",
     scheme: "Bearer",
@@ -875,6 +884,10 @@ export function App() {
       type: "new-api",
       refreshIntervalMinutes: 180,
       authType: "none",
+      credentialMode: "cookie",
+      credentialCookie: "",
+      credentialEmail: "",
+      credentialPassword: "",
       tokenEnv: "",
       header: "Authorization",
       scheme: "Bearer",
@@ -890,6 +903,10 @@ export function App() {
       type: source.type,
       refreshIntervalMinutes: source.refreshIntervalMinutes,
       authType: source.auth?.type ?? "none",
+      credentialMode: "cookie",
+      credentialCookie: "",
+      credentialEmail: "",
+      credentialPassword: "",
       tokenEnv: source.auth && source.auth.type !== "none" ? source.auth.token_env : "",
       header: source.auth?.type === "api-token" ? source.auth.header ?? "Authorization" : "Authorization",
       scheme: source.auth?.type === "api-token" ? source.auth.scheme ?? "" : "Bearer",
@@ -913,6 +930,30 @@ export function App() {
     return { type: "none" };
   }
 
+  function hasRatioCredentialDraft() {
+    if (ratioSourceForm.authType !== "bearer") {
+      return false;
+    }
+    return ratioSourceForm.credentialMode === "password"
+      ? Boolean(ratioSourceForm.credentialEmail.trim() || ratioSourceForm.credentialPassword)
+      : Boolean(ratioSourceForm.credentialCookie.trim());
+  }
+
+  async function saveRatioCredentialDraft() {
+    if (!hasRatioCredentialDraft()) {
+      return;
+    }
+
+    await saveRatioCredential({
+      baseUrl: ratioSourceForm.baseUrl,
+      tokenEnv: ratioSourceForm.tokenEnv,
+      mode: ratioSourceForm.credentialMode,
+      cookie: ratioSourceForm.credentialMode === "cookie" ? ratioSourceForm.credentialCookie : undefined,
+      email: ratioSourceForm.credentialMode === "password" ? ratioSourceForm.credentialEmail : undefined,
+      password: ratioSourceForm.credentialMode === "password" ? ratioSourceForm.credentialPassword : undefined
+    });
+  }
+
   function formatRatioSourceError(source: RatioSource) {
     if (!source.lastError) {
       return "";
@@ -931,6 +972,15 @@ export function App() {
     const normalized = message.toLowerCase();
     if (normalized.includes("token_env") || normalized.includes("credential environment variable")) {
       return t("ratio.error.invalidCredentialVariable");
+    }
+    if (
+      normalized.includes("auth_token")
+      || normalized.includes("account and password")
+      || normalized.includes("login rejected")
+      || normalized.includes("two-factor")
+      || normalized.includes("access token")
+    ) {
+      return t("ratio.error.invalidCredentialInput");
     }
     if (normalized.includes("ratio source name is required")) {
       return t("ratio.error.nameRequired");
@@ -961,6 +1011,8 @@ export function App() {
         refreshIntervalMinutes: ratioSourceForm.refreshIntervalMinutes,
         auth: ratioFormAuth()
       };
+
+      await saveRatioCredentialDraft();
 
       if (ratioSourceForm.editingId) {
         await updateRatioSource(ratioSourceForm.editingId, payload);
@@ -2804,6 +2856,57 @@ export function App() {
                     onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, tokenEnv: event.target.value })}
                   />
                 </label>
+                {ratioSourceForm.authType === "bearer" && (
+                  <div className="ratio-credential-panel">
+                    <div className="ratio-credential-mode">
+                      <button
+                        className={ratioSourceForm.credentialMode === "cookie" ? "is-active" : ""}
+                        onClick={() => setRatioSourceForm({ ...ratioSourceForm, credentialMode: "cookie" })}
+                        type="button"
+                      >
+                        {t("ratio.credentialCookie")}
+                      </button>
+                      <button
+                        className={ratioSourceForm.credentialMode === "password" ? "is-active" : ""}
+                        onClick={() => setRatioSourceForm({ ...ratioSourceForm, credentialMode: "password" })}
+                        type="button"
+                      >
+                        {t("ratio.credentialPassword")}
+                      </button>
+                    </div>
+                    {ratioSourceForm.credentialMode === "password" ? (
+                      <div className="ratio-credential-grid">
+                        <label>
+                          {t("ratio.credentialEmail")}
+                          <input
+                            autoComplete="username"
+                            value={ratioSourceForm.credentialEmail}
+                            onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, credentialEmail: event.target.value })}
+                          />
+                        </label>
+                        <label>
+                          {t("ratio.credentialPasswordField")}
+                          <input
+                            autoComplete="current-password"
+                            type="password"
+                            value={ratioSourceForm.credentialPassword}
+                            onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, credentialPassword: event.target.value })}
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <label>
+                        {t("ratio.credentialCookieValue")}
+                        <textarea
+                          rows={3}
+                          value={ratioSourceForm.credentialCookie}
+                          onChange={(event) => setRatioSourceForm({ ...ratioSourceForm, credentialCookie: event.target.value })}
+                          placeholder="auth_token=... / Bearer ..."
+                        />
+                      </label>
+                    )}
+                  </div>
+                )}
                 {ratioSourceForm.authType === "api-token" && (
                   <>
                     <label>
@@ -2816,7 +2919,7 @@ export function App() {
                     </label>
                   </>
                 )}
-                <label className="inline-checkbox ratio-enabled-field">
+                <label className="ratio-enabled-field">
                   <input
                     type="checkbox"
                     checked={ratioSourceForm.enabled}

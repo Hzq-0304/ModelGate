@@ -1010,8 +1010,9 @@ code {
 
 .ratio-source-form {
   display: grid;
-  gap: 12px;
+  gap: 16px 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 4px;
 }
 
 .ratio-source-form label {
@@ -1022,9 +1023,60 @@ code {
   gap: 6px;
 }
 
+.ratio-source-form input,
+.ratio-source-form select,
+.ratio-source-form textarea {
+  min-height: 38px;
+}
+
+.ratio-source-form textarea {
+  resize: vertical;
+}
+
 .ratio-source-modal {
   max-width: 760px;
   width: min(760px, calc(100vw - 32px));
+}
+
+.ratio-source-modal .ccs-modal-header {
+  margin-bottom: 6px;
+}
+
+.ratio-credential-panel {
+  border: 1px solid #e4e9f2;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-column: 1 / -1;
+  padding: 12px;
+}
+
+.ratio-credential-mode {
+  display: flex;
+  gap: 8px;
+}
+
+.ratio-credential-mode button {
+  background: #ffffff;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+.ratio-credential-mode button.is-active {
+  background: #eef4ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.ratio-credential-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .ratio-source-auth-hint {
@@ -1040,6 +1092,13 @@ code {
 .ratio-enabled-field,
 .ratio-form-actions {
   align-self: end;
+}
+
+.ratio-enabled-field {
+  align-items: center;
+  display: flex !important;
+  gap: 8px !important;
+  min-height: 38px;
 }
 
 .ratio-form-actions,

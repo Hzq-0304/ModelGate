@@ -39,6 +39,17 @@ type RatioSourceBody = {
   auth?: RatioSourceAuth;
 };
 
+type RatioCredentialBody = {
+  baseUrl?: string;
+  base_url?: string;
+  tokenEnv?: string;
+  token_env?: string;
+  mode?: "cookie" | "password";
+  cookie?: string;
+  email?: string;
+  password?: string;
+};
+
 type RatioSourceParams = {
   id: string;
 };
@@ -83,6 +94,115 @@ type UsageRecordsQuery = {
   provider?: string;
   model?: string;
 };
+
+const ratioCredentialEnvPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function normalizeRatioCredentialBaseUrl(value: string) {
+  const url = new URL(value.trim());
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new RatioSourceError("unsupported_site", "Ratio source URL must use http or https.");
+  }
+  return url.toString().replace(/\/+$/, "");
+}
+
+function tokenFromCookieLike(value: string) {
+  const trimmed = value.trim();
+  const bearer = trimmed.match(/authorization\s*:\s*bearer\s+([A-Za-z0-9._-]+)/i)
+    ?? trimmed.match(/bearer\s+([A-Za-z0-9._-]+)/i);
+  if (bearer?.[1]) {
+    return bearer[1];
+  }
+
+  for (const name of ["auth_token", "access_token", "token"]) {
+    const match = trimmed.match(new RegExp(`(?:^|[;\\s])${name}=([^;\\s]+)`, "i"));
+    if (match?.[1]) {
+      return decodeURIComponent(match[1]);
+    }
+  }
+
+  const jwt = trimmed.match(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
+  return jwt?.[0] ?? "";
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function stringField(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function authTokenFromLoginResponse(json: unknown) {
+  const root = jsonRecord(json);
+  const data = jsonRecord(root.data);
+  return stringField(root, "access_token")
+    || stringField(root, "auth_token")
+    || stringField(root, "token")
+    || stringField(data, "access_token")
+    || stringField(data, "auth_token")
+    || stringField(data, "token");
+}
+
+async function loginSub2ApiCredential(baseUrl: string, email: string, password: string) {
+  const response = await fetch(`${baseUrl}/api/v1/auth/login`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ email, password })
+  });
+  const text = await response.text();
+  let json: unknown = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+
+  if (!response.ok) {
+    throw new RatioSourceError("authentication_failed", "Sub2API login rejected the supplied account credential.", response.status);
+  }
+
+  const root = jsonRecord(json);
+  const data = jsonRecord(root.data);
+  if (root.requires_2fa === true || data.requires_2fa === true) {
+    throw new RatioSourceError("authentication_required", "Sub2API login requires two-factor authentication. Paste a browser login token instead.");
+  }
+
+  const token = authTokenFromLoginResponse(json);
+  if (!token) {
+    throw new RatioSourceError("invalid_response", "Sub2API login did not return an access token.");
+  }
+  return token;
+}
+
+async function resolveRatioCredential(body: RatioCredentialBody) {
+  const baseUrl = normalizeRatioCredentialBaseUrl(String(body.baseUrl ?? body.base_url ?? ""));
+  const tokenEnv = String(body.tokenEnv ?? body.token_env ?? "").trim();
+  if (!ratioCredentialEnvPattern.test(tokenEnv)) {
+    throw new RatioSourceError("authentication_required", "Ratio credential requires a valid environment variable name.");
+  }
+
+  let token = "";
+  if (body.mode === "password") {
+    const email = body.email?.trim() ?? "";
+    const password = body.password ?? "";
+    if (!email || !password) {
+      throw new RatioSourceError("authentication_required", "Sub2API account and password are required.");
+    }
+    token = await loginSub2ApiCredential(baseUrl, email, password);
+  } else {
+    token = tokenFromCookieLike(body.cookie ?? "");
+    if (!token) {
+      throw new RatioSourceError("authentication_required", "Paste auth_token, a Bearer token, or a cookie containing auth_token.");
+    }
+  }
+
+  process.env[tokenEnv] = token;
+  return { tokenEnv };
+}
 
 type CcSwitchLinkQuery = {
   app?: string;
@@ -245,6 +365,19 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
     cache: runtime.ratioSources.getCacheEntries(),
     paths: runtime.ratioSources.store.paths
   }));
+
+  server.post<{ Body: RatioCredentialBody }>("/admin/ratio-sources/credential", async (request, reply) => {
+    try {
+      const credential = await resolveRatioCredential(request.body ?? {});
+      return {
+        ok: true,
+        tokenEnv: credential.tokenEnv
+      };
+    } catch (error) {
+      const normalized = ratioAdminError(error);
+      return reply.status(normalized.status).send(normalized.body);
+    }
+  });
 
   server.post<{ Body: RatioSourceBody }>("/admin/ratio-sources", async (request, reply) => {
     try {
