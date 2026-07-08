@@ -81,7 +81,7 @@ select {
   display: flex;
   justify-content: center;
   min-width: 0;
-  width: 42px;
+  width: 36px;
 }
 
 .ccs-brand h1 {
@@ -98,6 +98,7 @@ select {
   display: block;
   flex: 0 0 auto;
   height: 42px;
+  transform: translateX(-2px);
   width: 42px;
 }
 

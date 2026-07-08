@@ -44,6 +44,7 @@ export function CcSwitchProviderCard({
   const { t } = useI18n();
   const subtitle = providerSubtitle(provider);
   const canSwitch = !disabled && !isCurrent;
+  const showTitle = provider.providerType !== "mock";
 
   return (
     <div
@@ -68,7 +69,7 @@ export function CcSwitchProviderCard({
 
         <div className="ccs-provider-body">
           <div className="ccs-provider-title-row">
-            <h3>{providerTitle(provider)}</h3>
+            {showTitle && <h3>{providerTitle(provider)}</h3>}
             {provider.providerType === "mock" && (
               <span className="ccs-mini-badge">{t("switcher.managedLocal")}</span>
             )}
