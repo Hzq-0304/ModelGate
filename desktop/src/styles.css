@@ -1122,6 +1122,14 @@ code {
   justify-content: flex-end;
 }
 
+.ratio-source-card .ratio-row-actions {
+  padding-top: 2px;
+}
+
+.ratio-source-card .ccs-action-icon {
+  flex: 0 0 auto;
+}
+
 .ratio-source-list {
   display: grid;
   gap: 10px;

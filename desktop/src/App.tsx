@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { BarChart3, Boxes, Gauge, Plus } from "lucide-react";
+import { BarChart3, Boxes, Edit, Gauge, Plus, RefreshCw, Trash2 } from "lucide-react";
 import {
   type AliasesResponse,
   type CcSwitchImportCandidate,
@@ -2663,14 +2663,35 @@ export function App() {
                     {source.lastError && <span className="inline-error">{formatRatioSourceError(source)}</span>}
                   </div>
                   <div className="ratio-row-actions">
-                    <button className="secondary" type="button" onClick={() => void handleRefreshRatioSource(source.id)} disabled={ratioBusy}>
-                      {busyAction === `ratio:refresh:${source.id}` ? t("common.refreshing") : t("common.refresh")}
+                    <button
+                      className="ccs-action-icon"
+                      type="button"
+                      onClick={() => void handleRefreshRatioSource(source.id)}
+                      disabled={ratioBusy}
+                      title={busyAction === `ratio:refresh:${source.id}` ? t("common.refreshing") : t("common.refresh")}
+                      aria-label={busyAction === `ratio:refresh:${source.id}` ? t("common.refreshing") : t("common.refresh")}
+                    >
+                      <RefreshCw />
                     </button>
-                    <button className="secondary" type="button" onClick={() => editRatioSource(source)} disabled={ratioBusy}>
-                      {t("common.edit")}
+                    <button
+                      className="ccs-action-icon"
+                      type="button"
+                      onClick={() => editRatioSource(source)}
+                      disabled={ratioBusy}
+                      title={t("common.edit")}
+                      aria-label={t("common.edit")}
+                    >
+                      <Edit />
                     </button>
-                    <button className="secondary danger" type="button" onClick={() => void handleDeleteRatioSource(source.id)} disabled={ratioBusy}>
-                      {t("common.delete")}
+                    <button
+                      className="ccs-action-icon danger"
+                      type="button"
+                      onClick={() => void handleDeleteRatioSource(source.id)}
+                      disabled={ratioBusy}
+                      title={t("common.delete")}
+                      aria-label={t("common.delete")}
+                    >
+                      <Trash2 />
                     </button>
                   </div>
                 </div>
