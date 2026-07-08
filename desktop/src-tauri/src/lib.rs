@@ -1,16 +1,67 @@
-mod ccswitch_import;
 mod ccswitch_export;
+mod ccswitch_import;
 mod credential_store;
 mod offline_config;
 mod server_process;
 
-use tauri::{Manager, WindowEvent};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::TrayIconBuilder,
+    Emitter, Manager, Runtime, WindowEvent,
+};
+
+const TRAY_OPEN_MAIN: &str = "open-main";
+const TRAY_GROUPS: &str = "groups";
+const TRAY_USAGE: &str = "usage";
+const TRAY_NAV_EVENT: &str = "modelgate-tray-nav";
+
+fn show_main_window<R: Runtime>(app: &tauri::AppHandle<R>, target: Option<&str>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+
+    if let Some(target) = target {
+        let _ = app.emit(TRAY_NAV_EVENT, target);
+    }
+}
+
+fn setup_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
+    let open_main = MenuItem::with_id(app, TRAY_OPEN_MAIN, "打开主界面", true, None::<&str>)?;
+    let groups = MenuItem::with_id(app, TRAY_GROUPS, "分组选择", true, None::<&str>)?;
+    let usage = MenuItem::with_id(app, TRAY_USAGE, "用量查询", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open_main, &groups, &usage])?;
+
+    let mut tray_builder = TrayIconBuilder::with_id("modelgate-main")
+        .tooltip("ModelGate")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            TRAY_OPEN_MAIN => show_main_window(app, Some("main")),
+            TRAY_GROUPS => show_main_window(app, Some("groups")),
+            TRAY_USAGE => show_main_window(app, Some("usage")),
+            _ => {}
+        });
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        tray_builder = tray_builder.icon(icon);
+    }
+
+    tray_builder.build(app)?;
+
+    Ok(())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(server_process::ServerProcessState::default())
+        .setup(|app| {
+            setup_tray(app.handle())?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ccswitch_import::detect_ccswitch_database,
             ccswitch_import::scan_ccswitch_database,
@@ -31,9 +82,9 @@ pub fn run() {
             server_process::restart_server_process
         ])
         .on_window_event(|window, event| {
-            if matches!(event, WindowEvent::CloseRequested { .. }) {
-                let state = window.state::<server_process::ServerProcessState>();
-                state.stop_managed_child();
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
             }
         })
         .run(tauri::generate_context!())

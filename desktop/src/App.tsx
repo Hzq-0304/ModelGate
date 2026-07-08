@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { BarChart3, Boxes, Gauge, Plus } from "lucide-react";
 import {
   type AliasesResponse,
@@ -1038,6 +1039,11 @@ export function App() {
     }
   }
 
+  function openHomeSection(section: HomeSection) {
+    setActiveTab("switcher");
+    setHomeSection(section);
+  }
+
   function selectSettingsTab(tab: SettingsPageTabId) {
     if (tab === "general") {
       setConfigSection("common");
@@ -1404,6 +1410,24 @@ export function App() {
       window.clearInterval(timer);
     };
   }, [topbarUsageRange]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    void listen<string>("modelgate-tray-nav", (event) => {
+      if (event.payload === "usage") {
+        openHomeSection("usage");
+      } else if (event.payload === "groups") {
+        openHomeSection("providers");
+      } else if (event.payload === "main") {
+        openHomeSection("providers");
+      }
+    }).then((handler) => {
+      unlisten = handler;
+    }).catch(() => undefined);
+
+    return () => unlisten?.();
+  }, []);
 
   useEffect(() => {
     if (!showCcSwitchImportGuide || importDrafts.length === 0) {
@@ -3439,7 +3463,7 @@ export function App() {
                   aria-label={label}
                   className={homeSection === id ? "home-sidebar-item active" : "home-sidebar-item"}
                   key={id}
-                  onClick={() => setHomeSection(id)}
+                  onClick={() => openHomeSection(id)}
                   title={label}
                   type="button"
                 >

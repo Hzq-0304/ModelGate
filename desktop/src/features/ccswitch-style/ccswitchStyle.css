@@ -1187,6 +1187,7 @@ select {
 .ccs-modal-btn.danger {
   background: #dc2626;
   border-color: #dc2626;
+  color: #ffffff;
 }
 
 .ccs-modal-btn.danger:hover:not(:disabled) {

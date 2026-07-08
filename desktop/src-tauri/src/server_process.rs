@@ -108,29 +108,6 @@ pub struct ServerProcessStatus {
 }
 
 impl ServerProcessState {
-    pub fn stop_managed_child(&self) {
-        let child = {
-            let Ok(mut inner) = self.inner.lock() else {
-                return;
-            };
-            inner.child.take()
-        };
-
-        if let Some(mut child) = child {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-
-        if let Ok(mut inner) = self.inner.lock() {
-            inner.status = ServerLifecycle::Stopped;
-            inner.pid = None;
-            push_log_locked(
-                &mut inner,
-                "Managed server process stopped during app shutdown.",
-            );
-        }
-    }
-
     fn current_status(&self, message: Option<String>) -> Result<ServerProcessStatus, String> {
         let reachable = is_reachable();
         let mut inner = self
