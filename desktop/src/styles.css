@@ -1001,16 +1001,8 @@ code {
   gap: 12px;
 }
 
-.ratio-section-header {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-}
-
 .ratio-add-source-button {
-  background: #ffffff;
-  border: 1px solid #d0d5dd;
+  background: transparent;
   color: #344054;
   flex: 0 0 auto;
 }

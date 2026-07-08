@@ -14,6 +14,7 @@ type CcSwitchShellProps = {
   title: string;
   brand?: ReactNode;
   headerAccessory?: ReactNode;
+  serviceAccessory?: ReactNode;
   settingsLabel: string;
   settingsActive: boolean;
   onOpenSettings: () => void;
@@ -28,6 +29,7 @@ export function CcSwitchShell({
   title,
   brand,
   headerAccessory,
+  serviceAccessory,
   settingsLabel,
   settingsActive,
   onOpenSettings,
@@ -50,6 +52,7 @@ export function CcSwitchShell({
             onStart={onStartServer}
             onStop={onStopServer}
           />
+          {serviceAccessory}
         </div>
         <div className="ccs-header-right">
           {headerAccessory}

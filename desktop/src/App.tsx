@@ -2611,26 +2611,6 @@ export function App() {
     return (
       <div className="ccs-settings-sections ratio-monitor">
         <section className="ccs-settings-section ratio-monitor-section">
-          <header className="ccs-settings-section-header ratio-section-header">
-            <div>
-              <h2>{t("ratio.sources")}</h2>
-              <p>{t("ratio.sourcesDescription")}</p>
-            </div>
-            <button
-              className="ccs-icon-button ratio-add-source-button"
-              type="button"
-              onClick={() => {
-                resetRatioSourceForm();
-                setShowRatioSourceForm(true);
-              }}
-              disabled={ratioBusy}
-              title={t("ratio.addSource")}
-              aria-label={t("ratio.addSource")}
-            >
-              <Plus className="ccs-icon" />
-            </button>
-          </header>
-
           <div className="ratio-source-list">
             {sourceList.length === 0 ? (
               <div className="empty-state">
@@ -2642,8 +2622,8 @@ export function App() {
               const ratioGroups = groups
                 .filter((group) => group.groupRatio !== undefined)
                 .sort((left, right) => (left.groupRatio ?? Number.POSITIVE_INFINITY) - (right.groupRatio ?? Number.POSITIVE_INFINITY));
-              const lowestRatioGroup = ratioGroups[0];
-              const expandedRatioGroups = ratioGroups.slice(1);
+              const summaryRatioGroups = ratioGroups.slice(0, 3);
+              const expandedRatioGroups = ratioGroups.slice(3);
               const expanded = expandedRatioSourceIds.has(source.id);
               const statusKey = ratioSourceStatusLabels[source.status];
               return (
@@ -2670,13 +2650,15 @@ export function App() {
                       <span className={`ccs-status-badge ratio-status-${source.status}`}>{t(statusKey)}</span>
                     </div>
                     <div className="ratio-group-summary" aria-label={t("ratio.groupRatios")}>
-                      {!lowestRatioGroup ? (
+                      {summaryRatioGroups.length === 0 ? (
                         <span className="ratio-group-empty">{t("ratio.noGroupRatios")}</span>
                       ) : (
-                        <span className="ratio-group-chip" title={lowestRatioGroup.description ?? lowestRatioGroup.name}>
-                          <span>{lowestRatioGroup.name}</span>
-                          <strong>{formatRatioValue(lowestRatioGroup.groupRatio)}</strong>
-                        </span>
+                        summaryRatioGroups.map((group) => (
+                          <span className="ratio-group-chip" key={group.groupId} title={group.description ?? group.name}>
+                            <span>{group.name}</span>
+                            <strong>{formatRatioValue(group.groupRatio)}</strong>
+                          </span>
+                        ))
                       )}
                     </div>
                     <div className="ratio-group-expand" onClick={(event) => event.stopPropagation()}>
@@ -3501,6 +3483,22 @@ export function App() {
               </button>
             </div>
           )}
+          serviceAccessory={homeSection === "ratios" ? (
+            <button
+              className="ccs-icon-button ratio-add-source-button"
+              type="button"
+              data-tauri-no-drag
+              onClick={() => {
+                resetRatioSourceForm();
+                setShowRatioSourceForm(true);
+              }}
+              disabled={busyAction?.startsWith("ratio:") ?? false}
+              title={t("ratio.addSource")}
+              aria-label={t("ratio.addSource")}
+            >
+              <Plus className="ccs-icon" />
+            </button>
+          ) : undefined}
           onOpenSettings={() => openSettings()}
           onStartServer={() => void handleStartServer()}
           onStopServer={() => void handleStopServer()}
