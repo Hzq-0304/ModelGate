@@ -256,6 +256,29 @@ impl ServerProcessState {
         }
     }
 
+    pub fn shutdown_managed_child(&self) {
+        let child = {
+            let Ok(mut inner) = self.inner.lock() else {
+                return;
+            };
+
+            let child = inner.child.take();
+            inner.status = ServerLifecycle::Stopped;
+            inner.pid = None;
+            inner.exit_code = None;
+            push_log_locked(
+                &mut inner,
+                "Application exit requested. Stopping managed server process.",
+            );
+            child
+        };
+
+        if let Some(mut child) = child {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
     fn mark_stopped_if_pid(&self, pid: u32, message: &str) {
         if let Ok(mut inner) = self.inner.lock() {
             if inner.pid == Some(pid) || inner.pid.is_none() {
