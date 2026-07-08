@@ -72,7 +72,6 @@ import type { SettingsSectionId } from "./features/settings/settingsRoutes";
 import { UsageOverview } from "./features/usage-overview/UsageOverview";
 import { useI18n, type Language, type TranslationKey } from "./i18n/i18n";
 import type { AppRouteId } from "./routes/routeTypes";
-import modelGateLogoUrl from "./assets/modelgate-logo.png";
 import desktopPackage from "../package.json";
 
 type ActiveTab = AppRouteId;
@@ -154,7 +153,26 @@ const topbarUsageRanges = [
 function ModelGateBrand() {
   return (
     <span className="modelgate-brand" aria-label="Model Gate">
-      <img alt="" aria-hidden="true" className="modelgate-brand-symbol" src={modelGateLogoUrl} />
+      <svg className="modelgate-brand-symbol" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="modelgate-mark-blue" x1="8" x2="32" y1="6" y2="34" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#2563eb" />
+            <stop offset="1" stopColor="#0f766e" />
+          </linearGradient>
+          <linearGradient id="modelgate-mark-ink" x1="10" x2="30" y1="8" y2="32" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#0f172a" />
+            <stop offset="1" stopColor="#1e3a8a" />
+          </linearGradient>
+        </defs>
+        <circle className="modelgate-mark-ring" cx="20" cy="20" r="15.5" />
+        <g className="modelgate-mark-gates">
+          <path d="M20 4.8c4.8 2.6 7.2 6 7.2 10.2L20 20l-7.2-5c0-4.2 2.4-7.6 7.2-10.2Z" />
+          <path d="M35.2 20c-2.6 4.8-6 7.2-10.2 7.2L20 20l5-7.2c4.2 0 7.6 2.4 10.2 7.2Z" />
+          <path d="M20 35.2c-4.8-2.6-7.2-6-7.2-10.2L20 20l7.2 5c0 4.2-2.4 7.6-7.2 10.2Z" />
+          <path d="M4.8 20c2.6-4.8 6-7.2 10.2-7.2L20 20l-5 7.2c-4.2 0-7.6-2.4-10.2-7.2Z" />
+        </g>
+        <circle className="modelgate-mark-core" cx="20" cy="20" r="4.8" />
+      </svg>
     </span>
   );
 }
