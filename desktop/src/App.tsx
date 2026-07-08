@@ -1371,9 +1371,7 @@ export function App() {
 
     if (
       nextProcessStatus.status !== "running"
-      && nextProcessStatus.status !== "external-running"
       && nextProcessStatus.status !== "starting"
-      && !nextProcessStatus.reachable
     ) {
       nextProcessStatus = await startServerProcess();
     }

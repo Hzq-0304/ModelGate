@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     env, fs,
     io::{BufRead, BufReader, Read, Write},
@@ -27,6 +27,16 @@ const STDERR_LOG_LIMIT: usize = 100;
 const NODE_MISSING_ERROR: &str = "Failed to start ModelGate server: this release requires Node.js to be installed and available in PATH.";
 const EXTERNAL_STOP_UNAVAILABLE: &str =
     "This server was not started by the desktop app and cannot be stopped here.";
+const EXTERNAL_REPLACE_UNAVAILABLE: &str =
+    "Port 11435 is already used by another process. Stop that process before starting ModelGate.";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct PortOwnerProcess {
+    process_id: u32,
+    executable_path: Option<String>,
+    command_line: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ServerLifecycle {
@@ -169,6 +179,12 @@ impl ServerProcessState {
         push_log_locked(&mut inner, format!("Spawn command: {command_line}"));
         push_log_locked(&mut inner, format!("Spawned server process pid={pid}."));
         Ok(pid)
+    }
+
+    fn append_startup_log(&self, message: impl Into<String>) {
+        if let Ok(mut inner) = self.inner.lock() {
+            push_log_locked(&mut inner, message);
+        }
     }
 
     fn mark_running_if_pid(&self, pid: u32) {
@@ -472,6 +488,120 @@ fn is_reachable() -> bool {
     health_check().is_ok()
 }
 
+#[cfg(target_os = "windows")]
+fn port_owner_process() -> Option<PortOwnerProcess> {
+    let script = r#"
+$conn = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 11435 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($conn) {
+  Get-CimInstance Win32_Process -Filter "ProcessId = $($conn.OwningProcess)" |
+    Select-Object ProcessId,ExecutablePath,CommandLine |
+    ConvertTo-Json -Compress
+}
+"#;
+    let mut command = Command::new("powershell");
+    command.args(["-NoProfile", "-NonInteractive", "-Command", script]);
+    hide_console(&mut command);
+    let output = command.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if stdout.is_empty() {
+        return None;
+    }
+
+    serde_json::from_str(&stdout).ok()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn port_owner_process() -> Option<PortOwnerProcess> {
+    None
+}
+
+fn normalized_path_text(value: &str) -> String {
+    value.replace('\\', "/").to_lowercase()
+}
+
+fn is_claimable_modelgate_process(owner: &PortOwnerProcess) -> bool {
+    let command_line = owner.command_line.as_deref().unwrap_or_default();
+    let executable_path = owner.executable_path.as_deref().unwrap_or_default();
+    let command = normalized_path_text(command_line);
+    let executable = normalized_path_text(executable_path);
+
+    if !executable.ends_with("/node.exe") && !executable.ends_with("/node") {
+        return false;
+    }
+
+    command.contains("modelgate-server.cjs")
+        || command.contains("dist/index.js")
+        || (command.contains("src/index.ts") && command.contains("modelgate"))
+}
+
+fn stop_process(owner: &PortOwnerProcess) -> Result<(), String> {
+    let mut command = Command::new("taskkill");
+    command.args(["/PID", &owner.process_id.to_string(), "/T", "/F"]);
+    hide_console(&mut command);
+    let output = command
+        .output()
+        .map_err(|error| format!("Failed to stop stale ModelGate server: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(if stderr.is_empty() {
+            format!(
+                "Failed to stop stale ModelGate server pid={}.",
+                owner.process_id
+            )
+        } else {
+            format!(
+                "Failed to stop stale ModelGate server pid={}: {stderr}",
+                owner.process_id
+            )
+        })
+    }
+}
+
+fn wait_until_unreachable(timeout: Duration) -> bool {
+    let started = Instant::now();
+
+    while started.elapsed() < timeout {
+        if !is_reachable() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(150));
+    }
+
+    !is_reachable()
+}
+
+fn replace_claimable_external_server() -> Result<Option<String>, String> {
+    let Some(owner) = port_owner_process() else {
+        return Ok(None);
+    };
+
+    if !is_claimable_modelgate_process(&owner) {
+        return Err(format!(
+            "{EXTERNAL_REPLACE_UNAVAILABLE} Occupying pid={}.",
+            owner.process_id
+        ));
+    }
+
+    stop_process(&owner)?;
+    if !wait_until_unreachable(Duration::from_secs(5)) {
+        return Err(format!(
+            "Stopped stale ModelGate server pid={}, but port 11435 is still reachable.",
+            owner.process_id
+        ));
+    }
+
+    Ok(Some(format!(
+        "Stopped stale ModelGate server pid={} before starting bundled server.",
+        owner.process_id
+    )))
+}
+
 fn is_development_root(path: &Path) -> bool {
     path.join("package.json").is_file() && path.join("src").join("index.ts").is_file()
 }
@@ -686,9 +816,10 @@ fn begin_start(
     message: &str,
 ) -> Result<ServerProcessStatus, String> {
     let current = state.current_status(None)?;
+    let replacing_external = current.status == "external-running";
 
     match current.status.as_str() {
-        "external-running" | "starting" | "running" | "stopping" => {
+        "starting" | "running" | "stopping" => {
             return Ok(ServerProcessStatus {
                 message: Some(
                     current
@@ -718,6 +849,19 @@ fn begin_start(
             return state.current_status(Some(error));
         }
     };
+
+    if replacing_external {
+        match replace_claimable_external_server() {
+            Ok(Some(replacement_message)) => {
+                state.append_startup_log(replacement_message);
+            }
+            Ok(None) => {}
+            Err(error) => {
+                state.mark_failed(error.clone());
+                return state.current_status(Some(error));
+            }
+        }
+    }
 
     let config_path = match ensure_user_config(app, &root) {
         Ok(path) => path,
@@ -891,10 +1035,7 @@ pub async fn restart_server_process(
     let current = state.current_status(None)?;
 
     if current.status == "external-running" {
-        return Ok(ServerProcessStatus {
-            message: Some(EXTERNAL_STOP_UNAVAILABLE.to_string()),
-            ..current
-        });
+        return begin_start(&app, &state, "Restart requested. Replacing external server process.");
     }
 
     if matches!(current.status.as_str(), "starting" | "stopping") {

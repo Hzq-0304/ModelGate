@@ -30,10 +30,10 @@ export function CcSwitchServiceToggle({
 }: CcSwitchServiceToggleProps) {
   const { t } = useI18n();
 
-  const isRunning = lifecycle === "running" || lifecycle === "external-running";
+  const isRunning = lifecycle === "running";
   const isExternal = lifecycle === "external-running";
   const isTransitioning = lifecycle === "starting" || lifecycle === "stopping";
-  const isDisabled = busy || isTransitioning || isExternal;
+  const isDisabled = busy || isTransitioning;
   const checked = isRunning || isTransitioning;
 
   const tooltipText = isExternal

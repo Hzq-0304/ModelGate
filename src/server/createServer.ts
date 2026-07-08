@@ -34,6 +34,8 @@ export async function createServer(runtime: RuntimeState) {
   server.get("/health", async () => ({
     ok: true,
     name: "ModelGate",
+    pid: process.pid,
+    body_limit_bytes: modelgateBodyLimitBytes,
     capabilities: {
       chat_completions: true,
       responses: true

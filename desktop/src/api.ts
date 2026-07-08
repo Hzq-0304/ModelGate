@@ -7,6 +7,8 @@ const baseUrl = "http://127.0.0.1:11435";
 export type HealthResponse = {
   ok: boolean;
   name: string;
+  pid?: number;
+  body_limit_bytes?: number;
   capabilities?: {
     chat_completions: boolean;
     responses: boolean;
