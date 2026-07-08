@@ -350,6 +350,8 @@ async function testResponsesDirectForwardingByDefault() {
   let seenAuthorization = "";
   let seenModel = "";
   let sawResponsesOnlyField = false;
+  let sawInputImage = false;
+  let sawInputFile = false;
 
   const upstream = createHttpServer((request, response) => {
     seenPath = request.url ?? "";
@@ -359,9 +361,13 @@ async function testResponsesDirectForwardingByDefault() {
       raw += String(chunk);
     });
     request.on("end", () => {
-      const body = JSON.parse(raw || "{}") as { model?: string; text?: unknown };
+      const body = JSON.parse(raw || "{}") as { model?: string; input?: unknown; text?: unknown };
       seenModel = body.model ?? "";
       sawResponsesOnlyField = typeof body.text === "object" && body.text !== null;
+      const firstMessage = Array.isArray(body.input) ? body.input[0] as { content?: unknown } | undefined : undefined;
+      const content = Array.isArray(firstMessage?.content) ? firstMessage.content as Array<Record<string, unknown>> : [];
+      sawInputImage = content.some((part) => part.type === "input_image" && part.image_url === "data:image/png;base64,aGVsbG8=");
+      sawInputFile = content.some((part) => part.type === "input_file" && part.filename === "note.txt" && part.file_data === "data:text/plain;base64,aGVsbG8=");
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({
         id: "resp-test",
@@ -415,7 +421,16 @@ providers:
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           model: "codex-main",
-          input: "hello",
+          input: [
+            {
+              role: "user",
+              content: [
+                { type: "input_text", text: "hello" },
+                { type: "input_image", image_url: "data:image/png;base64,aGVsbG8=", detail: "low" },
+                { type: "input_file", filename: "note.txt", file_data: "data:text/plain;base64,aGVsbG8=" }
+              ]
+            }
+          ],
           text: { format: { type: "text" } },
           max_output_tokens: 8
         })
@@ -427,6 +442,114 @@ providers:
       assert.equal(seenAuthorization, "Bearer responses-token");
       assert.equal(seenModel, "gpt-5.5");
       assert.equal(sawResponsesOnlyField, true);
+      assert.equal(sawInputImage, true);
+      assert.equal(sawInputFile, true);
+    });
+  } finally {
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  }
+}
+
+async function testResponsesImageFileFallbackToChatCompletions() {
+  process.env.RESPONSES_DIRECT_TOKEN = "responses-token";
+  let seenResponsesPath = "";
+  let seenChatPath = "";
+  let sawImageUrl = false;
+  let sawFile = false;
+  let sawTextFormatDropped = false;
+
+  const upstream = createHttpServer((request, response) => {
+    if (request.url === "/v1/responses") {
+      seenResponsesPath = request.url;
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "not found" } }));
+      return;
+    }
+
+    seenChatPath = request.url ?? "";
+    let raw = "";
+    request.on("data", (chunk) => {
+      raw += String(chunk);
+    });
+    request.on("end", () => {
+      const body = JSON.parse(raw || "{}") as { messages?: Array<{ content?: unknown }>; text?: unknown };
+      const content = Array.isArray(body.messages?.[0]?.content) ? body.messages?.[0]?.content as Array<Record<string, unknown>> : [];
+      sawImageUrl = content.some((part) => {
+        const image = part.image_url as { url?: unknown; detail?: unknown } | undefined;
+        return part.type === "image_url" && image?.url === "data:image/png;base64,aGVsbG8=" && image.detail === "low";
+      });
+      sawFile = content.some((part) => {
+        const file = part.file as { filename?: unknown; file_data?: unknown } | undefined;
+        return part.type === "file" && file?.filename === "note.txt" && file.file_data === "data:text/plain;base64,aGVsbG8=";
+      });
+      sawTextFormatDropped = body.text === undefined;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        id: "chatcmpl-fallback",
+        object: "chat.completion",
+        created: Math.floor(Date.now() / 1000),
+        model: "gpt-5.5",
+        choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+      }));
+    });
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+
+  try {
+    const address = upstream.address();
+    const upstreamPort = address && typeof address === "object" ? address.port : 0;
+    const configPath = join(tempDir, "responses-image-file-fallback.yaml");
+    writeFileSync(configPath, `server:
+  host: 127.0.0.1
+  port: 11435
+
+active: codex-main
+
+aliases:
+  codex-main:
+    provider: relay
+    model: gpt-5.5
+
+providers:
+  relay:
+    type: openai-compatible
+    base_url: http://127.0.0.1:${upstreamPort}/v1
+    auth:
+      type: static-header-ref
+      header: Authorization
+      scheme: Bearer
+      value_env: RESPONSES_DIRECT_TOKEN
+`, "utf8");
+
+    await withModelGate(configPath, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "codex-main",
+          input: [
+            {
+              role: "user",
+              content: [
+                { type: "input_text", text: "hello" },
+                { type: "input_image", image_url: "data:image/png;base64,aGVsbG8=", detail: "low" },
+                { type: "input_file", filename: "note.txt", file_data: "data:text/plain;base64,aGVsbG8=" }
+              ]
+            }
+          ],
+          text: { format: { type: "text" } },
+          max_output_tokens: 8
+        })
+      });
+      const json = await response.json() as { output?: Array<{ content?: Array<{ text?: string }> }> };
+      assert.equal(response.status, 200);
+      assert.equal(json.output?.[0]?.content?.[0]?.text, "ok");
+      assert.equal(seenResponsesPath, "/v1/responses");
+      assert.equal(seenChatPath, "/v1/chat/completions");
+      assert.equal(sawImageUrl, true);
+      assert.equal(sawFile, true);
+      assert.equal(sawTextFormatDropped, true);
     });
   } finally {
     await new Promise<void>((resolve) => upstream.close(() => resolve()));
@@ -440,6 +563,7 @@ try {
   await testCcSwitchMissingCredentialWarningWithoutReference();
   await testImportedCredentialHeader();
   await testResponsesDirectForwardingByDefault();
+  await testResponsesImageFileFallbackToChatCompletions();
 
   console.log("startup/auth smoke tests passed");
 } finally {

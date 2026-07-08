@@ -147,7 +147,51 @@ function unsupportedResponsesFeature(message = "This Responses API feature is no
   return { error: message };
 }
 
-function normalizeResponseContent(content: unknown): string | null {
+function normalizeResponseContentPart(part: Record<string, unknown>): unknown | null {
+  const type = part.type;
+  if ((type === "input_text" || type === "output_text" || type === "text") && typeof part.text === "string") {
+    return {
+      type: "text",
+      text: part.text
+    };
+  }
+
+  if (type === "input_image" || type === "image_url") {
+    const imageUrl = typeof part.image_url === "string"
+      ? part.image_url
+      : typeof part.image_url === "object" && part.image_url !== null
+        ? (part.image_url as Record<string, unknown>).url
+        : undefined;
+    if (typeof imageUrl === "string" && imageUrl) {
+      return {
+        type: "image_url",
+        image_url: {
+          url: imageUrl,
+          ...(typeof part.detail === "string" ? { detail: part.detail } : {})
+        }
+      };
+    }
+    return null;
+  }
+
+  if (type === "input_file" || type === "file") {
+    const file: Record<string, unknown> = {};
+    if (typeof part.file_id === "string" && part.file_id) {
+      file.file_id = part.file_id;
+    }
+    if (typeof part.filename === "string" && part.filename) {
+      file.filename = part.filename;
+    }
+    if (typeof part.file_data === "string" && part.file_data) {
+      file.file_data = part.file_data;
+    }
+    return Object.keys(file).length > 0 ? { type: "file", file } : null;
+  }
+
+  return null;
+}
+
+function normalizeResponseContent(content: unknown): string | unknown[] | null {
   if (typeof content === "string") {
     return content;
   }
@@ -156,22 +200,23 @@ function normalizeResponseContent(content: unknown): string | null {
     return null;
   }
 
-  const parts: string[] = [];
+  const parts: unknown[] = [];
   for (const item of content) {
     if (!item || typeof item !== "object") {
       return null;
     }
 
-    const typed = item as { type?: unknown; text?: unknown };
-    if ((typed.type === "input_text" || typed.type === "output_text" || typed.type === "text") && typeof typed.text === "string") {
-      parts.push(typed.text);
-      continue;
+    const converted = normalizeResponseContentPart(item as Record<string, unknown>);
+    if (!converted) {
+      return null;
     }
-
-    return null;
+    parts.push(converted);
   }
 
-  return parts.join("");
+  if (parts.every((part) => typeof part === "object" && part !== null && (part as { type?: unknown }).type === "text")) {
+    return parts.map((part) => (part as { text?: unknown }).text).join("");
+  }
+  return parts;
 }
 
 function responsesInputToMessages(input: unknown): ConversionResult {
@@ -227,7 +272,6 @@ function responsesToChatCompletionBody(body: ResponsesRequestBody, upstreamModel
     "computer_use",
     "reasoning",
     "response_format",
-    "text",
     "modalities",
     "previous_response_id"
   ];
