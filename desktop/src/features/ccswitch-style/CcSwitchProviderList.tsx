@@ -40,6 +40,7 @@ export function CcSwitchProviderList({
   onSelectProvider
 }: CcSwitchProviderListProps) {
   const { t } = useI18n();
+  const visibleProviders = providers.filter((provider) => provider.providerType !== "mock");
   const missingAuthByProvider = new Map(
     configWarnings
       .filter((warning) => warning.provider)
@@ -51,7 +52,7 @@ export function CcSwitchProviderList({
       ] as const)
   );
 
-  if (providers.length === 0) {
+  if (visibleProviders.length === 0) {
     return (
       <div className="ccs-empty-state">
         <strong>{t("switcher.noAccounts")}</strong>
@@ -69,7 +70,7 @@ export function CcSwitchProviderList({
 
   return (
     <section className="ccs-provider-list" aria-label={t("switcher.providerList")}>
-      {providers.map((provider) => (
+      {visibleProviders.map((provider) => (
         <CcSwitchProviderCard
           authWarning={missingAuthByProvider.get(provider.provider)}
           connectionState={connection}
