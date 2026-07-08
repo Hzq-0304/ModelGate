@@ -12,6 +12,7 @@ export type EntrypointStatus = {
 export class RuntimeState {
   #config: ModelGateConfig;
   #activeAlias: string;
+  #routingEnabled: boolean;
   readonly requestLogs = createRequestLogStore(200);
   readonly usageStore = createUsageStore();
   readonly ratioSources: RatioSourceManager;
@@ -20,6 +21,7 @@ export class RuntimeState {
   constructor(config: ModelGateConfig, configPath = getConfigPathFromEnv()) {
     this.#config = config;
     this.#activeAlias = config.active;
+    this.#routingEnabled = process.env.MODELGATE_ROUTING_ENABLED?.toLowerCase() !== "false";
     this.configPath = configPath;
     this.ratioSources = new RatioSourceManager(configPath);
   }
@@ -30,6 +32,14 @@ export class RuntimeState {
 
   get activeAlias() {
     return this.#activeAlias;
+  }
+
+  get routingEnabled() {
+    return this.#routingEnabled;
+  }
+
+  setRoutingEnabled(enabled: boolean) {
+    this.#routingEnabled = enabled;
   }
 
   switchActive(aliasName: string) {

@@ -738,6 +738,7 @@ fn begin_start(
         .env("MODEL_GATE_CONFIG_DIR", &config_dir)
         .env("MODELGATE_SNAPSHOT_DIR", &config_dir)
         .env("MODEL_GATE_SNAPSHOT_DIR", &config_dir)
+        .env("MODELGATE_ROUTING_ENABLED", "false")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());

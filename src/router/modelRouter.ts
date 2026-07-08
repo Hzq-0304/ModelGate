@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   createOpenAICompatibleError,
   createMissingAuthError,
@@ -443,10 +443,26 @@ function sendMockResponseStream(reply: Parameters<typeof sendOpenAICompatibleStr
   reply.raw.end();
 }
 
+function sendRoutingDisabled(reply: FastifyReply) {
+  return reply
+    .status(503)
+    .send(createOpenAICompatibleError("ModelGate routing is disabled", "service_unavailable"));
+}
+
 export async function registerModelRouter(server: FastifyInstance, runtime: RuntimeState) {
-  server.get("/v1/models", async () => createModelList(runtime.config));
+  server.get("/v1/models", async (_request, reply) => {
+    if (!runtime.routingEnabled) {
+      return sendRoutingDisabled(reply);
+    }
+
+    return createModelList(runtime.config);
+  });
 
   server.post<{ Body: ChatCompletionRequestBody }>("/v1/chat/completions", async (request, reply) => {
+    if (!runtime.routingEnabled) {
+      return sendRoutingDisabled(reply);
+    }
+
     const body = request.body ?? {};
     const startedAt = new Date();
     const startedMs = Date.now();
@@ -716,6 +732,10 @@ export async function registerModelRouter(server: FastifyInstance, runtime: Runt
   });
 
   server.post<{ Body: ResponsesRequestBody }>("/v1/responses", async (request, reply) => {
+    if (!runtime.routingEnabled) {
+      return sendRoutingDisabled(reply);
+    }
+
     const body = request.body ?? {};
     const startedAt = new Date();
     const startedMs = Date.now();

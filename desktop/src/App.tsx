@@ -44,6 +44,7 @@ import {
   saveRatioBindings,
   scanCcSwitchDatabase,
   selectAndScanCcSwitchDatabase,
+  setRoutingEnabled,
   openCcSwitchDeepLink,
   startServerProcess,
   stopServerProcess,
@@ -902,11 +903,6 @@ export function App() {
   }
 
   async function saveRatioSourceDraft() {
-    if (connection !== "connected") {
-      setRatioMessage(t("ratio.serverRequired"));
-      return;
-    }
-
     setBusyAction("ratio:save");
     try {
       const payload = {
@@ -949,11 +945,6 @@ export function App() {
   }
 
   async function handleDeleteRatioSource(id: string) {
-    if (connection !== "connected") {
-      setRatioMessage(t("ratio.serverRequired"));
-      return;
-    }
-
     setBusyAction(`ratio:delete:${id}`);
     try {
       await deleteRatioSource(id);
@@ -1356,9 +1347,43 @@ export function App() {
     }
   }, [syncServerState]);
 
+  const ensureManagementBackend = useCallback(async (successMessage = "Management backend ready") => {
+    let nextProcessStatus = await getServerProcessStatus();
+
+    if (
+      nextProcessStatus.status !== "running"
+      && nextProcessStatus.status !== "external-running"
+      && nextProcessStatus.status !== "starting"
+      && !nextProcessStatus.reachable
+    ) {
+      nextProcessStatus = await startServerProcess();
+    }
+
+    setServerProcess(nextProcessStatus);
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        await getHealth();
+        await syncServerState(nextProcessStatus, successMessage);
+        return nextProcessStatus;
+      } catch {
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        nextProcessStatus = await getServerProcessStatus();
+        setServerProcess(nextProcessStatus);
+      }
+    }
+
+    await syncServerState(nextProcessStatus, successMessage);
+    return nextProcessStatus;
+  }, [syncServerState]);
+
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void ensureManagementBackend().catch((error) => {
+      setConnection("disconnected");
+      setMessage(`Failed to start management backend: ${getErrorMessage(error)}`);
+      void loadConfiguration().catch(() => undefined);
+    });
+  }, [ensureManagementBackend]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1705,23 +1730,11 @@ export function App() {
     setBusyAction("server:start");
 
     try {
-      const result = await startServerProcess();
-      setServerProcess(result);
-      if (result.status === "running" || result.status === "external-running" || result.reachable) {
-        await syncServerState(result, "Server started");
-      } else {
-        setConnection("disconnected");
-        setStatus(null);
-        setAliases(null);
-        await loadConfiguration().catch(() => undefined);
-        setMessage(
-          result.status === "failed"
-            ? `Failed to start server: ${result.lastError ?? result.message ?? "Unknown error"}`
-            : result.message ?? "Server is starting."
-        );
-      }
+      await ensureManagementBackend();
+      await setRoutingEnabled(true);
+      await syncServerState(undefined, "Routing enabled");
     } catch (error) {
-      setMessage(`Failed to start server: ${getErrorMessage(error)}`);
+      setMessage(`Failed to enable routing: ${getErrorMessage(error)}`);
     } finally {
       setBusyAction(null);
     }
@@ -1731,15 +1744,11 @@ export function App() {
     setBusyAction("server:stop");
 
     try {
-      const result = await stopServerProcess();
-      setServerProcess(result);
-      setConnection("disconnected");
-      setStatus(null);
-      setAliases(null);
-      await loadConfiguration().catch(() => undefined);
-      setMessage(result.message ?? (result.status === "stopped" ? "Server stopped" : "Server is stopping."));
+      await ensureManagementBackend();
+      await setRoutingEnabled(false);
+      await syncServerState(undefined, "Routing disabled");
     } catch (error) {
-      setMessage(`Failed to stop server: ${getErrorMessage(error)}`);
+      setMessage(`Failed to disable routing: ${getErrorMessage(error)}`);
     } finally {
       setBusyAction(null);
     }
@@ -2684,13 +2693,13 @@ export function App() {
                   </div>
                   <div className="ratio-row-actions">
                     <span className={`ccs-status-badge ratio-status-${source.status}`}>{t(statusKey)}</span>
-                    <button className="secondary" type="button" onClick={() => void handleRefreshRatioSource(source.id)} disabled={ratioBusy || connection !== "connected"}>
+                    <button className="secondary" type="button" onClick={() => void handleRefreshRatioSource(source.id)} disabled={ratioBusy}>
                       {busyAction === `ratio:refresh:${source.id}` ? t("common.refreshing") : t("common.refresh")}
                     </button>
                     <button className="secondary" type="button" onClick={() => editRatioSource(source)} disabled={ratioBusy}>
                       {t("common.edit")}
                     </button>
-                    <button className="secondary danger" type="button" onClick={() => void handleDeleteRatioSource(source.id)} disabled={ratioBusy || connection !== "connected"}>
+                    <button className="secondary danger" type="button" onClick={() => void handleDeleteRatioSource(source.id)} disabled={ratioBusy}>
                       {t("common.delete")}
                     </button>
                   </div>
@@ -2782,15 +2791,21 @@ export function App() {
   const aliasesList = displayAliases;
   const disconnected = connection === "disconnected";
   const reportedServerLifecycle = serverProcess?.status;
-  const serverLifecycle = connection === "connected"
+  const backendLifecycle = connection === "connected"
     && (!reportedServerLifecycle || reportedServerLifecycle === "stopped" || reportedServerLifecycle === "failed")
     ? "external-running"
     : reportedServerLifecycle ?? "stopped";
+  const routingEnabled = status?.routing_enabled ?? (connection === "connected" && backendLifecycle === "external-running");
+  const serverLifecycle = backendLifecycle === "starting" || backendLifecycle === "stopping"
+    ? backendLifecycle
+    : routingEnabled
+      ? backendLifecycle
+      : "stopped";
   const isServerStarting = serverLifecycle === "starting";
   const isServerStopping = serverLifecycle === "stopping";
   const serverRunning = serverLifecycle === "running" || serverLifecycle === "external-running";
-  const canStartServer = serverLifecycle === "stopped" || serverLifecycle === "failed";
-  const canStopServer = Boolean(serverProcess?.canStop);
+  const canStartServer = !serverRunning && backendLifecycle !== "starting" && backendLifecycle !== "stopping";
+  const canStopServer = serverRunning;
   const serverControlBusy = (busyAction?.startsWith("server:") ?? false) || isServerStarting || isServerStopping;
   const providerEntries = editableConfig ? Object.entries(editableConfig.providers) : [];
   const aliasEntries = editableConfig ? Object.entries(editableConfig.aliases) : [];

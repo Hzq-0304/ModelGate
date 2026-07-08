@@ -19,6 +19,10 @@ type SwitchBody = {
   active?: string;
 };
 
+type RoutingBody = {
+  enabled?: boolean;
+};
+
 type ConfigBody = {
   config?: unknown;
 };
@@ -207,9 +211,20 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
   server.get("/admin/status", async () => ({
     name: "ModelGate",
     active: runtime.activeAlias,
+    routing_enabled: runtime.routingEnabled,
     entrypoints: runtime.resolveEntrypoints(),
     config_warnings: getConfigWarnings(runtime.config)
   }));
+
+  server.get("/admin/routing", async () => ({
+    enabled: runtime.routingEnabled
+  }));
+
+  server.post<{ Body: RoutingBody }>("/admin/routing", async (request) => {
+    const enabled = Boolean(request.body?.enabled);
+    runtime.setRoutingEnabled(enabled);
+    return { ok: true, enabled };
+  });
 
   server.get("/admin/aliases", async () => ({
     active: runtime.activeAlias,

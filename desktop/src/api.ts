@@ -16,6 +16,7 @@ export type HealthResponse = {
 export type StatusResponse = {
   name: string;
   active: string;
+  routing_enabled?: boolean;
   entrypoints: Record<string, {
     use: string;
     resolved: string;
@@ -1221,6 +1222,17 @@ export async function getHealth() {
 export async function getStatus() {
   const response = await fetch(`${baseUrl}/admin/status`);
   return parseJson<StatusResponse>(response);
+}
+
+export async function setRoutingEnabled(enabled: boolean) {
+  const response = await fetch(`${baseUrl}/admin/routing`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ enabled })
+  });
+  return parseJson<{ ok: boolean; enabled: boolean }>(response);
 }
 
 export async function getAliases() {
