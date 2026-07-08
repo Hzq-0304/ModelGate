@@ -994,6 +994,15 @@ export function App() {
       return t("ratio.error.invalidCredentialVariable");
     }
     if (
+      normalized.includes("network request failed")
+      || normalized.includes("fetch failed")
+      || normalized.includes("enotfound")
+      || normalized.includes("dns")
+      || normalized.includes("could not resolve")
+    ) {
+      return t("ratio.error.network");
+    }
+    if (
       normalized.includes("auth_token")
       || normalized.includes("account and password")
       || normalized.includes("login rejected")

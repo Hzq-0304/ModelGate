@@ -144,14 +144,25 @@ function authTokenFromLoginResponse(json: unknown) {
 }
 
 async function loginSub2ApiCredential(baseUrl: string, email: string, password: string) {
-  const response = await fetch(`${baseUrl}/api/v1/auth/login`, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ email, password })
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/v1/auth/login`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ email, password })
+    });
+  } catch (error) {
+    const cause = error instanceof Error && "cause" in error ? error.cause : undefined;
+    const causeMessage = cause instanceof Error ? cause.message : "";
+    const message = causeMessage || (error instanceof Error ? error.message : String(error));
+    throw new RatioSourceError(
+      "network_error",
+      `Network request failed while signing in to Sub2API. Check the site URL and DNS/network connection.${message ? ` Detail: ${message}` : ""}`
+    );
+  }
   const text = await response.text();
   let json: unknown = null;
   try {
@@ -252,7 +263,9 @@ function ratioAdminError(error: unknown) {
       ? 404
       : code === "authentication_required" || code === "authentication_failed"
         ? 401
-        : 400;
+        : code === "network_error" || code === "timeout"
+          ? 502
+          : 400;
   return {
     status,
     body: {
@@ -373,7 +386,8 @@ export async function registerAdminRouter(server: FastifyInstance, runtime: Runt
       const credential = await resolveRatioCredential(request.body ?? {});
       return {
         ok: true,
-        tokenEnv: credential.tokenEnv
+        tokenEnv: credential.tokenEnv,
+        ...(credential.token ? { token: credential.token } : {})
       };
     } catch (error) {
       const normalized = ratioAdminError(error);

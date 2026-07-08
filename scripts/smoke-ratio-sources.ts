@@ -383,13 +383,30 @@ providers:
           tokenEnv: "SUB2_SECURE_RATIO_TOKEN",
           mode: "password",
           email: "admin@example.com",
-          password: "correct-password"
+          password: "correct-password",
+          returnToken: true
         })
       });
       assert.equal(passwordCredentialResponse.status, 200);
       const passwordCredential = await passwordCredentialResponse.json() as { tokenEnv: string; token?: string };
       assert.equal(passwordCredential.tokenEnv, "SUB2_SECURE_RATIO_TOKEN");
-      assert.equal(passwordCredential.token, undefined);
+      assert.equal(passwordCredential.token, "sub2-secure-token");
+
+      const networkCredentialResponse = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: "missing-sub2api.invalid",
+          tokenEnv: "SUB2_MISSING_RATIO_TOKEN",
+          mode: "password",
+          email: "admin@example.com",
+          password: "correct-password"
+        })
+      });
+      assert.equal(networkCredentialResponse.status, 502);
+      const networkCredential = await networkCredentialResponse.json() as { error: { type: string; message: string } };
+      assert.equal(networkCredential.error.type, "network_error");
+      assert.match(networkCredential.error.message, /Network request failed/);
 
       const secureCreateResponse = await fetch(`${baseUrl}/admin/ratio-sources`, {
         method: "POST",
