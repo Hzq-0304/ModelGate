@@ -24,14 +24,23 @@
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  height: 100%;
   line-height: 1.5;
+  overflow: hidden;
 }
 
 body {
   background: var(--ccs-background);
   font-family: var(--ccs-font);
   font-size: 14px;
+  height: 100%;
   min-width: 800px;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
 }
 
 button,
@@ -47,13 +56,16 @@ select {
   display: flex;
   flex-direction: column;
   font-family: var(--ccs-font);
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   padding: 8px 14px 14px;
 }
 
 .ccs-header {
   align-items: center;
   display: flex;
+  flex: 0 0 auto;
   gap: 12px;
   justify-content: space-between;
   min-height: 44px;
@@ -298,6 +310,8 @@ select {
 .ccs-main {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .home-dashboard {

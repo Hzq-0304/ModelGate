@@ -4,7 +4,7 @@ import { registerModelRouter } from "../router/modelRouter.js";
 import { RatioRefreshScheduler } from "../runtime/ratioRefreshScheduler.js";
 import type { RuntimeState } from "../runtime/state.js";
 
-export const modelgateBodyLimitBytes = 64 * 1024 * 1024;
+export const modelgateBodyLimitBytes = 256 * 1024 * 1024;
 
 export async function createServer(runtime: RuntimeState) {
   const server = Fastify({

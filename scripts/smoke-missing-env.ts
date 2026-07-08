@@ -96,7 +96,7 @@ providers:
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         model: "codex-main",
-        input: "x".repeat(2 * 1024 * 1024)
+        input: "x".repeat(70 * 1024 * 1024)
       })
     });
     const largeResponsesJson = await largeResponsesResponse.json();
