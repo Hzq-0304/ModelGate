@@ -239,6 +239,11 @@ type OfflineConfigTextResponse = {
   raw: string;
 };
 
+type OfflineUsageDataTextResponse = {
+  path: string;
+  raw: string;
+};
+
 type OfflineRatioDataTextResponse = {
   root: string;
   sources_raw: string;
@@ -570,6 +575,198 @@ export function getBaseUrl() {
 
 function isTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
+}
+
+function usageNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function usageCostFields(record: UsageRecord) {
+  const estimated = usageNumber(record.estimated_cost_usd);
+  const original = usageNumber(record.original_cost_usd) ?? estimated;
+  const actual = usageNumber(record.actual_cost_usd) ?? estimated ?? original;
+  return { original, actual };
+}
+
+function safeUsageRecord(value: unknown): UsageRecord | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as UsageRecord;
+  if (
+    typeof record.id !== "string" ||
+    typeof record.timestamp !== "string" ||
+    (record.api_type !== "chat_completions" && record.api_type !== "responses") ||
+    (record.path !== "/v1/chat/completions" && record.path !== "/v1/responses") ||
+    (record.kind !== "normal" && record.kind !== "diagnostic") ||
+    typeof record.stream !== "boolean" ||
+    typeof record.ok !== "boolean" ||
+    typeof record.cost_available !== "boolean"
+  ) {
+    return null;
+  }
+
+  const cost = usageCostFields(record);
+  return {
+    ...record,
+    original_cost_usd: cost.original,
+    actual_cost_usd: cost.actual,
+    estimated_cost_usd: cost.actual ?? record.estimated_cost_usd,
+    cost_ratio: usageNumber(record.cost_ratio)
+  };
+}
+
+function usageRangeStart(range: UsageRange) {
+  if (range === "all") {
+    return undefined;
+  }
+
+  const now = new Date();
+  const rollingWindows: Partial<Record<UsageRange, number>> = {
+    "10m": 10 * 60 * 1000,
+    "30m": 30 * 60 * 1000,
+    "1h": 60 * 60 * 1000,
+    "12h": 12 * 60 * 60 * 1000,
+    "1d": 24 * 60 * 60 * 1000,
+    "24h": 24 * 60 * 60 * 1000,
+    "7d": 7 * 24 * 60 * 60 * 1000
+  };
+  const rollingWindow = rollingWindows[range];
+  if (rollingWindow) {
+    return now.getTime() - rollingWindow;
+  }
+
+  if (range === "today") {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    return start.getTime();
+  }
+
+  return undefined;
+}
+
+function usageInRange(record: UsageRecord, range: UsageRange) {
+  const start = usageRangeStart(range);
+  if (start === undefined) {
+    return true;
+  }
+
+  const timestamp = new Date(record.timestamp).getTime();
+  return Number.isFinite(timestamp) && timestamp >= start;
+}
+
+function createUsageSummaryGroup(): UsageSummaryGroup {
+  return {
+    requests: 0,
+    success: 0,
+    failed: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cached_tokens: 0,
+    reasoning_tokens: 0,
+    total_tokens: 0,
+    cost_available: false
+  };
+}
+
+function addUsageTokens(target: UsageSummary | UsageSummaryGroup, source: UsageRecord) {
+  target.input_tokens = (target.input_tokens ?? 0) + (source.input_tokens ?? 0);
+  target.output_tokens = (target.output_tokens ?? 0) + (source.output_tokens ?? 0);
+  target.cached_tokens = (target.cached_tokens ?? 0) + (source.cached_tokens ?? 0);
+  target.reasoning_tokens = (target.reasoning_tokens ?? 0) + (source.reasoning_tokens ?? 0);
+  target.total_tokens = (target.total_tokens ?? 0) + (source.total_tokens ?? 0);
+}
+
+function addUsageCost(target: UsageSummary | UsageSummaryGroup, record: UsageRecord) {
+  const cost = usageCostFields(record);
+  if (!record.cost_available || typeof cost.original !== "number" || typeof cost.actual !== "number") {
+    return;
+  }
+
+  target.cost_available = true;
+  target.original_cost_usd = (target.original_cost_usd ?? 0) + cost.original;
+  target.actual_cost_usd = (target.actual_cost_usd ?? 0) + cost.actual;
+  target.estimated_cost_usd = target.actual_cost_usd;
+}
+
+function addUsageRecordToGroup(group: UsageSummaryGroup, record: UsageRecord) {
+  group.requests += 1;
+  if (record.ok) {
+    group.success += 1;
+  } else {
+    group.failed += 1;
+  }
+  addUsageTokens(group, record);
+  addUsageCost(group, record);
+}
+
+function usageAliasKey(record: UsageRecord) {
+  return record.resolved_alias ?? record.requested_model ?? "unknown";
+}
+
+function usageProviderKey(record: UsageRecord) {
+  return record.provider ?? "unknown";
+}
+
+function usageModelKey(record: UsageRecord) {
+  return `${record.provider ?? "unknown"}/${record.upstream_model ?? "unknown"}`;
+}
+
+function parseOfflineUsageRecords(raw: string) {
+  return raw
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return safeUsageRecord(JSON.parse(line));
+      } catch {
+        return null;
+      }
+    })
+    .filter((record): record is UsageRecord => record !== null);
+}
+
+async function getOfflineUsageSummary(range: UsageRange) {
+  const offline = await invoke<OfflineUsageDataTextResponse>("read_usage_data");
+  const records = parseOfflineUsageRecords(offline.raw).filter((record) => usageInRange(record, range));
+  const summary: UsageSummary = {
+    range,
+    total_tokens: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cached_tokens: 0,
+    reasoning_tokens: 0,
+    requests: records.length,
+    success: records.filter((record) => record.ok).length,
+    failed: records.filter((record) => !record.ok).length,
+    cost_available: false,
+    by_alias: {},
+    by_provider: {},
+    by_model: {}
+  };
+
+  for (const record of records) {
+    addUsageTokens(summary, record);
+    addUsageCost(summary, record);
+
+    const aliasKey = usageAliasKey(record);
+    const providerKey = usageProviderKey(record);
+    const modelKey = usageModelKey(record);
+    const aliasGroup = summary.by_alias[aliasKey] ?? createUsageSummaryGroup();
+    const providerGroup = summary.by_provider[providerKey] ?? createUsageSummaryGroup();
+    const modelGroup = summary.by_model[modelKey] ?? createUsageSummaryGroup();
+
+    addUsageRecordToGroup(aliasGroup, record);
+    addUsageRecordToGroup(providerGroup, record);
+    addUsageRecordToGroup(modelGroup, record);
+
+    summary.by_alias[aliasKey] = aliasGroup;
+    summary.by_provider[providerKey] = providerGroup;
+    summary.by_model[modelKey] = modelGroup;
+  }
+
+  return summary;
 }
 
 function unavailableServerProcessStatus(): ServerProcessStatus {
@@ -1069,8 +1266,15 @@ export async function getRequestStats() {
 }
 
 export async function getUsageSummary(range: UsageRange = "today") {
-  const response = await fetch(`${baseUrl}/admin/usage/summary?range=${encodeURIComponent(range)}`);
-  return parseJson<UsageSummary>(response);
+  try {
+    const response = await fetch(`${baseUrl}/admin/usage/summary?range=${encodeURIComponent(range)}`);
+    return await parseJson<UsageSummary>(response);
+  } catch (error) {
+    if (!isTauriRuntime()) {
+      throw error;
+    }
+    return getOfflineUsageSummary(range);
+  }
 }
 
 export async function getUsageGroups(params: {

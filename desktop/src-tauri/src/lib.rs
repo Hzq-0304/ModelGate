@@ -18,6 +18,7 @@ pub fn run() {
             offline_config::get_modelgate_config_path,
             offline_config::read_modelgate_config,
             offline_config::read_ratio_data,
+            offline_config::read_usage_data,
             offline_config::write_modelgate_config,
             offline_config::merge_ccswitch_import_into_config,
             offline_config::validate_modelgate_config_offline,

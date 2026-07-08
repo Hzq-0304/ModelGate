@@ -1361,11 +1361,6 @@ export function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (connection !== "connected") {
-      setTopbarUsageSummary(null);
-      return;
-    }
-
     let cancelled = false;
     async function loadTopbarUsage() {
       try {
@@ -1386,7 +1381,7 @@ export function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [connection, topbarUsageRange]);
+  }, [topbarUsageRange]);
 
   useEffect(() => {
     if (!showCcSwitchImportGuide || importDrafts.length === 0) {

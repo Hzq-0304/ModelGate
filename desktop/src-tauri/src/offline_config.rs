@@ -31,6 +31,12 @@ pub struct OfflineRatioDataResponse {
 }
 
 #[derive(Serialize)]
+pub struct OfflineUsageDataResponse {
+    path: String,
+    raw: String,
+}
+
+#[derive(Serialize)]
 pub struct OfflineValidationResponse {
     ok: bool,
     errors: Vec<String>,
@@ -68,6 +74,17 @@ pub fn read_ratio_data(app: AppHandle) -> Result<OfflineRatioDataResponse, Strin
         root: path_to_string(&root),
         sources_raw,
         cache_raw,
+    })
+}
+
+#[tauri::command]
+pub fn read_usage_data(app: AppHandle) -> Result<OfflineUsageDataResponse, String> {
+    let usage_path = resolve_usage_path(&app)?;
+    let raw = fs::read_to_string(&usage_path).unwrap_or_default();
+
+    Ok(OfflineUsageDataResponse {
+        path: path_to_string(&usage_path),
+        raw,
     })
 }
 
@@ -185,6 +202,78 @@ fn resolve_ratio_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .parent()
         .map(|parent| parent.join("ratio"))
         .unwrap_or_else(|| PathBuf::from("ratio")))
+}
+
+fn resolve_usage_path(app: &AppHandle) -> Result<PathBuf, String> {
+    for name in ["MODELGATE_USAGE_PATH", "MODEL_GATE_USAGE_PATH"] {
+        if let Ok(value) = env::var(name) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Ok(absolutize(PathBuf::from(trimmed)));
+            }
+        }
+    }
+
+    let mut candidates = Vec::new();
+
+    if let Ok(value) = env::var("MODELGATE_DATA_DIR") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            candidates.push(absolutize(PathBuf::from(trimmed)).join("usage.jsonl"));
+        }
+    }
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(
+            resource_dir
+                .join(SERVER_RESOURCE_DIR)
+                .join(".modelgate")
+                .join("usage.jsonl"),
+        );
+    }
+
+    if let Ok(current_exe) = env::current_exe() {
+        if let Some(parent) = current_exe.parent() {
+            candidates.push(
+                parent
+                    .join(SERVER_RESOURCE_DIR)
+                    .join(".modelgate")
+                    .join("usage.jsonl"),
+            );
+        }
+    }
+
+    if let Ok(current_dir) = env::current_dir() {
+        candidates.push(current_dir.join(".modelgate").join("usage.jsonl"));
+        add_parent_usage_candidates(&mut candidates, &current_dir);
+    }
+
+    if let Ok(config_path) = resolve_modelgate_config_path(app) {
+        if let Some(parent) = config_path.parent() {
+            candidates.push(parent.join(".modelgate").join("usage.jsonl"));
+        }
+    }
+
+    Ok(candidates
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .unwrap_or_else(|| PathBuf::from(".modelgate").join("usage.jsonl")))
+}
+
+fn add_parent_usage_candidates(candidates: &mut Vec<PathBuf>, start: &Path) {
+    let mut current = Some(start);
+    while let Some(path) = current {
+        candidates.push(path.join(".modelgate").join("usage.jsonl"));
+        candidates.push(
+            path.join("desktop")
+                .join("src-tauri")
+                .join("resources")
+                .join(SERVER_RESOURCE_DIR)
+                .join(".modelgate")
+                .join("usage.jsonl"),
+        );
+        current = path.parent();
+    }
 }
 
 
