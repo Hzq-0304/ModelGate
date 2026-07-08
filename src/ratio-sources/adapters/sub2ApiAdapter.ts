@@ -16,18 +16,49 @@ function dataArray(json: unknown) {
   return [];
 }
 
+function groupRows(json: unknown) {
+  const rows: unknown[] = [];
+
+  for (const item of dataArray(json)) {
+    const row = asRecord(item);
+    const directGroups = asArray(row.groups);
+    const platforms = asArray(row.platforms);
+
+    if (
+      row.rate_multiplier !== undefined
+      || row.rateMultiplier !== undefined
+      || row.group_id !== undefined
+      || (row.id !== undefined && row.name !== undefined && platforms.length === 0 && directGroups.length === 0)
+    ) {
+      rows.push(item);
+    }
+
+    rows.push(...directGroups);
+    for (const platform of platforms) {
+      rows.push(...asArray(asRecord(platform).groups));
+    }
+  }
+
+  return rows;
+}
+
 function parseSub2ApiGroups(source: RatioSource, json: unknown): RatioGroup[] {
-  const groups = dataArray(json);
+  const groups = groupRows(json);
   return groups.map((item, index) => {
     const row = asRecord(item);
-    const id = stringValue(row.id) ?? String(numberValue(row.id) ?? stringValue(row.name) ?? `group-${index + 1}`);
+    const id = stringValue(row.id)
+      ?? stringValue(row.group_id)
+      ?? String(numberValue(row.id) ?? numberValue(row.group_id) ?? stringValue(row.name) ?? `group-${index + 1}`);
     const name = stringValue(row.name) ?? id;
-    const groupRatio = numberValue(row.rate_multiplier);
+    const groupRatio = numberValue(row.rate_multiplier)
+      ?? numberValue(row.rateMultiplier)
+      ?? numberValue(row.rate)
+      ?? numberValue(row.multiplier);
     return {
       sourceId: source.id,
       groupId: id,
       name,
-      description: stringValue(row.description),
+      description: stringValue(row.description) ?? stringValue(row.platform) ?? stringValue(row.subscription_type),
       sourceOrder: numberValue(row.sort_order) ?? index,
       groupRatio,
       models: [],
@@ -38,10 +69,13 @@ function parseSub2ApiGroups(source: RatioSource, json: unknown): RatioGroup[] {
 
 async function fetchSub2Groups(source: RatioSource, context?: RatioFetchContext): Promise<RatioFetchResult> {
   const paths = [
-    "/api/v1/admin/groups/all?include_inactive=false",
-    "/api/v1/groups/available"
+    "/api/v1/groups/available",
+    "/api/v1/channels/available",
+    "/api/v1/admin/groups/all",
+    "/api/v1/admin/groups/all?include_inactive=true"
   ];
   let lastError: unknown;
+  let authError: RatioSourceError | null = null;
 
   for (const path of paths) {
     try {
@@ -72,11 +106,14 @@ async function fetchSub2Groups(source: RatioSource, context?: RatioFetchContext)
     } catch (error) {
       lastError = error;
       if (error instanceof RatioSourceError && (error.code === "authentication_required" || error.code === "authentication_failed")) {
-        break;
+        authError = error;
       }
     }
   }
 
+  if (authError) {
+    throw authError;
+  }
   if (lastError instanceof RatioSourceError) {
     throw lastError;
   }
