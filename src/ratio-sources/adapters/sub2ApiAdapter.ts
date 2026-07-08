@@ -67,6 +67,22 @@ function parseSub2ApiGroups(source: RatioSource, json: unknown): RatioGroup[] {
   });
 }
 
+function sub2AuthError(source: RatioSource, error: RatioSourceError) {
+  if (!source.auth || source.auth.type === "none") {
+    return new RatioSourceError(
+      "authentication_required",
+      "Sub2API group endpoints require a logged-in JWT. Set authentication to Bearer and provide the site's auth_token via an environment variable.",
+      error.statusCode
+    );
+  }
+
+  return new RatioSourceError(
+    error.code,
+    "Sub2API rejected the configured credential. Refresh the site's auth_token and update the ratio source environment variable.",
+    error.statusCode
+  );
+}
+
 async function fetchSub2Groups(source: RatioSource, context?: RatioFetchContext): Promise<RatioFetchResult> {
   const paths = [
     "/api/v1/groups/available",
@@ -112,7 +128,7 @@ async function fetchSub2Groups(source: RatioSource, context?: RatioFetchContext)
   }
 
   if (authError) {
-    throw authError;
+    throw sub2AuthError(source, authError);
   }
   if (lastError instanceof RatioSourceError) {
     throw lastError;

@@ -90,6 +90,11 @@ function route(request: IncomingMessage, response: ServerResponse) {
     return;
   }
 
+  if (url.pathname.startsWith("/sub-auth/api/v1/")) {
+    json(response, 401, { success: false, message: "unauthorized" });
+    return;
+  }
+
   if (url.pathname === "/flaky/api/ratio_config") {
     json(response, 404, { success: false });
     return;
@@ -235,6 +240,17 @@ providers:
     assert.equal(sub2Source.lastErrorCode, "no_model_ratio");
     assert.equal(manager.getGroups(sub2.id)[1]?.description, "VIP Sub2API group");
     assert.equal(manager.getGroups(sub2.id)[1]?.models.length, 0);
+
+    const sub2Auth = manager.createSource({
+      name: "Fixture Sub2API Auth",
+      baseUrl: `${fixture.baseUrl}/sub-auth`,
+      type: "sub2api"
+    });
+    const sub2AuthSource = await manager.refreshSource(sub2Auth.id);
+    assert.equal(sub2AuthSource.status, "failed");
+    assert.equal(sub2AuthSource.lastErrorCode, "authentication_required");
+    assert.match(sub2AuthSource.lastError ?? "", /Bearer/);
+    assert.match(sub2AuthSource.lastError ?? "", /auth_token/);
 
     const flaky = manager.createSource({
       name: "Fixture Flaky",
