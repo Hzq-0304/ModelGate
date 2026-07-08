@@ -3359,7 +3359,7 @@ export function App() {
           brand={<ModelGateBrand />}
           headerAccessory={(
             <div className="topbar-token-summary" aria-label={`Token total for ${topbarUsageLabel}`}>
-              <span className="topbar-token-value">{topbarTokenLabel}<small>tok</small></span>
+              <span className="topbar-token-value">{topbarTokenLabel}</span>
               <button
                 className="topbar-token-range"
                 data-tauri-no-drag

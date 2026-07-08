@@ -48,7 +48,7 @@ select {
   flex-direction: column;
   font-family: var(--ccs-font);
   min-height: 100vh;
-  padding: 16px 20px;
+  padding: 8px 16px 14px;
 }
 
 .ccs-header {
@@ -57,7 +57,7 @@ select {
   gap: 12px;
   justify-content: space-between;
   min-height: 44px;
-  padding: 0 0 16px;
+  padding: 0 0 8px;
 }
 
 .ccs-header-left {
@@ -95,8 +95,8 @@ select {
 .modelgate-brand-symbol {
   display: block;
   flex: 0 0 auto;
-  height: 36px;
-  width: 36px;
+  height: 42px;
+  width: 42px;
 }
 
 .modelgate-mark-ring {
@@ -196,45 +196,37 @@ select {
   color: #101828;
   display: inline-flex;
   flex: 0 1 auto;
-  gap: 6px;
-  height: 34px;
+  gap: 8px;
+  height: 36px;
   min-width: 0;
-  padding: 0 2px;
+  padding: 0 3px;
 }
 
 .topbar-token-value {
   align-items: baseline;
   display: inline-flex;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 800;
-  gap: 4px;
   line-height: 1;
-  max-width: 104px;
+  max-width: 116px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.topbar-token-value small {
-  color: #667085;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
 .topbar-token-range {
   background: #f8fafc;
   border: 1px solid #dde4ef;
-  border-radius: 999px;
+  border-radius: 8px;
   color: #344054;
   font-size: 11px;
   font-weight: 800;
-  height: 24px;
+  height: 32px;
   line-height: 1;
-  min-height: 0;
-  padding: 0 8px;
+  min-height: 32px;
+  padding: 0;
+  width: 32px;
 }
 
 .topbar-token-range:hover {
