@@ -125,6 +125,12 @@ function tokenFromCookieLike(value: string) {
   return jwt?.[0] ?? "";
 }
 
+function bearerTokenFromValue(value: string) {
+  const trimmed = value.trim();
+  const bearer = trimmed.match(/^Bearer\s+(.+)$/i);
+  return (bearer?.[1] ?? trimmed).trim();
+}
+
 function cookieSecretFromCookieLike(value: string) {
   const trimmed = value.trim();
   if (!trimmed || !trimmed.includes("=")) {
@@ -194,6 +200,28 @@ function cookieSecretFromLoginHeaders(headers: Headers) {
     .map((cookie) => cookie.split(";")[0]?.trim() ?? "")
     .filter((cookie) => cookie.includes("="));
   return cookies.length > 0 ? `${cookieSecretPrefix}${cookies.join("; ")}` : "";
+}
+
+function normalizeLoginSecret(value: string, type: RatioSourceType) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.startsWith(cookieSecretPrefix)) {
+    return trimmed;
+  }
+
+  const cookieSecret = cookieSecretFromCookieLike(trimmed);
+  if (cookieSecret && type !== "sub2api") {
+    return cookieSecret;
+  }
+
+  const token = tokenFromCookieLike(trimmed);
+  if (token) {
+    return type === "sub2api" ? token : bearerTokenFromValue(token);
+  }
+
+  return bearerTokenFromValue(trimmed);
 }
 
 function loginTargetsForType(type: RatioSourceType) {
@@ -288,7 +316,7 @@ async function loginRatioCredential(baseUrl: string, type: RatioSourceType, emai
       throw new RatioSourceError("authentication_required", `${target.label} login requires two-factor authentication. Paste a browser login cookie instead.`);
     }
 
-    const token = authTokenFromLoginResponse(json);
+    const token = normalizeLoginSecret(authTokenFromLoginResponse(json), type);
     if (token) {
       return token;
     }

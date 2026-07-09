@@ -961,10 +961,12 @@ export function App() {
 
       await saveRatioCredentialDraft();
 
-      if (ratioSourceForm.editingId) {
-        await updateRatioSource(ratioSourceForm.editingId, payload);
-      } else {
-        await createRatioSource(payload);
+      const saved = ratioSourceForm.editingId
+        ? await updateRatioSource(ratioSourceForm.editingId, payload)
+        : await createRatioSource(payload);
+
+      if (payload.enabled) {
+        await refreshRatioSource(saved.source.id);
       }
 
       resetRatioSourceForm();
@@ -2609,6 +2611,8 @@ export function App() {
     const sourceList = ratioSources?.sources ?? [];
     const cacheEntries = ratioSources?.cache ?? {};
     const ratioBusy = busyAction?.startsWith("ratio:") ?? false;
+    const ratioMutationBusy = busyAction === "ratio:save"
+      || (busyAction?.startsWith("ratio:delete:") ?? false);
     const ratioMessageBad = ratioMessage.includes("failed") || ratioMessage.includes("Failed") || ratioMessage.includes("失败");
 
     return (
@@ -2629,6 +2633,7 @@ export function App() {
               const expandedRatioGroups = ratioGroups.slice(3);
               const expanded = expandedRatioSourceIds.has(source.id);
               const statusKey = ratioSourceStatusLabels[source.status];
+              const sourceRefreshing = busyAction === `ratio:refresh:${source.id}`;
               return (
                 <div
                   className={expanded ? "ratio-source-card is-expanded" : "ratio-source-card"}
@@ -2686,17 +2691,17 @@ export function App() {
                       className="ccs-action-icon"
                       type="button"
                       onClick={() => void handleRefreshRatioSource(source.id)}
-                      disabled={ratioBusy}
-                      title={busyAction === `ratio:refresh:${source.id}` ? t("common.refreshing") : t("common.refresh")}
-                      aria-label={busyAction === `ratio:refresh:${source.id}` ? t("common.refreshing") : t("common.refresh")}
+                      disabled={ratioMutationBusy || sourceRefreshing}
+                      title={sourceRefreshing ? t("common.refreshing") : t("common.refresh")}
+                      aria-label={sourceRefreshing ? t("common.refreshing") : t("common.refresh")}
                     >
-                      <RefreshCw />
+                      <RefreshCw className={sourceRefreshing ? "spin" : ""} />
                     </button>
                     <button
                       className="ccs-action-icon"
                       type="button"
                       onClick={() => editRatioSource(source)}
-                      disabled={ratioBusy}
+                      disabled={ratioMutationBusy || sourceRefreshing}
                       title={t("common.edit")}
                       aria-label={t("common.edit")}
                     >
@@ -2706,7 +2711,7 @@ export function App() {
                       className="ccs-action-icon danger"
                       type="button"
                       onClick={() => void handleDeleteRatioSource(source.id)}
-                      disabled={ratioBusy}
+                      disabled={ratioMutationBusy || sourceRefreshing}
                       title={t("common.delete")}
                       aria-label={t("common.delete")}
                     >

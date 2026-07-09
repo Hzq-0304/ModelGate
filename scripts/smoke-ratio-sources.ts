@@ -109,7 +109,7 @@ function route(request: IncomingMessage, response: ServerResponse) {
     request.on("end", () => {
       const login = JSON.parse(body || "{}") as { username?: string; email?: string; password?: string };
       if ((login.username === "admin@example.com" || login.email === "admin@example.com") && login.password === "correct-password") {
-        json(response, 200, { success: true, data: { accessToken: "new-compatible-access-token" } });
+        json(response, 200, { success: true, data: { accessToken: "Bearer new-compatible-access-token" } });
         return;
       }
       json(response, 200, { success: false, message: "unauthorized" });

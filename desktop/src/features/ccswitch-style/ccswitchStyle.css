@@ -689,6 +689,10 @@ select {
   width: 16px;
 }
 
+.ccs-action-icon svg.spin {
+  animation: ccs-spin 0.8s linear infinite;
+}
+
 .ccs-empty-state {
   align-items: center;
   border: 1px dashed var(--ccs-border);
