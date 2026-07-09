@@ -924,6 +924,8 @@ export function App() {
       || normalized.includes("login rejected")
       || normalized.includes("two-factor")
       || normalized.includes("access token")
+      || normalized.includes("session cookie")
+      || normalized.includes("login endpoint")
     ) {
       return t("ratio.error.invalidCredentialInput");
     }

@@ -101,6 +101,37 @@ function route(request: IncomingMessage, response: ServerResponse) {
     return;
   }
 
+  if (url.pathname === "/new-token/api/user/login") {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    request.on("end", () => {
+      const login = JSON.parse(body || "{}") as { username?: string; email?: string; password?: string };
+      if ((login.username === "admin@example.com" || login.email === "admin@example.com") && login.password === "correct-password") {
+        json(response, 200, { success: true, data: { accessToken: "new-compatible-access-token" } });
+        return;
+      }
+      json(response, 200, { success: false, message: "unauthorized" });
+    });
+    return;
+  }
+  if (url.pathname === "/new-token/api/ratio_config" || url.pathname === "/new-token/api/pricing") {
+    if (auth !== "Bearer new-compatible-access-token") {
+      json(response, 401, { success: false, message: "unauthorized" });
+      return;
+    }
+    json(response, 200, {
+      success: true,
+      data: [
+        { model_name: "gpt-compatible", quota_type: 0, model_ratio: 1.5, enable_groups: ["default"] }
+      ],
+      group_ratio: { default: 1 },
+      usable_group: { default: "Compatible New API group" }
+    });
+    return;
+  }
+
   if (url.pathname === "/one/api/option/") {
     if (auth !== "Bearer one-api-token") {
       json(response, 401, { success: false, message: "unauthorized" });
@@ -481,6 +512,23 @@ providers:
       assert.equal(newApiCredential.tokenEnv, "NEW_API_SECURE_RATIO_TOKEN");
       assert.match(newApiCredential.token ?? "", /^cookie:/);
 
+      const newApiCookieCredentialResponse = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: `${fixture.baseUrl}/new-secure`,
+          type: "new-api",
+          tokenEnv: "NEW_API_COOKIE_RATIO_TOKEN",
+          mode: "cookie",
+          cookie: "auth_token=new-secure-session; theme=dark",
+          returnToken: true
+        })
+      });
+      assert.equal(newApiCookieCredentialResponse.status, 200);
+      const newApiCookieCredential = await newApiCookieCredentialResponse.json() as { tokenEnv: string; token?: string };
+      assert.equal(newApiCookieCredential.tokenEnv, "NEW_API_COOKIE_RATIO_TOKEN");
+      assert.equal(newApiCookieCredential.token, "cookie:auth_token=new-secure-session; theme=dark");
+
       const newApiSecureCreateResponse = await fetch(`${baseUrl}/admin/ratio-sources`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -497,6 +545,41 @@ providers:
         method: "POST"
       });
       assert.equal(newApiSecureRefreshResponse.status, 200);
+
+      const compatibleCredentialResponse = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: `${fixture.baseUrl}/new-token`,
+          type: "new-api-compatible",
+          tokenEnv: "NEW_COMPATIBLE_RATIO_TOKEN",
+          mode: "password",
+          email: "admin@example.com",
+          password: "correct-password",
+          returnToken: true
+        })
+      });
+      assert.equal(compatibleCredentialResponse.status, 200);
+      const compatibleCredential = await compatibleCredentialResponse.json() as { tokenEnv: string; token?: string };
+      assert.equal(compatibleCredential.tokenEnv, "NEW_COMPATIBLE_RATIO_TOKEN");
+      assert.equal(compatibleCredential.token, "new-compatible-access-token");
+
+      const compatibleCreateResponse = await fetch(`${baseUrl}/admin/ratio-sources`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Compatible New API",
+          baseUrl: `${fixture.baseUrl}/new-token`,
+          type: "new-api-compatible",
+          auth: { type: "bearer", token_env: "NEW_COMPATIBLE_RATIO_TOKEN" }
+        })
+      });
+      assert.equal(compatibleCreateResponse.status, 201);
+      const compatibleCreated = await compatibleCreateResponse.json() as { source: { id: string } };
+      const compatibleRefreshResponse = await fetch(`${baseUrl}/admin/ratio-sources/${compatibleCreated.source.id}/refresh`, {
+        method: "POST"
+      });
+      assert.equal(compatibleRefreshResponse.status, 200);
 
       const oneApiCredentialResponse = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
         method: "POST",

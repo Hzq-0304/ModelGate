@@ -48,7 +48,9 @@ export function AccountSwitcher({
   const normalizedMessage = message.toLowerCase();
   const isBackgroundRefreshMessage = normalizedMessage.includes("modelgate server is not running")
     || normalizedMessage.includes("local configuration is available")
-    || normalizedMessage === "failed to fetch";
+    || normalizedMessage === "failed to fetch"
+    || normalizedMessage === "routing enabled"
+    || normalizedMessage === "routing disabled";
   const showToast = message
     && message !== "Status refreshed"
     && message !== t("advanced.statusRefreshed")

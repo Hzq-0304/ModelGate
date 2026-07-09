@@ -153,15 +153,37 @@ function stringField(record: Record<string, unknown>, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
+function stringFieldAny(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = stringField(record, key);
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
 function authTokenFromLoginResponse(json: unknown) {
+  const tokenKeys = [
+    "access_token",
+    "accessToken",
+    "auth_token",
+    "authToken",
+    "token",
+    "jwt",
+    "id_token",
+    "idToken",
+    "session",
+    "session_token",
+    "sessionToken"
+  ];
   const root = jsonRecord(json);
   const data = jsonRecord(root.data);
-  return stringField(root, "access_token")
-    || stringField(root, "auth_token")
-    || stringField(root, "token")
-    || stringField(data, "access_token")
-    || stringField(data, "auth_token")
-    || stringField(data, "token");
+  const user = jsonRecord(data.user);
+  return stringFieldAny(root, tokenKeys)
+    || stringFieldAny(data, tokenKeys)
+    || stringFieldAny(user, tokenKeys)
+    || (typeof root.data === "string" ? root.data.trim() : "");
 }
 
 function cookieSecretFromLoginHeaders(headers: Headers) {
@@ -181,14 +203,30 @@ function loginTargetsForType(type: RatioSourceType) {
         label: "Sub2API",
         path: "/api/v1/auth/login",
         body: (email: string, password: string) => ({ email, password })
+      },
+      {
+        label: "Sub2API",
+        path: "/api/auth/login",
+        body: (email: string, password: string) => ({ email, password })
       }
     ];
   }
 
+  const label = type === "one-api" ? "One API" : "New API";
   return [
     {
-      label: type === "one-api" ? "One API" : "New API",
+      label,
       path: "/api/user/login",
+      body: (email: string, password: string) => ({ username: email, email, password })
+    },
+    {
+      label,
+      path: "/api/login",
+      body: (email: string, password: string) => ({ username: email, email, password })
+    },
+    {
+      label,
+      path: "/api/auth/login",
       body: (email: string, password: string) => ({ username: email, email, password })
     },
     {
@@ -283,7 +321,10 @@ async function resolveRatioCredential(body: RatioCredentialBody) {
     }
     token = await loginRatioCredential(baseUrl, sourceType, email, password);
   } else {
-    token = tokenFromCookieLike(body.cookie ?? "") || cookieSecretFromCookieLike(body.cookie ?? "");
+    const rawCookie = body.cookie ?? "";
+    token = sourceType === "sub2api"
+      ? tokenFromCookieLike(rawCookie) || cookieSecretFromCookieLike(rawCookie)
+      : cookieSecretFromCookieLike(rawCookie) || tokenFromCookieLike(rawCookie);
     if (!token) {
       throw new RatioSourceError("authentication_required", "Paste auth_token, a Bearer token, or a browser login cookie.");
     }
