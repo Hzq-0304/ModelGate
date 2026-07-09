@@ -34,9 +34,13 @@ function credentialFromEnv(auth: RatioSourceAuth | undefined): Record<string, st
   };
 }
 
-function errorForStatus(status: number) {
+function hasConfiguredCredential(auth: RatioSourceAuth | undefined) {
+  return Boolean(auth && auth.type !== "none");
+}
+
+function errorForStatus(status: number, auth: RatioSourceAuth | undefined) {
   if (status === 401) {
-    return "authentication_required";
+    return hasConfiguredCredential(auth) ? "authentication_failed" : "authentication_required";
   }
   if (status === 403) {
     return "authentication_failed";
@@ -111,7 +115,7 @@ export async function fetchRatioJson(
     }
 
     if (!response.ok) {
-      throw new RatioSourceError(errorForStatus(response.status), `Ratio source returned HTTP ${response.status}.`, response.status);
+      throw new RatioSourceError(errorForStatus(response.status, source.auth), `Ratio source returned HTTP ${response.status}.`, response.status);
     }
 
     const reader = response.body?.getReader();

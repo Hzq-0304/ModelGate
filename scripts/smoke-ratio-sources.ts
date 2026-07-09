@@ -11,6 +11,7 @@ import { createServer } from "../src/server/createServer.js";
 const tempDir = mkdtempSync(join(tmpdir(), "modelgate-ratio-sources-"));
 const previousRatioDir = process.env.MODELGATE_RATIO_DIR;
 const previousOneApiToken = process.env.ONE_API_RATIO_TOKEN;
+const previousNewApiBadToken = process.env.NEW_API_BAD_RATIO_TOKEN;
 process.env.MODELGATE_RATIO_DIR = join(tempDir, "ratio-data");
 
 let slowPricingRequests = 0;
@@ -129,6 +130,11 @@ function route(request: IncomingMessage, response: ServerResponse) {
       group_ratio: { default: 1 },
       usable_group: { default: "Compatible New API group" }
     });
+    return;
+  }
+
+  if (url.pathname === "/new-turnstile/api/user/login") {
+    json(response, 200, { success: false, message: "Turnstile token empty" });
     return;
   }
 
@@ -336,6 +342,17 @@ providers:
     const cachedAgain = await manager.refreshSource(cached.id);
     assert.equal(cachedAgain.status, "ok");
     assert.equal(manager.getGroups(cached.id)[0]?.models[0]?.model, "gpt-cache");
+
+    process.env.NEW_API_BAD_RATIO_TOKEN = "wrong-token";
+    const badNewApiToken = manager.createSource({
+      name: "Bad New API Token",
+      baseUrl: `${fixture.baseUrl}/new-token`,
+      type: "new-api-compatible",
+      auth: { type: "bearer", token_env: "NEW_API_BAD_RATIO_TOKEN" }
+    });
+    const badNewApiTokenSource = await manager.refreshSource(badNewApiToken.id);
+    assert.equal(badNewApiTokenSource.status, "failed");
+    assert.equal(badNewApiTokenSource.lastErrorCode, "authentication_failed");
 
     process.env.ONE_API_RATIO_TOKEN = "one-api-token";
     const oneApi = manager.createSource({
@@ -564,6 +581,23 @@ providers:
       assert.equal(compatibleCredential.tokenEnv, "NEW_COMPATIBLE_RATIO_TOKEN");
       assert.equal(compatibleCredential.token, "new-compatible-access-token");
 
+      const turnstileCredentialResponse = await fetch(`${baseUrl}/admin/ratio-sources/credential`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: `${fixture.baseUrl}/new-turnstile`,
+          type: "new-api",
+          tokenEnv: "NEW_TURNSTILE_RATIO_TOKEN",
+          mode: "password",
+          email: "admin@example.com",
+          password: "correct-password"
+        })
+      });
+      assert.equal(turnstileCredentialResponse.status, 401);
+      const turnstileCredential = await turnstileCredentialResponse.json() as { error: { type: string; message: string } };
+      assert.equal(turnstileCredential.error.type, "authentication_failed");
+      assert.match(turnstileCredential.error.message, /Turnstile token empty/);
+
       const compatibleCreateResponse = await fetch(`${baseUrl}/admin/ratio-sources`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -668,6 +702,11 @@ try {
     delete process.env.ONE_API_RATIO_TOKEN;
   } else {
     process.env.ONE_API_RATIO_TOKEN = previousOneApiToken;
+  }
+  if (previousNewApiBadToken === undefined) {
+    delete process.env.NEW_API_BAD_RATIO_TOKEN;
+  } else {
+    process.env.NEW_API_BAD_RATIO_TOKEN = previousNewApiBadToken;
   }
   rmSync(tempDir, { recursive: true, force: true });
 }

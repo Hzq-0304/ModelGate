@@ -405,8 +405,11 @@ function getErrorMessage(error: unknown) {
 
 function ratioAdminError(error: unknown) {
   const code = error instanceof RatioSourceError ? error.code : "invalid_response";
-  const status = error instanceof RatioSourceError && error.statusCode
+  const upstreamStatus = error instanceof RatioSourceError && error.statusCode && error.statusCode >= 400
     ? error.statusCode
+    : undefined;
+  const status = upstreamStatus
+    ? upstreamStatus
     : code === "endpoint_not_found"
       ? 404
       : code === "authentication_required" || code === "authentication_failed"

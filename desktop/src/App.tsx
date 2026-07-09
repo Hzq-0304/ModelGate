@@ -895,6 +895,10 @@ export function App() {
       return "";
     }
 
+    if (source.lastError.toLowerCase().includes("missing ratio source credential environment variable")) {
+      return t("ratio.error.credentialMissing");
+    }
+
     if (source.lastErrorCode === "authentication_required" && source.lastError.toLowerCase().includes("rejected")) {
       return t("ratio.error.credentialRejected");
     }
@@ -907,7 +911,7 @@ export function App() {
     const message = getErrorMessage(error);
     const normalized = message.toLowerCase();
     if (normalized.includes("token_env") || normalized.includes("credential environment variable")) {
-      return t("ratio.error.invalidCredentialVariable");
+      return t("ratio.error.credentialMissing");
     }
     if (
       normalized.includes("network request failed")
@@ -926,6 +930,8 @@ export function App() {
       || normalized.includes("access token")
       || normalized.includes("session cookie")
       || normalized.includes("login endpoint")
+      || normalized.includes("turnstile")
+      || normalized.includes("token 为空")
     ) {
       return t("ratio.error.invalidCredentialInput");
     }
@@ -938,8 +944,11 @@ export function App() {
     if (normalized.includes("ratio source type is required")) {
       return t("ratio.error.typeRequired");
     }
-    if (normalized.includes("sub2api group endpoints require") || normalized.includes("http 401")) {
+    if (normalized.includes("sub2api group endpoints require")) {
       return t("ratio.error.authRequired");
+    }
+    if (normalized.includes("http 401")) {
+      return t("ratio.error.credentialRejected");
     }
     if (normalized.includes("sub2api rejected") || normalized.includes("http 403")) {
       return t("ratio.error.credentialRejected");
