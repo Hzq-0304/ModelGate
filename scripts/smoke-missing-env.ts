@@ -368,8 +368,7 @@ async function testResponsesDirectForwardingByDefault() {
       const content = Array.isArray(firstMessage?.content) ? firstMessage.content as Array<Record<string, unknown>> : [];
       sawInputImage = content.some((part) => part.type === "input_image" && part.image_url === "data:image/png;base64,aGVsbG8=");
       sawInputFile = content.some((part) => part.type === "input_file" && part.filename === "note.txt" && part.file_data === "data:text/plain;base64,aGVsbG8=");
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({
+      const responseBody = {
         id: "resp-test",
         object: "response",
         created_at: Math.floor(Date.now() / 1000),
@@ -384,7 +383,17 @@ async function testResponsesDirectForwardingByDefault() {
           }
         ],
         usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
-      }));
+      };
+      if (body.stream) {
+        response.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+        response.write(`event: response.output_text.delta\ndata: ${JSON.stringify({ type: "response.output_text.delta", delta: "ok" })}\n\n`);
+        response.write(`event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: responseBody })}\n\n`);
+        response.end("data: [DONE]\n\n");
+        return;
+      }
+
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(responseBody));
     });
   });
   await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
@@ -444,6 +453,28 @@ providers:
       assert.equal(sawResponsesOnlyField, true);
       assert.equal(sawInputImage, true);
       assert.equal(sawInputFile, true);
+
+      const streamResponse = await fetch(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "codex-main",
+          input: "hello",
+          stream: true
+        })
+      });
+      assert.equal(streamResponse.status, 200);
+      await streamResponse.text();
+
+      const usageRecords = await fetch(`${baseUrl}/admin/usage/records?range=all&limit=1`)
+        .then((usageResponse) => usageResponse.json()) as {
+          records: Array<{ api_type?: string; stream?: boolean; total_tokens?: number; input_tokens?: number; output_tokens?: number }>;
+        };
+      assert.equal(usageRecords.records[0]?.api_type, "responses");
+      assert.equal(usageRecords.records[0]?.stream, true);
+      assert.equal(usageRecords.records[0]?.input_tokens, 1);
+      assert.equal(usageRecords.records[0]?.output_tokens, 1);
+      assert.equal(usageRecords.records[0]?.total_tokens, 2);
     });
   } finally {
     await new Promise<void>((resolve) => upstream.close(() => resolve()));

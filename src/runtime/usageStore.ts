@@ -335,7 +335,11 @@ export function extractChatUsage(json: unknown): TokenUsage {
     return {};
   }
 
-  const usage = (json as { usage?: unknown }).usage;
+  const root = json as { usage?: unknown; response?: unknown };
+  const nestedResponse = root.response && typeof root.response === "object"
+    ? root.response as { usage?: unknown }
+    : undefined;
+  const usage = root.usage ?? nestedResponse?.usage;
   if (!usage || typeof usage !== "object") {
     return {};
   }
@@ -362,7 +366,11 @@ export function extractResponsesUsage(json: unknown): TokenUsage {
     return {};
   }
 
-  const usage = (json as { usage?: unknown }).usage;
+  const root = json as { usage?: unknown; response?: unknown };
+  const nestedResponse = root.response && typeof root.response === "object"
+    ? root.response as { usage?: unknown }
+    : undefined;
+  const usage = root.usage ?? nestedResponse?.usage;
   if (!usage || typeof usage !== "object") {
     return {};
   }

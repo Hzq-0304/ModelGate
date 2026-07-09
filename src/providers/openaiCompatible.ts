@@ -176,7 +176,15 @@ export async function forwardOpenAICompatibleChatCompletion(
 ): Promise<Response> {
   const upstreamBody = {
     ...body,
-    model: upstreamModel
+    model: upstreamModel,
+    ...(body.stream
+      ? {
+        stream_options: {
+          ...(body.stream_options && typeof body.stream_options === "object" ? body.stream_options : {}),
+          include_usage: true
+        }
+      }
+      : {})
   };
   const baseUrl = provider.base_url.replace(/\/+$/, "");
   const auth = resolveProviderAuth(providerName, provider);
