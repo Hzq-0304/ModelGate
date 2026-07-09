@@ -2,6 +2,7 @@ mod ccswitch_export;
 mod ccswitch_import;
 mod credential_store;
 mod offline_config;
+mod ratio_login;
 mod server_process;
 
 use tauri::{
@@ -89,6 +90,8 @@ pub fn run() {
             ccswitch_import::scan_selected_ccswitch_database,
             ccswitch_export::open_ccswitch_deep_link,
             credential_store::save_ratio_credential_secret,
+            ratio_login::open_ratio_login_window,
+            ratio_login::capture_ratio_login_cookies,
             offline_config::get_modelgate_config_path,
             offline_config::read_modelgate_config,
             offline_config::read_ratio_data,

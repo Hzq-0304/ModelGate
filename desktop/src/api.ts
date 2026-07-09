@@ -1523,6 +1523,26 @@ export async function saveRatioCredentialSecret(envName: string, secret: string)
   });
 }
 
+export async function openRatioLoginWindow(baseUrl: string) {
+  if (!isTauriRuntime()) {
+    throw new Error("Login window is only available in the desktop app.");
+  }
+
+  await invoke<void>("open_ratio_login_window", {
+    baseUrl
+  });
+}
+
+export async function captureRatioLoginCookies(baseUrl: string) {
+  if (!isTauriRuntime()) {
+    throw new Error("Login cookie capture is only available in the desktop app.");
+  }
+
+  return invoke<{ cookie: string; count: number }>("capture_ratio_login_cookies", {
+    baseUrl
+  });
+}
+
 export async function updateRatioSource(id: string, patch: Partial<RatioSource>) {
   const response = await fetch(`${baseUrl}/admin/ratio-sources/${encodeURIComponent(id)}`, {
     method: "PATCH",

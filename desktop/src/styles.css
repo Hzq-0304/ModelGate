@@ -1083,6 +1083,28 @@ code {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.ratio-web-login-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ratio-web-login-actions button {
+  background: #ffffff;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 500;
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+.ratio-web-login-actions button:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #98a2b3;
+}
+
 .ratio-source-auth-hint {
   background: #f8fafc;
   border: 1px solid #e4e9f2;

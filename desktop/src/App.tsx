@@ -38,11 +38,13 @@ import {
   reloadConfig,
   restartServerProcess,
   saveAdminConfig,
+  captureRatioLoginCookies,
   saveRatioCredential,
   saveRatioCredentialSecret,
   scanCcSwitchDatabase,
   selectAndScanCcSwitchDatabase,
   setRoutingEnabled,
+  openRatioLoginWindow,
   openCcSwitchDeepLink,
   startServerProcess,
   stopServerProcess,
@@ -216,6 +218,15 @@ function settingsPageTabFromSection(section: ConfigSection): SettingsPageTabId {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isHumanVerificationError(error: unknown) {
+  const normalized = getErrorMessage(error).toLowerCase();
+  return normalized.includes("turnstile")
+    || normalized.includes("captcha")
+    || normalized.includes("人机")
+    || normalized.includes("验证")
+    || normalized.includes("token 为空");
 }
 
 function normalizeConfigKey(value: string, fallback = "ccswitch-provider") {
@@ -884,9 +895,61 @@ export function App() {
       email: ratioSourceForm.credentialMode === "password" ? ratioSourceForm.credentialEmail : undefined,
       password: ratioSourceForm.credentialMode === "password" ? ratioSourceForm.credentialPassword : undefined,
       returnToken: true
+    }).catch(async (error) => {
+      if (ratioSourceForm.credentialMode === "password" && isHumanVerificationError(error)) {
+        await openRatioLoginWindow(ratioSourceForm.baseUrl);
+        throw new Error(t("ratio.webLoginOpened"));
+      }
+      throw error;
     });
     if (result.token) {
       await saveRatioCredentialSecret(result.tokenEnv, result.token);
+    }
+  }
+
+  async function handleOpenRatioLoginWindow() {
+    setBusyAction("ratio:login:open");
+    try {
+      await openRatioLoginWindow(ratioSourceForm.baseUrl);
+      setRatioMessage(t("ratio.webLoginOpened"));
+    } catch (error) {
+      setRatioMessage(t("ratio.webLoginFailed", { message: formatRatioActionError(error) }));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleCaptureRatioLoginSession() {
+    setBusyAction("ratio:login:capture");
+    try {
+      const tokenEnv = ratioSourceForm.tokenEnv.trim()
+        || ratioCredentialEnvName(ratioSourceForm.name, ratioSourceForm.baseUrl, ratioSourceForm.editingId);
+      const captured = await captureRatioLoginCookies(ratioSourceForm.baseUrl);
+      const result = await saveRatioCredential({
+        baseUrl: ratioSourceForm.baseUrl,
+        type: ratioSourceForm.type,
+        tokenEnv,
+        mode: "cookie",
+        cookie: captured.cookie,
+        returnToken: true
+      });
+      if (result.token) {
+        await saveRatioCredentialSecret(result.tokenEnv, result.token);
+      }
+      setRatioSourceForm({
+        ...ratioSourceForm,
+        authType: "bearer",
+        credentialMode: "cookie",
+        credentialCookie: "",
+        credentialEmail: "",
+        credentialPassword: "",
+        tokenEnv: result.tokenEnv
+      });
+      setRatioMessage(t("ratio.webLoginCaptured", { count: captured.count }));
+    } catch (error) {
+      setRatioMessage(t("ratio.webLoginCaptureFailed", { message: formatRatioActionError(error) }));
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -983,7 +1046,11 @@ export function App() {
       await loadRatioMonitor();
       setRatioMessage(t("ratio.sourceSaved"));
     } catch (error) {
-      setRatioMessage(t("ratio.sourceSaveFailed", { message: formatRatioActionError(error) }));
+      if (getErrorMessage(error) === t("ratio.webLoginOpened")) {
+        setRatioMessage(t("ratio.webLoginOpened"));
+      } else {
+        setRatioMessage(t("ratio.sourceSaveFailed", { message: formatRatioActionError(error) }));
+      }
     } finally {
       setBusyAction(null);
     }
@@ -2836,6 +2903,24 @@ export function App() {
                         />
                       </label>
                     )}
+                    <div className="ratio-web-login-actions">
+                      <button
+                        className="secondary"
+                        disabled={ratioBusy || !ratioSourceForm.baseUrl.trim()}
+                        onClick={() => void handleOpenRatioLoginWindow()}
+                        type="button"
+                      >
+                        {busyAction === "ratio:login:open" ? t("ratio.webLoginOpening") : t("ratio.webLoginOpen")}
+                      </button>
+                      <button
+                        className="secondary"
+                        disabled={ratioBusy || !ratioSourceForm.baseUrl.trim()}
+                        onClick={() => void handleCaptureRatioLoginSession()}
+                        type="button"
+                      >
+                        {busyAction === "ratio:login:capture" ? t("ratio.webLoginCapturing") : t("ratio.webLoginCapture")}
+                      </button>
+                    </div>
                   </div>
                 )}
                 {ratioSourceForm.authType === "api-token" && (
